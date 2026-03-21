@@ -1,6 +1,7 @@
 package com.kanjimasta
 
 import com.kanjimasta.core.auth.configureAuth
+import com.kanjimasta.core.client.configureAIClients
 import com.kanjimasta.core.db.configureDatabasePool
 import com.kanjimasta.core.plugins.configureCors
 import com.kanjimasta.core.plugins.configureRouting
@@ -12,6 +13,7 @@ fun main(args: Array<String>) = EngineMain.main(args)
 
 fun Application.module() {
     val database = configureDatabasePool()
+    val aiClients = configureAIClients()
     configureSerialization()
     configureCors()
     configureAuth()

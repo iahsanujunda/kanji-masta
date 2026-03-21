@@ -19,6 +19,7 @@ ktor {
 
 repositories {
     mavenCentral()
+    maven("https://packages.jetbrains.team/maven/p/grazi/grazie-platform-public")
 }
 
 dependencies {
@@ -32,7 +33,10 @@ dependencies {
     implementation(libs.ktor.server.config.yaml)
     implementation(libs.ktor.serialization.kotlinx.json)
 
-    // Ktor client (for Claude API)
+    // Koog AI agents (Anthropic + Google providers)
+    implementation(libs.koog.agents)
+
+    // Ktor client
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.cio)
     implementation(libs.ktor.client.content.negotiation)

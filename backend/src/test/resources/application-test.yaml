@@ -1,0 +1,17 @@
+ktor:
+  deployment:
+    port: 8080
+  application:
+    modules:
+      - com.kanjimasta.ApplicationKt.module
+
+database:
+  host: "localhost"
+  port: "5432"
+  name: "postgres"
+  user: "postgres"
+  password: "postgres"
+
+jwt:
+  secret: "super-secret-jwt-token-with-at-least-32-characters-long"
+  issuer: "test-issuer"

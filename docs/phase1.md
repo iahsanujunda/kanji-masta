@@ -32,7 +32,7 @@ Establishes the data foundation. All subsequent iterations depend on this. No UI
 **`kanji_master`**
 
 Seeded once from kanjidic2. Never written to by the app at runtime.
-
+pleas
 ```sql
 create table kanji_master (
   id          uuid primary key default gen_random_uuid(),
@@ -159,7 +159,6 @@ Response shape:
         { "word": "電車", "reading": "でんしゃ", "meaning": "train" },
         { "word": "電話", "reading": "でんわ", "meaning": "telephone" }
       ],
-      "jlptLevel": 5,
       "whyUseful": "Appears on every train sign in Japan",
       "recommended": true
     }
@@ -185,7 +184,6 @@ Return ONLY a valid JSON array — no markdown, no preamble:
     { "word": "電車", "reading": "でんしゃ", "meaning": "train" },
     { "word": "電話", "reading": "でんわ", "meaning": "telephone" }
   ],
-  "jlptLevel": 5,
   "whyUseful": "Appears on every train sign in Japan",
   "recommended": true
 }]

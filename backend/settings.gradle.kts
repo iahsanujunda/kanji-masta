@@ -1,0 +1,1 @@
+rootProject.name = "kanji-masta-backend"

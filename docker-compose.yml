@@ -1,0 +1,17 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      SUPABASE_DB_HOST: ${SUPABASE_DB_HOST:-host.docker.internal}
+      SUPABASE_DB_PORT: ${SUPABASE_DB_PORT:-54322}
+      SUPABASE_DB_NAME: ${SUPABASE_DB_NAME:-postgres}
+      SUPABASE_DB_USER: ${SUPABASE_DB_USER:-postgres}
+      SUPABASE_DB_PASSWORD: ${SUPABASE_DB_PASSWORD:-postgres}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
+      CLAUDE_API_KEY: ${CLAUDE_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

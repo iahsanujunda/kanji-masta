@@ -1,4 +1,4 @@
-package com.kanjimasta.db
+package com.kanjimasta.core.db
 
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource

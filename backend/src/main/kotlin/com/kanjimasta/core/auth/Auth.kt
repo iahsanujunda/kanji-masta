@@ -1,4 +1,4 @@
-package com.kanjimasta.plugins
+package com.kanjimasta.core.auth
 
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm

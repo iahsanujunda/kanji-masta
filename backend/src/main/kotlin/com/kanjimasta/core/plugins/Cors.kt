@@ -1,4 +1,4 @@
-package com.kanjimasta.plugins
+package com.kanjimasta.core.plugins
 
 import io.ktor.http.*
 import io.ktor.server.application.*

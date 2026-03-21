@@ -1,7 +1,7 @@
 package com.kanjimasta
 
-import com.kanjimasta.plugins.configureRouting
-import com.kanjimasta.plugins.configureSerialization
+import com.kanjimasta.core.plugins.configureRouting
+import com.kanjimasta.core.plugins.configureSerialization
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*

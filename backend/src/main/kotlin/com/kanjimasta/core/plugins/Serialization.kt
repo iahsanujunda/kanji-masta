@@ -1,4 +1,4 @@
-package com.kanjimasta.plugins
+package com.kanjimasta.core.plugins
 
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*

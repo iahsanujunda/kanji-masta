@@ -1,10 +1,10 @@
 package com.kanjimasta
 
-import com.kanjimasta.db.configureDatabasePool
-import com.kanjimasta.plugins.configureAuth
-import com.kanjimasta.plugins.configureCors
-import com.kanjimasta.plugins.configureRouting
-import com.kanjimasta.plugins.configureSerialization
+import com.kanjimasta.core.auth.configureAuth
+import com.kanjimasta.core.db.configureDatabasePool
+import com.kanjimasta.core.plugins.configureCors
+import com.kanjimasta.core.plugins.configureRouting
+import com.kanjimasta.core.plugins.configureSerialization
 import io.ktor.server.application.*
 import io.ktor.server.netty.*
 

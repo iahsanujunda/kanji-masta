@@ -4,4 +4,5 @@
 scripts/data/
 supabase/.temp/
 backend/.gradle/
+backend/.kotlin/
 backend/build/

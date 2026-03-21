@@ -29,7 +29,7 @@ class AIClientFactory(
         val CLAUDE_SONNET = anthropicModel("claude-sonnet-4-20250514")
         val CLAUDE_OPUS = anthropicModel("claude-opus-4-20250918")
         val GEMINI_PRO = googleModel("gemini-3.1-pro-preview")
-        val GEMINI_3_FLASH = googleModel("gemini-3-flash-preview")
+        val GEMINI_FLASH = googleModel("gemini-3-flash-preview")
     }
 }
 

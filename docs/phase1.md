@@ -32,7 +32,7 @@ Establishes the data foundation. All subsequent iterations depend on this. No UI
 **`kanji_master`**
 
 Seeded once from kanjidic2. Never written to by the app at runtime.
-pleas
+
 ```sql
 create table kanji_master (
   id          uuid primary key default gen_random_uuid(),

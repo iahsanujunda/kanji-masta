@@ -3,3 +3,5 @@
 .idea/
 scripts/data/
 supabase/.temp/
+backend/.gradle/
+backend/build/

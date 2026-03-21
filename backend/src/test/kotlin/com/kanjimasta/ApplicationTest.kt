@@ -5,6 +5,8 @@ import com.kanjimasta.core.plugins.configureSerialization
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
+import io.ktor.server.application.*
+import io.ktor.server.auth.*
 import io.ktor.server.testing.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,6 +18,13 @@ class ApplicationTest {
     fun `health endpoint returns ok`() = testApplication {
         application {
             configureSerialization()
+            install(Authentication) {
+                provider("supabase") {
+                    authenticate { context ->
+                        context.principal(object : Principal {})
+                    }
+                }
+            }
             configureRouting()
         }
 
@@ -28,6 +37,13 @@ class ApplicationTest {
     fun `unknown route returns 404`() = testApplication {
         application {
             configureSerialization()
+            install(Authentication) {
+                provider("supabase") {
+                    authenticate { context ->
+                        context.principal(object : Principal {})
+                    }
+                }
+            }
             configureRouting()
         }
 

@@ -1,28 +1,23 @@
 ktor:
   deployment:
-    port: 8080
-    port: ${?PORT}
+    port: "$PORT:8080"
   application:
     modules:
       - com.kanjimasta.ApplicationKt.module
 
 database:
-  host: "127.0.0.1"
-  host: ${?SUPABASE_DB_HOST}
-  port: "5432"
-  port: ${?SUPABASE_DB_PORT}
-  name: "postgres"
-  name: ${?SUPABASE_DB_NAME}
-  user: "postgres"
-  user: ${?SUPABASE_DB_USER}
-  password: "postgres"
-  password: ${?SUPABASE_DB_PASSWORD}
+  host: "$SUPABASE_DB_HOST:127.0.0.1"
+  port: "$SUPABASE_DB_PORT:5432"
+  name: "$SUPABASE_DB_NAME:postgres"
+  user: "$SUPABASE_DB_USER:postgres"
+  password: "$SUPABASE_DB_PASSWORD:postgres"
 
 jwt:
-  secret: "super-secret-jwt-token-with-at-least-32-characters-long"
-  secret: ${?SUPABASE_JWT_SECRET}
-  issuer: "https://omuhcbxjtjyzzvznhvib.supabase.co/auth/v1"
-  issuer: ${?SUPABASE_JWT_ISSUER}
+  secret: "$SUPABASE_JWT_SECRET:super-secret-jwt-token-with-at-least-32-characters-long"
+  issuer: "$SUPABASE_JWT_ISSUER:https://omuhcbxjtjyzzvznhvib.supabase.co/auth/v1"
 
 claude:
-  apiKey: ${?CLAUDE_API_KEY}
+  apiKey: "$CLAUDE_API_KEY:"
+
+gemini:
+  apiKey: "$GEMINI_API_KEY:"

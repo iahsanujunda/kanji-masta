@@ -27,7 +27,7 @@ export default function Login() {
   return (
     <Box
       sx={{
-        minHeight: "calc(100vh - 64px)",
+        minHeight: "100vh",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -36,7 +36,7 @@ export default function Login() {
       <Box
         component="form"
         onSubmit={handleSubmit}
-        sx={{ width: "100%", maxWidth: 360, px: 2 }}
+        sx={{ width: "100%", maxWidth: 360, px: 3, py: 4, bgcolor: "#4338ca", borderRadius: 4 }}
       >
         <Typography variant="h5" sx={{ mb: 3, textAlign: "center" }}>
           Kanji Masta
@@ -72,6 +72,16 @@ export default function Login() {
           fullWidth
           size="large"
           disabled={loading}
+          sx={{
+            bgcolor: "grey.100",
+            color: "#4338ca",
+            py: 1.5,
+            borderRadius: 6,
+            fontSize: "1rem",
+            fontWeight: "bold",
+            letterSpacing: 0.5,
+            "&:hover": { bgcolor: "grey.300" },
+          }}
         >
           {loading ? "Signing in..." : "Sign In"}
         </Button>

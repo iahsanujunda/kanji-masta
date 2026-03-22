@@ -10,3 +10,4 @@ dataconnect/.dataconnect/
 *-debug.log
 functions/venv/
 __pycache__/
+scripts/.quiz_seed_checkpoint.json

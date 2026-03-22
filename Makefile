@@ -31,6 +31,9 @@ setup: ## Install all dependencies
 seed: ## Seed KanjiMaster data into local emulator
 	cd scripts && python seed.py --file data/kanjidic2.xml --freq-limit 1500 --clear-and-persist
 
+seed-quizzes: ## Generate quizzes for JLPT kanji (usage: make seed-quizzes JLPT=5 LIMIT=500)
+	cd scripts && python seed_quizzes.py --file data/kanjidic2.xml --jlpt $(or $(JLPT),5) $(if $(LIMIT),--limit $(LIMIT)) --persist --resume
+
 seed-prod: ## Seed KanjiMaster data into production
 	cd scripts && python seed.py --file data/kanjidic2.xml --freq-limit 1500 --clear-and-persist --prod
 

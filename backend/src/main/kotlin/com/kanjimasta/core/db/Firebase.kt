@@ -13,15 +13,18 @@ fun Application.configureFirebase() {
         System.setProperty("FIREBASE_AUTH_EMULATOR_HOST", emulatorHost)
     }
 
+    val isEmulator = emulatorHost?.isNotBlank() == true
+
     val options = FirebaseOptions.builder()
         .setProjectId(projectId)
         .apply {
-            val credentialsPath = System.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-            if (credentialsPath != null) {
-                setCredentials(GoogleCredentials.getApplicationDefault())
+            if (isEmulator) {
+                // Emulator does not require real credentials
+                setCredentials(object : GoogleCredentials() {
+                    override fun refreshAccessToken() = com.google.auth.oauth2.AccessToken("emulator", null)
+                })
             } else {
-                // For emulator usage, credentials are not required
-                setCredentials(GoogleCredentials.create(null))
+                setCredentials(GoogleCredentials.getApplicationDefault())
             }
         }
         .build()

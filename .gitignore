@@ -8,3 +8,5 @@ backend/build/
 *-service-account.json
 dataconnect/.dataconnect/
 *-debug.log
+functions/venv/
+__pycache__/

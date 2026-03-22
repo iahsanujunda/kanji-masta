@@ -1,12 +1,13 @@
 package com.kanjimasta.core.auth
 
 import com.google.firebase.auth.FirebaseAuth
-import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
-import io.ktor.server.response.*
+import org.slf4j.LoggerFactory
 
 data class FirebaseUser(val uid: String, val email: String?) : Principal
+
+private val logger = LoggerFactory.getLogger("com.kanjimasta.core.auth")
 
 fun Application.configureAuth() {
     install(Authentication) {
@@ -19,7 +20,8 @@ fun Application.configureAuth() {
                         uid = decoded.uid,
                         email = decoded.email
                     )
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    logger.debug("Token verification failed: {}", e.message)
                     null
                 }
             }

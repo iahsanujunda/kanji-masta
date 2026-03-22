@@ -21,7 +21,17 @@
 - Bottom action bar with gradient fade from transparent to background
 
 ## Build & Run
-- Frontend: `cd frontend && npm run dev` (port 5173)
-- Backend: `cd backend && ./gradlew run` (port 8080)
-- Firebase emulator: `firebase emulators:start` (Auth on port 9099)
-- Docker: `docker compose up --build` (backend:8080, frontend:3000)
+
+Run `make help` for all commands. Local dev requires 3 terminals:
+
+```
+make emulators   # Terminal 1: Firebase emulators (Auth:9099, DC:9399, Functions:5001, Storage:9199)
+make backend     # Terminal 2: Ktor backend (port 8080, auto-connects to emulators)
+make frontend    # Terminal 3: React dev server (port 5173)
+```
+
+Other useful commands:
+- `make setup` — install all dependencies (npm, pip, gradle)
+- `make seed` — seed KanjiMaster data into local emulator
+- `make check` — type-check frontend + build backend
+- `make docker-up` — production Docker build (backend:8080, frontend:3000)

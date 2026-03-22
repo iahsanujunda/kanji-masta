@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Box,
   Button,
@@ -14,10 +14,27 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
+import PageHeader from "@/components/PageHeader";
 
 export default function Home() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [slotState] = useState<"active" | "completed">("active");
+  const [errorBanner, setErrorBanner] = useState<string | null>(null);
+
+  // Show error banner from navigation state (e.g. capture failure)
+  useEffect(() => {
+    const state = location.state as { error?: string } | null;
+    if (state?.error) {
+      setErrorBanner(state.error);
+      // Clear the state so it doesn't persist on refresh
+      window.history.replaceState({}, "");
+      // Auto-dismiss after 5 seconds
+      const timer = setTimeout(() => setErrorBanner(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [location.state]);
 
   // Mocked data — will be replaced with real API calls
   const userStats = { streak: 12, learning: 24, familiar: 108 };
@@ -40,48 +57,68 @@ export default function Home() {
         position: "relative",
       }}
     >
-      {/* Header */}
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          px: 3,
-          pt: 5,
-          pb: 2,
-        }}
-      >
-        <Box>
-          <Typography variant="h5" fontWeight="bold">
-            Kanji Masta
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Yokohama, JP
-          </Typography>
-        </Box>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-          <Chip
-            icon={<WhatshotIcon sx={{ fontSize: 18 }} />}
-            label={userStats.streak}
-            size="small"
-            sx={{
-              bgcolor: "rgba(255, 152, 0, 0.15)",
-              color: "warning.main",
-              fontWeight: "bold",
-            }}
-          />
-          <IconButton
-            color="inherit"
-            onClick={() => navigate("/settings")}
-            sx={{ color: "text.secondary" }}
-          >
-            <SettingsIcon />
-          </IconButton>
-        </Box>
-      </Box>
+      <PageHeader
+        title="Kanji Masta"
+        subtitle="Yokohama, JP"
+        right={
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Chip
+              icon={<WhatshotIcon sx={{ fontSize: 18 }} />}
+              label={userStats.streak}
+              size="small"
+              sx={{
+                bgcolor: "rgba(255, 152, 0, 0.15)",
+                color: "warning.main",
+                fontWeight: "bold",
+              }}
+            />
+            <IconButton
+              color="inherit"
+              onClick={() => navigate("/settings")}
+              sx={{ color: "text.secondary" }}
+            >
+              <SettingsIcon />
+            </IconButton>
+          </Box>
+        }
+      />
 
       {/* Main content */}
       <Box sx={{ flex: 1, px: 3, pb: 16, display: "flex", flexDirection: "column", gap: 2.5 }}>
+        {/* Error banner */}
+        {errorBanner && (
+          <Box
+            sx={{
+              borderRadius: 3,
+              p: 2,
+              display: "flex",
+              alignItems: "center",
+              gap: 1.5,
+              bgcolor: "rgba(211, 47, 47, 0.12)",
+              border: "1px solid",
+              borderColor: "rgba(211, 47, 47, 0.3)",
+            }}
+          >
+            <Box
+              sx={{
+                width: 32,
+                height: 32,
+                borderRadius: "50%",
+                bgcolor: "rgba(211, 47, 47, 0.2)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <ErrorOutlineIcon sx={{ fontSize: 18, color: "error.main" }} />
+            </Box>
+            <Typography variant="body2" sx={{ color: "error.light" }}>
+              {errorBanner}
+            </Typography>
+          </Box>
+        )}
+
         {/* Quiz slot card */}
         {slotState === "active" ? (
           <Paper
@@ -182,6 +219,7 @@ export default function Home() {
         {/* Kanji stats card */}
         <Paper
           variant="outlined"
+          onClick={() => navigate("/collection")}
           sx={{
             borderRadius: 4,
             p: 2.5,
@@ -241,6 +279,7 @@ export default function Home() {
         <Button
           variant="contained"
           size="large"
+          onClick={() => navigate("/capture")}
           startIcon={
             <Box
               sx={{

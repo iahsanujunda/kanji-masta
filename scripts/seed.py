@@ -1,11 +1,13 @@
 """
-Parse kanjidic2.xml and output kanji + frequency as a pandas DataFrame.
+Parse kanjidic2.xml and seed kanji into Firebase Data Connect.
 
 Usage:
-    python parse_kanjidic2.py                        # expects kanjidic2.xml in current dir
-    python parse_kanjidic2.py --file /path/to/kanjidic2.xml
-    python parse_kanjidic2.py --freq-limit 1500      # filter to top N by frequency
-    python parse_kanjidic2.py --output kanji.csv     # save to CSV
+    python seed.py                                # expects kanjidic2.xml in current dir
+    python seed.py --file /path/to/kanjidic2.xml
+    python seed.py --freq-limit 1500              # filter to top N by frequency
+    python seed.py --output kanji.csv             # save to CSV
+    python seed.py --persist                      # seed into Data Connect (local emulator)
+    python seed.py --persist --prod               # seed into Data Connect (production)
 
 Download kanjidic2.xml.gz from:
     https://www.edrdg.org/kanjidic/kanjidic2.xml.gz
@@ -14,11 +16,13 @@ Download kanjidic2.xml.gz from:
 
 import argparse
 import gzip
+import json
 import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pandas as pd
+import requests
 from dotenv import load_dotenv
 
 
@@ -111,32 +115,141 @@ def parse_kanjidic2(filepath: str, freq_limit: int | None = None) -> pd.DataFram
     return df
 
 
-def persist_to_supabase(df: pd.DataFrame, batch_size: int = 500) -> None:
-    """Upsert kanji data into the Supabase kanji_master table."""
-    from supabase import create_client
-
+def _build_endpoint(prod: bool) -> tuple[str, dict]:
+    """Return (url, headers) for the Data Connect executeGraphql endpoint."""
     load_dotenv()
-    url = os.environ["SUPABASE_URL"]
-    key = os.environ["SUPABASE_KEY"]
-    client = create_client(url, key)
+    project_id = os.environ.get("FIREBASE_PROJECT_ID", "kanji-masta")
+
+    if prod:
+        # Production — requires gcloud auth application-default credentials
+        import google.auth
+        import google.auth.transport.requests
+
+        credentials, _ = google.auth.default(
+            scopes=["https://www.googleapis.com/auth/firebase.dataconnect"]
+        )
+        credentials.refresh(google.auth.transport.requests.Request())
+
+        url = (
+            f"https://firebasedataconnect.googleapis.com"
+            f"/v1alpha/projects/{project_id}"
+            f"/locations/asia-east1/services/kanji-masta:executeGraphql"
+        )
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {credentials.token}",
+        }
+    else:
+        # Local emulator
+        emulator_host = os.environ.get("FIREBASE_DATACONNECT_EMULATOR_HOST", "127.0.0.1:9399")
+        url = (
+            f"http://{emulator_host}"
+            f"/v1alpha/projects/{project_id}"
+            f"/locations/asia-east1/services/kanji-masta:executeGraphql"
+        )
+        headers = {"Content-Type": "application/json"}
+
+    return url, headers
+
+
+def _clear_kanji_master(prod: bool = False) -> None:
+    """Delete all rows from kanji_master by fetching and deleting in pages."""
+    url, headers = _build_endpoint(prod)
+    env_label = "production" if prod else "local emulator"
+    print(f"\nClearing kanji_master on {env_label} ...")
+
+    total_deleted = 0
+    while True:
+        # Fetch a page of IDs
+        query = """
+            query ListKanjiBatch {
+                kanjiMasters(limit: 1000) { id }
+            }
+        """
+        resp = requests.post(url, headers=headers, json={"query": query})
+        rows = resp.json().get("data", {}).get("kanjiMasters", [])
+
+        if not rows:
+            break
+
+        # Delete this page
+        ids = [row["id"] for row in rows]
+        for i in range(0, len(ids), 100):
+            batch = ids[i : i + 100]
+            batch_literal = ", ".join(f'"{uid}"' for uid in batch)
+            delete_query = f"""
+                mutation DeleteBatch {{
+                    kanjiMaster_deleteMany(where: {{ id: {{ in: [{batch_literal}] }} }})
+                }}
+            """
+            resp = requests.post(url, headers=headers, json={"query": delete_query})
+            if resp.status_code != 200 or resp.json().get("errors"):
+                print(f"  Delete error: {resp.text[:200]}")
+
+        total_deleted += len(ids)
+        print(f"  Deleted {total_deleted} rows so far...")
+
+    print(f"  Cleared {total_deleted} total rows.")
+
+
+def persist_to_dataconnect(df: pd.DataFrame, prod: bool = False, clear: bool = False, batch_size: int = 100) -> None:
+    """Seed kanji data into Firebase Data Connect using insertMany."""
+    if clear:
+        _clear_kanji_master(prod)
+
+    url, headers = _build_endpoint(prod)
+    env_label = "production" if prod else "local emulator"
+
+    print(f"\nSeeding {len(df)} kanji to Data Connect ({env_label}) in batches of {batch_size} ...")
 
     records = [
         {
             "character": row["character"],
-            "readings": {"onyomi": row["onyomi"], "kunyomi": row["kunyomi"]},
+            "onyomi": row["onyomi"],
+            "kunyomi": row["kunyomi"],
             "meanings": row["meanings"],
             "frequency": int(row["frequency"]) if pd.notna(row["frequency"]) else None,
         }
         for _, row in df.iterrows()
     ]
 
-    print(f"\nUpserting {len(records)} kanji to Supabase ...")
+    errors = 0
     for i in range(0, len(records), batch_size):
         batch = records[i : i + batch_size]
-        client.table("kanji_master").upsert(batch, on_conflict="character").execute()
-        print(f"  Batch {i // batch_size + 1}: {len(batch)} rows")
 
-    print("Done.")
+        # Data Connect doesn't support complex type variables for insertMany,
+        # so we inline the data array directly in the mutation string.
+        data_entries = []
+        for rec in batch:
+            freq = rec["frequency"] if rec["frequency"] is not None else "null"
+            onyomi = json.dumps(rec["onyomi"], ensure_ascii=False)
+            kunyomi = json.dumps(rec["kunyomi"], ensure_ascii=False)
+            meanings = json.dumps(rec["meanings"], ensure_ascii=False)
+            char = rec["character"].replace("\\", "\\\\").replace('"', '\\"')
+            data_entries.append(
+                f'{{ character: "{char}", onyomi: {onyomi}, kunyomi: {kunyomi}, '
+                f'meanings: {meanings}, frequency: {freq} }}'
+            )
+
+        data_literal = ",\n            ".join(data_entries)
+        query = f"""
+            mutation InsertKanjiMasterBatch {{
+                kanjiMaster_insertMany(data: [
+            {data_literal}
+                ])
+            }}
+        """
+        resp = requests.post(url, headers=headers, json={"query": query})
+        resp_json = resp.json()
+
+        if resp.status_code != 200 or resp_json.get("errors"):
+            errors += len(batch)
+            print(f"  Batch {i // batch_size + 1} error: {resp.text[:200]}")
+        else:
+            print(f"  Batch {i // batch_size + 1}: {len(batch)} rows inserted")
+
+    total_batches = (len(records) + batch_size - 1) // batch_size
+    print(f"Done. {total_batches} batches, {len(records) - errors} succeeded, {errors} errors.")
 
 
 def main():
@@ -145,7 +258,9 @@ def main():
     parser.add_argument("--freq-limit", type=int, default=None, help="Keep only kanji with freq <= this value")
     parser.add_argument("--output", default=None, help="Save DataFrame to this CSV path")
     parser.add_argument("--show", type=int, default=20, help="Number of rows to preview (default 20)")
-    parser.add_argument("--persist", action="store_true", help="Upsert parsed kanji into Supabase kanji_master table")
+    parser.add_argument("--persist", action="store_true", help="Seed parsed kanji into Data Connect")
+    parser.add_argument("--clear-and-persist", action="store_true", help="Clear kanji_master then seed")
+    parser.add_argument("--prod", action="store_true", help="Target production instead of local emulator")
     args = parser.parse_args()
 
     df = parse_kanjidic2(args.file, freq_limit=args.freq_limit)
@@ -167,8 +282,10 @@ def main():
         out.to_csv(args.output, index=False, encoding="utf-8")
         print(f"\nSaved to {args.output}")
 
-    if args.persist:
-        persist_to_supabase(df)
+    if args.clear_and_persist:
+        persist_to_dataconnect(df, prod=args.prod, clear=True)
+    elif args.persist:
+        persist_to_dataconnect(df, prod=args.prod)
 
     return df
 

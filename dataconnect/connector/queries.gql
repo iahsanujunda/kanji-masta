@@ -1,0 +1,22 @@
+query LookupKanjiByCharacters(
+  $characters: [String!]!
+) @auth(level: NO_ACCESS) {
+  kanjiMasters(where: { character: { in: $characters } }) {
+    id
+    character
+    onyomi
+    kunyomi
+    meanings
+    frequency
+  }
+}
+
+query GetPhotoSession(
+  $id: UUID!
+) @auth(level: NO_ACCESS) {
+  photoSession(id: $id) {
+    id
+    rawAiResponse
+    costMicrodollars
+  }
+}

@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { Alert, Box, Button, TextField, Typography } from "@mui/material";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../lib/firebase";
+import { auth } from "@/lib/firebase";
 
 export default function Login() {
   const [email, setEmail] = useState("");

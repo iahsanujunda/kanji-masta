@@ -10,8 +10,11 @@ fun Application.configureCors() {
         allowMethod(HttpMethod.Post)
         allowMethod(HttpMethod.Put)
         allowMethod(HttpMethod.Delete)
+        allowMethod(HttpMethod.Options)
         allowHeader(HttpHeaders.Authorization)
         allowHeader(HttpHeaders.ContentType)
+        allowHeader("X-Request-Id")
+        allowNonSimpleContentTypes = true
         anyHost() // TODO: restrict in production
     }
 }

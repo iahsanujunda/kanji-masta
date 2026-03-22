@@ -1,5 +1,168 @@
+enum QuizType {
+  MEANING_RECALL
+  READING_RECOGNITION
+  REVERSE_READING
+  BOLD_WORD_MEANING
+  FILL_IN_THE_BLANK
+}
+
+enum UserKanjiStatus {
+  FAMILIAR
+  LEARNING
+}
+
+enum JobType {
+  INITIAL
+  REGEN
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+enum DistractorTrigger {
+  INITIAL
+  MILESTONE
+  SERVE_COUNT
+}
+
+enum WordSource {
+  PHOTO
+  QUIZ
+  CHALLENGE
+}
+
+# Seeded once from kanjidic2, read-only at runtime
 type KanjiMaster @table {
   id: UUID! @default(expr: "uuidV4()")
-  literal: String!
-  frequency: Int!
+  character: String! @unique
+  onyomi: [String!]!
+  kunyomi: [String!]!
+  meanings: [String!]!
+  frequency: Int
+}
+
+# One row per kanji the user has interacted with
+type UserKanji @table {
+  id: UUID! @default(expr: "uuidV4()")
+  userId: String!
+  kanji: KanjiMaster!
+  status: UserKanjiStatus!
+  familiarity: Int! @default(value: 0)
+  currentTier: QuizType! @default(value: "MEANING_RECALL")
+  nextReview: Timestamp
+  sourcePhotoId: UUID
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# One row per photo, raw Claude response cached
+type PhotoSession @table {
+  id: UUID! @default(expr: "uuidV4()")
+  userId: String!
+  imageUrl: String
+  rawAiResponse: String
+  costMicrodollars: Int64
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# Background job queue for quiz generation
+type QuizGenerationJob @table {
+  id: UUID! @default(expr: "uuidV4()")
+  userId: String!
+  kanji: KanjiMaster!
+  quiz: QuizBank
+  jobType: JobType! @default(value: "INITIAL")
+  trigger: String
+  status: JobStatus! @default(value: "PENDING")
+  attempts: Int! @default(value: 0)
+  costMicrodollars: Int64
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# Stable quiz question content
+type QuizBank @table {
+  id: UUID! @default(expr: "uuidV4()")
+  userId: String!
+  kanji: KanjiMaster!
+  quizType: QuizType!
+  prompt: String!
+  furigana: String
+  target: String!
+  answer: String!
+  explanation: String
+  servedCount: Int! @default(value: 0)
+  servedAt: Timestamp
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# Versioned distractor sets — accumulate, never deleted
+type QuizDistractor @table {
+  id: UUID! @default(expr: "uuidV4()")
+  quiz: QuizBank!
+  userId: String!
+  distractors: [String!]!
+  generation: Int!
+  trigger: DistractorTrigger!
+  familiarityAtGeneration: Int!
+  servedAt: Timestamp
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# Full answer history per quiz attempt
+type QuizServe @table {
+  id: UUID! @default(expr: "uuidV4()")
+  quiz: QuizBank!
+  distractorSet: QuizDistractor!
+  slot: QuizSlot!
+  userId: String!
+  familiarityAtServe: Int!
+  correct: Boolean!
+  answeredAt: Timestamp! @default(expr: "request.time")
+}
+
+# One row per slot window
+type QuizSlot @table {
+  id: UUID! @default(expr: "uuidV4()")
+  userId: String!
+  slotStart: Timestamp!
+  slotEnd: Timestamp!
+  startedAt: Timestamp
+  completed: Int! @default(value: 0)
+  allowance: Int!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# Compound words encountered via photos
+type UserWords @table {
+  id: UUID! @default(expr: "uuidV4()")
+  userId: String!
+  word: String!
+  reading: String!
+  meaning: String!
+  kanjiIds: [UUID!]!
+  source: WordSource! @default(value: "PHOTO")
+  unlocked: Boolean! @default(value: false)
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# One row per milestone challenge
+type ChallengeSession @table {
+  id: UUID! @default(expr: "uuidV4()")
+  userId: String!
+  milestone: Int!
+  triggeredAt: Timestamp!
+  completedAt: Timestamp
+  score: Int
+}
+
+# Per-user settings, one row per user
+type UserSettings @table(key: "userId") {
+  userId: String! @unique
+  quizAllowancePerSlot: Int! @default(value: 5)
+  slotDurationHours: Int! @default(value: 6)
+  timezone: String! @default(value: "Asia/Tokyo")
+  updatedAt: Timestamp! @default(expr: "request.time")
 }

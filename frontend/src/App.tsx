@@ -1,9 +1,11 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import { useAuth } from "./hooks/useAuth";
-import ProtectedRoute from "./components/ProtectedRoute";
-import Home from "./pages/Home";
-import Login from "./pages/Login";
-import Settings from "./pages/Settings";
+import { useAuth } from "@/hooks/useAuth";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import Home from "@/pages/Home";
+import Login from "@/pages/Login";
+import Settings from "@/pages/Settings";
+import Collection from "@/pages/Collection";
+import Capture from "@/pages/Capture";
 
 export default function App() {
   const { user, isLoading } = useAuth();
@@ -27,6 +29,22 @@ export default function App() {
         element={
           <ProtectedRoute user={user} isLoading={isLoading}>
             <Settings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/collection"
+        element={
+          <ProtectedRoute user={user} isLoading={isLoading}>
+            <Collection />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/capture"
+        element={
+          <ProtectedRoute user={user} isLoading={isLoading}>
+            <Capture />
           </ProtectedRoute>
         }
       />

@@ -520,11 +520,35 @@ The worker handles both `INITIAL` and `REGEN` job types from the same queue:
 
 ### 3.4 Distractor Regen Cron (Daily)
 
-A separate scheduled Firebase Function checks two trigger conditions daily and enqueues `REGEN` jobs:
+A separate scheduled Firebase Function checks two trigger conditions daily and enqueues `REGEN` jobs.
 
-**Trigger 1 — Familiarity milestone:** when `currentTier` advances, enqueue regen for all quizzes of that kanji. Fresh distractors calibrated to the new tier are more instructive.
+**Key constraint — only regen quizzes that have actually been served.** A quiz with `servedCount = 0` has never been shown to the user, so its distractors are still fresh. Additionally, skip any quiz that already has an unserved `QuizDistractor` row waiting — no point generating a new set if the previous one hasn't been used yet.
 
-**Trigger 2 — Serve count + stale familiarity:** when `QuizBank.servedCount >= 5` AND `UserKanji.familiarity` unchanged for 14+ days. Catches the user stuck at a tier who has memorized the option landscape.
+```kotlin
+fun checkRegenTriggers(userId: String, kanjiId: UUID, newFamiliarity: Int) {
+
+    val eligibleQuizzes = quizBankRepo
+        .findByKanji(userId, kanjiId)
+        .filter { it.servedCount > 0 }                      // only served quizzes
+        .filter { !quizDistractorRepo.hasUnserved(it.id) }  // no unused set waiting
+
+    // Trigger 1 — tier crossing
+    eligibleQuizzes.forEach { quiz ->
+        jobRepo.enqueueRegen(quiz.id, trigger = "milestone")
+    }
+
+    // Trigger 2 — serve count threshold (daily cron, separate pass)
+    eligibleQuizzes
+        .filter { it.servedCount >= 10 }
+        .forEach { quiz ->
+            jobRepo.enqueueRegen(quiz.id, trigger = "serve_count")
+        }
+}
+```
+
+**Trigger 1 — Familiarity milestone:** when `currentTier` advances, enqueue regen for eligible quizzes of that kanji. Unserved higher-tier quizzes are skipped — they enter the regen cycle naturally once served.
+
+**Trigger 2 — Serve count threshold:** when `QuizBank.servedCount >= 10`. Threshold is set at 10 rather than 5 because serve-time distractor augmentation already pulls random DB candidates each serve, providing meaningful variety. By serve 10 the stored Gemini distractors may start feeling familiar despite augmentation — a fresh set is warranted.
 
 Old distractor sets are never deleted — they accumulate for evaluation.
 
@@ -561,8 +585,6 @@ Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
     "prompt": "でんしゃ",
     "target": "でんしゃ",
     "furigana": null,
-    
-    
     "answer": "電車",
     "distractors": ["電話", "電気", "電池"],
     "explanation": "電車 — the kanji for electricity + vehicle"
@@ -616,46 +638,56 @@ Rules:
 
 # Iteration 4 — React: Slot-Based Quiz UI
 
-The daily habit side of the loop. Configurable time slots, no score pressure, no rollover backlog.
+The daily habit side of the loop. Rolling session windows, no score pressure, no rollover backlog.
 
 ### 4.1 Slot System (Ktor: GET /api/quiz/slot)
 
-Default: 4 slots/day × 6 hours each (JST). Both values configurable in `UserSettings`.
+Slots are **rolling windows** anchored to your first answer — not fixed clock boundaries. Duration configurable in `UserSettings` (default 6 hours).
 
 ```
-Slot 1:  00:00 – 05:59
-Slot 2:  06:00 – 11:59
-Slot 3:  12:00 – 17:59
-Slot 4:  18:00 – 23:59
+First answer at 1am  → slot active 01:00–06:59
+Slot expires at 07:00, no new slot opens
+
+Next answer at 11am  → slot active 11:00–16:59
+Slot expires at 17:00, no new slot opens
 ```
 
-- Slot row created on first request in window (`startedAt` = null)
-- `startedAt` set on first `POST /api/quiz/result`
-- Slot expired without starting → `{ quizzes: [], nextSlotAt }`
-- No rollover — missed slots silently abandoned
+**Lifecycle:**
+- No `QuizSlot` row exists until the first `POST /api/quiz/result`
+- `GET /api/quiz/slot` checks for an active slot (`slotEnd > now()`):
+    - Active slot found → return remaining quizzes from that slot
+    - No active slot → return preview batch using same selection logic (no slot row created yet)
+- `POST /api/quiz/result` (first answer):
+    - Creates `QuizSlot` row: `slotStart = now()`, `slotEnd = now() + slotDurationHours`
+    - Subsequent answers in same slot → increment `completed` as normal
+- Slot expired → next `GET /api/quiz/slot` returns preview batch again, waiting for next first answer
 
-Response:
+**No rollover** — expired slots are silently abandoned. No debt to repay.
+
+**Response:**
 ```json
 {
   "quizzes": [
     {
       "id": "uuid",
       "quizType": "FILL_IN_THE_BLANK",
-      "prompt": "次の＿＿は何時に来ますか？",
+      "prompt": "＿＿乗り換えどこだっけ？",
       "target": "電車",
       "furigana": "でんしゃ",
       "answer": "電車",
-      "distractors": ["急行", "地下鉄", "バス停"],
-      "explanation": "電車 fits here",
+      "options": ["電車", "急行", "地下鉄", "バス停"],
+      "explanation": "電車 fits here — asking where to transfer trains",
       "familiarity": 1,
       "currentTier": "READING_RECOGNITION"
     }
   ],
   "remaining": 4,
-  "slotEndsAt": "2026-03-21T11:59:59+09:00",
-  "nextSlotAt": "2026-03-21T12:00:00+09:00"
+  "slotEndsAt": "2026-03-23T07:00:00+09:00",
+  "nextSlotAt": null
 }
 ```
+
+> `nextSlotAt` is always `null` — the next slot opens whenever you next answer a quiz, not at a fixed time.
 
 ### 4.2 Quiz Selection Priority
 
@@ -665,13 +697,32 @@ Response:
 | 2 | New kanji, never served | Up to 20% of allowance |
 | 3 | Resurfaced lower-tier (weighted by familiarity table) | Remainder |
 
-For each selected quiz, the slot endpoint resolves the distractor set to use:
+For each selected quiz, `QuizService` resolves the distractor set and augments with random DB candidates:
+
 - Find latest `QuizDistractor` row where `servedAt is null`
 - If none available: fall back to latest set + enqueue regen job in background
-- Mark `QuizDistractor.servedAt` when the quiz is returned to client
+- Augment stored distractors with random candidates from DB (see below)
+- Mark `QuizDistractor.servedAt` when quiz is returned to client
 
-**Serve-time distractor augmentation** — prevents option memorization without extra AI calls.
-Stored Gemini distractors are combined with random DB candidates, pool shuffled, 3 picked:
+**Serve-time distractor augmentation** — options are never the same 4 every serve:
+
+```kotlin
+fun resolveOptions(quiz: QuizBank, distractorSet: QuizDistractor, userId: String): List<String> {
+    val stored = distractorSet.distractors
+    val random = fetchRandomCandidates(
+        quizType = quiz.quizType,
+        answer = quiz.answer,
+        userId = userId,
+        exclude = listOf(quiz.answer) + stored,
+        limit = 5
+    )
+    val pool = (stored + random).shuffled()
+    val picked = pool.take(3)
+    return (picked + quiz.answer).shuffled()
+}
+```
+
+Random candidate sources by quiz type:
 
 | Quiz type | Random pool |
 |-----------|-------------|
@@ -695,7 +746,7 @@ Stored Gemini distractors are combined with random DB candidates, pool shuffled,
 - familiarity 0–4 → 4 MC options
 - familiarity 5 → free text input
 
-All cards: reveal answer → show correct/incorrect + explanation. Slot complete → summary with streak + next slot time.
+All cards: reveal answer → show correct/incorrect + explanation. Slot complete → summary screen with next session prompt.
 
 ### 4.4 POST /api/quiz/result
 
@@ -703,7 +754,7 @@ All cards: reveal answer → show correct/incorrect + explanation. Slot complete
 { "quizId": "uuid", "correct": true }
 ```
 
-- First call in slot: sets `QuizSlot.startedAt`
+- First call with no active slot: creates `QuizSlot` (`slotStart = now()`, `slotEnd = now() + slotDurationHours`)
 - Increments `QuizSlot.completed` and `QuizBank.servedCount`
 - Marks `QuizDistractor.servedAt` for the set that was used
 - Inserts `QuizServe` row (quiz, distractorSet, slot, correct, familiarityAtServe)
@@ -711,13 +762,51 @@ All cards: reveal answer → show correct/incorrect + explanation. Slot complete
 - Correct + resurfaced: update `nextReview` only
 - Incorrect: `familiarity - 1` (min 0), `nextReview = tomorrow`, regress `currentTier` if needed
 
+**`nextReview` calculation:**
+
+Increment familiarity first, then calculate `nextReview` from the new value. A ±15% jitter is applied to prevent reviews bunching on the same day and to stop the schedule feeling predictable.
+
+```kotlin
+fun nextReview(familiarity: Int, correct: Boolean): Instant {
+  if (!correct) return now().plusDays(1)
+
+  val baseDays = when (familiarity) {
+    0 -> 1
+    1 -> 2
+    2 -> 4
+    3 -> 7
+    4 -> 12
+    else -> 18
+  }
+  val maxJitter = (baseDays * 0.15).toInt().coerceAtLeast(1)
+  val jitter = Random.nextInt(-maxJitter, maxJitter + 1)
+  return now().plusDays((baseDays + jitter).coerceAtLeast(1).toLong())
+}
+```
+
+Effective ranges after jitter:
+
+| New familiarity | Base | Range |
+|-----------------|------|-------|
+| 0 | 1 day | 1 day (no jitter below 1) |
+| 1 | 2 days | 1–3 days |
+| 2 | 4 days | 3–5 days |
+| 3 | 7 days | 6–8 days |
+| 4 | 14 days | 12–16 days |
+| 5 | 30 days | 25–35 days |
+
+Incorrect answer: always `now + 1 day`, no jitter applied.
+
 ### Definition of Done
 
-- [ ] `GET /api/quiz/slot` returns quizzes + `remaining`, `slotEndsAt`, `nextSlotAt`
-- [ ] Slot created on first request, `startedAt` set on first answer
-- [ ] Expired unstarted slots return empty + `nextSlotAt`
+- [ ] `GET /api/quiz/slot` returns preview batch when no active slot exists
+- [ ] `GET /api/quiz/slot` returns remaining quizzes when active slot exists
+- [ ] `QuizSlot` row created on first `POST /api/quiz/result`, not on GET
+- [ ] `slotStart = now()`, `slotEnd = now() + slotDurationHours` set at first answer
+- [ ] Expired slot returns preview batch on next GET — no `nextSlotAt` in response
 - [ ] Selection respects priority order and caps
 - [ ] Current-tier gating applied per `UserKanji.currentTier`
+- [ ] Serve-time distractor augmentation returns different option sets across serves
 - [ ] All 5 card types render correctly
 - [ ] `fill_in_the_blank` MC for familiarity 0–4, free type for 5
 - [ ] `POST /api/quiz/result` updates `familiarity`, `currentTier`, `nextReview`
@@ -815,3 +904,345 @@ After 2 weeks of real usage:
 - `QuizServe` provides full answer history per distractor set — foundation for future prompt optimization
 - Modules never import from each other — only from `core/`
 - Data Connect schema is the single source of truth — no SQL migrations
+
+---
+
+# Iteration 6 — Challenge Sessions (Consolidation + Maturity)
+
+Two types of challenge session that sit outside the daily slot queue. Both are triggered automatically, sit pending until the user starts them, never expire, and do not count against slot allowance.
+
+| | Consolidation | Maturity |
+|---|---|---|
+| Trigger | 5 kanji cross familiarity 2 or 4 within 7 days | Every 10 kanji reach familiarity 5 |
+| Quiz pool | `meaning_recall` + `reading_recognition` from QuizBank | Gemini-generated multi-kanji sentences |
+| Length | Up to 10 questions (2 types × 5 kanji) | 5 questions |
+| Affects familiarity? | Yes — wrong answer → familiarity -1 on that kanji | No — purely evaluative |
+| Tone | Checkpoint — real gate before progressing | Celebration — showcase of how far you've come |
+
+---
+
+## 6.1 Schema Updates
+
+Add `ChallengeType` and `ConsolidationTier` enums plus update `ChallengeSession` in `dataconnect/schema/schema.gql`:
+
+```graphql
+enum ChallengeType { CONSOLIDATION, MATURITY }
+enum ConsolidationTier { FAMILIARITY_2, FAMILIARITY_4 }
+
+type ChallengeSession @table {
+  id: UUID! @default(expr: "uuidV4()")
+  userId: String!
+  type: ChallengeType!
+  tier: ConsolidationTier          # CONSOLIDATION only — which familiarity level triggered it
+  milestone: Int                   # MATURITY only — mature kanji count at trigger (10, 20, 30...)
+  kanjiIds: [UUID!]!               # kanji involved in this challenge
+  quizOrder: [UUID!]!              # pre-computed interleaved QuizBank IDs (CONSOLIDATION)
+  generatedQuestions: String       # JSON — Gemini sentences (MATURITY only)
+  triggeredAt: Timestamp!
+  completedAt: Timestamp
+  score: Int                       # correct out of total
+  affectsFamiliarity: Boolean!     # true for CONSOLIDATION, false for MATURITY
+}
+```
+
+> `quizOrder` stores the pre-computed interleaved sequence so the order is consistent if the user starts, exits, and returns mid-challenge.
+
+---
+
+## 6.2 Trigger Logic
+
+Both triggers fire inside `POST /api/quiz/result` after updating `familiarity` and `currentTier`. Called in this order:
+
+```kotlin
+// POST /api/quiz/result — after SM-2 update
+checkConsolidationTrigger(userId, newFamiliarity)   // fires at 2 and 4
+checkMaturityTrigger(userId, newFamiliarity)         // fires at 5
+checkRegenTriggers()                                 // existing — distractor regen
+```
+
+**Priority when multiple challenges pending:** `CONSOLIDATION (tier 2)` → `CONSOLIDATION (tier 4)` → `MATURITY`. Consolidation shown first because it affects familiarity progression — better to consolidate before stress-testing.
+
+### Consolidation Trigger
+
+```kotlin
+val CONSOLIDATION_TRIGGERS = listOf(2, 4)
+
+fun checkConsolidationTrigger(userId: String, newFamiliarity: Int) {
+    if (newFamiliarity !in CONSOLIDATION_TRIGGERS) return
+
+    val recentKanji = userKanjiRepo.findRecentlyReachedFamiliarity(
+        userId = userId,
+        familiarity = newFamiliarity,
+        withinDays = 7,
+        excludeAlreadyChallenged = true   // not already used in a CONSOLIDATION session at this tier
+    )
+
+    if (recentKanji.size >= 5) {
+        val group = recentKanji.takeLast(5)   // 5 most recent
+        val quizOrder = buildInterleavedOrder(group, familiarity = newFamiliarity)
+        challengeRepo.createConsolidation(
+            userId = userId,
+            kanjiIds = group.map { it.id },
+            quizOrder = quizOrder,
+            tier = if (newFamiliarity == 2) ConsolidationTier.FAMILIARITY_2 else ConsolidationTier.FAMILIARITY_4
+        )
+    }
+}
+```
+
+### Maturity Trigger
+
+```kotlin
+fun checkMaturityTrigger(userId: String, newFamiliarity: Int) {
+    if (newFamiliarity != 5) return
+
+    val matureCount = userKanjiRepo.countByFamiliarity(userId, familiarity = 5)
+    val lastMilestone = challengeRepo.lastMaturityMilestone(userId) ?: 0
+
+    if (matureCount >= lastMilestone + 10) {
+        val matureKanji = userKanjiRepo.findByFamiliarity(userId, familiarity = 5)
+        val unlockedWords = userWordsRepo.findUnlocked(userId)
+
+        challengeRepo.createMaturity(
+            userId = userId,
+            milestone = matureCount,
+            kanjiIds = matureKanji.map { it.id }
+        )
+        // fire-and-forget to Firebase Function to generate questions
+        firebaseFunction.call("generate_challenge", mapOf(
+            "userId" to userId,
+            "matureKanji" to matureKanji.map { it.character },
+            "unlockedWords" to unlockedWords.map { it.word },
+            "challengeSessionId" to newSessionId
+        ))
+    }
+}
+```
+
+---
+
+## 6.3 Consolidation — Interleaving Mechanism
+
+Quiz types selected: `meaning_recall` + `reading_recognition` only — the two lowest tiers. These are the foundation skills being cemented before the kanji progresses further.
+
+**Ordering — spaced interleave by type:**
+
+All `meaning_recall` quizzes first (random kanji order within), then all `reading_recognition` quizzes (different random kanji order). Same cognitive skill across varied stimuli — the most effective interleaving pattern for discrimination learning.
+
+```
+Round 1 — meaning_recall (5 quizzes, random kanji order):
+  東 → 急 → 電 → 京 → 車
+
+Round 2 — reading_recognition (5 quizzes, different random order):
+  車 → 電 → 京 → 東 → 急
+```
+
+```kotlin
+fun buildInterleavedOrder(kanji: List<UserKanji>, familiarity: Int): List<UUID> {
+    val quizTypes = listOf(QuizType.MEANING_RECALL, QuizType.READING_RECOGNITION)
+
+    return quizTypes.flatMap { type ->
+        val quizzes = quizBankRepo.findByKanjiIdsAndType(
+            kanjiIds = kanji.map { it.kanjiId },
+            quizType = type
+        )
+        quizzes.shuffled().map { it.id }
+    }
+}
+```
+
+**Familiarity effect during consolidation:**
+
+- Correct answer → no familiarity change, `nextReview` refreshed (same as resurfaced quiz in daily slot)
+- Wrong answer → `familiarity - 1` on that specific kanji, `nextReview = tomorrow`
+  - This pushes the kanji back below the consolidation threshold
+  - It re-enters the daily slot queue, progresses naturally back to familiarity 2 or 4
+  - When enough kanji group up again, a new consolidation triggers automatically
+
+---
+
+## 6.4 Maturity Challenge — Gemini Generation
+
+Triggered async at the moment the 10th (20th, 30th...) kanji reaches familiarity 5. Questions are generated by Firebase Function `generate_challenge` and stored in `ChallengeSession.generatedQuestions` before the user opens the challenge. No Gemini call at open time.
+
+**Gemini Prompt:**
+
+```
+You are generating a celebration challenge for a Japanese learner living in Japan.
+They have mastered these kanji: {matureKanji}
+They have also encountered these compound words: {unlockedWords}
+
+Generate exactly 5 challenge questions. Each question is a casual Japanese sentence
+containing at least 2 kanji from the mastered list. The learner must read the sentence
+and provide the full English meaning.
+
+This is a celebration — sentences should feel rewarding to read, like something
+they would actually encounter in daily life in Japan.
+
+Rules:
+- Each sentence must use at least 2 kanji from the mastered list
+- Use compound words from their list where natural
+- Casual spoken Japanese only — no keigo, no ます/です
+- No furigana anywhere — full recall required
+- Sentences should reflect real daily life: trains, shops, restaurants, weather, friends
+- Answer is the full English meaning of the sentence
+- Explanation highlights which kanji appeared and why the sentence works
+
+Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
+[
+  {
+    "prompt": "駅で急行待ってたら電車止まっちゃった。",
+    "targetKanji": ["急行", "電車"],
+    "answer": "I was waiting for the express at the station and the train stopped.",
+    "explanation": "急行 (express) + 電車 (train) — both learned kanji in a real station scenario"
+  }
+]
+```
+
+**Response stored in `ChallengeSession.generatedQuestions`** as a JSON string. Parsed at open time by the frontend.
+
+---
+
+## 6.5 API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/challenge/pending` | Returns pending challenge if any, with type and metadata |
+| `GET` | `/api/challenge/{id}` | Returns full challenge — quizzes or generated questions |
+| `POST` | `/api/challenge/{id}/result` | Submit one answer — updates familiarity if CONSOLIDATION |
+| `POST` | `/api/challenge/{id}/complete` | Mark challenge done, store final score |
+
+**GET /api/challenge/pending response:**
+
+```json
+{
+  "challenge": {
+    "id": "uuid",
+    "type": "CONSOLIDATION",
+    "tier": "FAMILIARITY_2",
+    "kanjiCount": 5,
+    "questionCount": 10,
+    "triggeredAt": "2026-03-23T..."
+  }
+}
+```
+
+Returns `{ "challenge": null }` when nothing pending.
+
+**POST /api/challenge/{id}/result:**
+
+```json
+{ "quizId": "uuid", "correct": true }
+```
+
+- CONSOLIDATION + wrong answer → `familiarity - 1` on the kanji, `nextReview = tomorrow`
+- CONSOLIDATION + correct answer → `nextReview` refreshed, no familiarity change
+- MATURITY → no familiarity effect either direction
+
+---
+
+## 6.6 React UI
+
+**Home screen badge** — shown when a pending challenge exists. Priority order determines which badge shows if multiple are pending.
+
+```
+┌─────────────────────────────────────┐
+│  ⚡ Consolidation Ready             │
+│  5 kanji to review · 10 questions   │
+│  [ Start Challenge ]                │
+└─────────────────────────────────────┘
+```
+
+For maturity:
+```
+┌─────────────────────────────────────┐
+│  🎉 10 Kanji Mastered!              │
+│  Your celebration challenge awaits  │
+│  [ Take Challenge ]                 │
+└─────────────────────────────────────┘
+```
+
+**Challenge screen** — separate from quiz slot UI, same card components:
+
+- CONSOLIDATION: standard quiz cards (meaning_recall + reading_recognition) in pre-computed order
+- MATURITY: sentence card only — full Japanese sentence, user types English meaning
+- Both: progress bar, no timer, exit allowed at any time (progress saved via answered questions)
+- Summary on completion: score breakdown per kanji, which ones were knocked back (CONSOLIDATION)
+
+**Exit and resume** — `quizOrder` stores the full pre-computed sequence. Progress tracked by counting completed `ChallengeQuizServe` rows. Resuming picks up from where the user left off.
+
+---
+
+## 6.7 ChallengeQuizServe
+
+Separate from daily `QuizServe` to keep challenge answer history distinct:
+
+```graphql
+type ChallengeQuizServe @table {
+  id: UUID! @default(expr: "uuidV4()")
+  challengeSession: ChallengeSession!
+  userId: String!
+  quizId: UUID                     # QuizBank ID (CONSOLIDATION) or null (MATURITY)
+  questionIndex: Int!              # position in challenge (0–9)
+  correct: Boolean!
+  answeredAt: Timestamp! @default(expr: "request.time")
+}
+```
+
+---
+
+## 6.8 Firebase Function: `generate_challenge`
+
+HTTP trigger, called fire-and-forget from Ktor when a maturity challenge is created.
+
+```python
+# functions/main.py — add to existing file
+
+@https_fn.on_request()
+def generate_challenge(req: https_fn.Request) -> https_fn.Response:
+    data = req.get_json()
+    session_id = data["challengeSessionId"]
+    mature_kanji = data["matureKanji"]        # ["電", "車", "東", ...]
+    unlocked_words = data["unlockedWords"]    # ["電車", "急行", ...]
+
+    prompt = build_challenge_prompt(mature_kanji, unlocked_words)
+
+    response = gemini_client.generate_content(
+        prompt,
+        generation_config={"response_mime_type": "application/json"}
+    )
+
+    questions_json = response.text
+    cost = extract_cost(response.usage_metadata)
+
+    # Update ChallengeSession via Data Connect
+    data_connect.update_challenge_session(
+        session_id=session_id,
+        generated_questions=questions_json,
+        cost_microdollars=cost
+    )
+
+    return https_fn.Response("ok", status=200)
+```
+
+---
+
+## Definition of Done
+
+- [ ] `ChallengeType`, `ConsolidationTier` enums added to schema
+- [ ] `ChallengeSession` updated with `tier`, `quizOrder`, `generatedQuestions`, `affectsFamiliarity`
+- [ ] `ChallengeQuizServe` table added to schema
+- [ ] `checkConsolidationTrigger` fires at familiarity 2 and 4 crossings in `POST /api/quiz/result`
+- [ ] `checkMaturityTrigger` fires at every 10th familiarity 5 crossing
+- [ ] Consolidation quiz order uses spaced interleave (all meaning_recall then all reading_recognition, each round shuffled independently)
+- [ ] Consolidation wrong answer knocks familiarity -1 and sets nextReview = tomorrow
+- [ ] Consolidation correct answer refreshes nextReview only — no familiarity change
+- [ ] Maturity challenge questions generated by `generate_challenge` Firebase Function (fire-and-forget)
+- [ ] Maturity challenge stored in `ChallengeSession.generatedQuestions` before user opens it
+- [ ] Maturity challenge has no familiarity effect either direction
+- [ ] `GET /api/challenge/pending` returns correct priority ordering
+- [ ] Challenge UI separate from daily slot — does not consume slot allowance
+- [ ] Exit and resume works — progress saved via `ChallengeQuizServe` rows
+- [ ] Home screen badge shows correct challenge type with appropriate tone (checkpoint vs celebration)
+- [ ] Summary screen shows per-kanji breakdown after completion
+- [ ] Score stored in `ChallengeSession.score`

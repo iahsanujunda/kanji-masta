@@ -156,7 +156,8 @@ export default function Capture() {
       }
     }
 
-    navigate("/");
+    const hasLearning = selected.some((s) => s.status === "learning");
+    navigate("/", { state: { quizGenerating: hasLearning } });
   };
 
   // --- Loading View ---

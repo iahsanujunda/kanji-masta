@@ -209,7 +209,7 @@ def analyze_photo(req: https_fn.Request) -> https_fn.Response:
 
 QUIZ_PROMPT = """You are building quizzes for a Japanese learner living in Japan.
 They speak conversational Japanese but are learning to read kanji from real encounters.
-Target kanji: {character} — meanings: {meanings}, onyomi: {onyomi}, kunyomi: {kunyomi}
+Target kanji: {character}
 
 Generate exactly 5 quizzes, one of each type below.
 Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
@@ -293,7 +293,7 @@ def _get_pending_jobs(limit: int = 10) -> list[dict]:
                 where: {{ status: {{ eq: "PENDING" }} }},
                 limit: {limit}
             ) {{
-                id userId kanjiId
+                id userId kanjiId jobType trigger quizId
                 kanji {{ character onyomi kunyomi meanings }}
             }}
         }}
@@ -369,9 +369,141 @@ def _insert_quiz_and_distractor(user_id: str, kanji_id: str, quiz: dict) -> bool
     return True
 
 
-@scheduler_fn.on_schedule(schedule="every 2 minutes")
-def generate_quizzes(event: scheduler_fn.ScheduledEvent) -> None:
-    """Process pending quiz generation jobs."""
+REGEN_PROMPT = """Regenerate distractors for this quiz. The learner is now at familiarity {familiarity}/5.
+Make distractors more challenging than earlier sets — choose options that are
+more plausible or confusable at this level.
+
+Quiz type: {quiz_type}
+Prompt: {prompt}
+Answer: {answer}
+Previous distractor sets: {previous_distractors}
+
+Return ONLY a JSON array of exactly 3 distractors — no markdown, no preamble:
+["option1", "option2", "option3"]"""
+
+
+def _get_quiz_for_regen(quiz_id: str) -> dict | None:
+    """Fetch quiz details + previous distractor sets for regen."""
+    query = f"""
+        query {{
+            quizBank(id: "{quiz_id}") {{
+                id quizType prompt answer userId kanjiId
+                quizDistractors_on_quiz(orderBy: {{ generation: DESC }}) {{
+                    distractors generation
+                }}
+            }}
+        }}
+    """
+    result = _execute_graphql(query)
+    return result.get("data", {}).get("quizBank")
+
+
+def _get_user_familiarity(user_id: str, kanji_id: str) -> int:
+    escaped = user_id.replace('"', '\\"')
+    query = f"""
+        query {{
+            userKanjis(where: {{ userId: {{ eq: "{escaped}" }}, kanjiId: {{ eq: "{kanji_id}" }} }}) {{
+                familiarity
+            }}
+        }}
+    """
+    result = _execute_graphql(query)
+    rows = result.get("data", {}).get("userKanjis", [])
+    return rows[0]["familiarity"] if rows else 0
+
+
+def _process_initial_job(client: genai.Client, job: dict) -> tuple[int, int]:
+    """Process an INITIAL job. Returns (cost, error_count)."""
+    kanji = job.get("kanji", {})
+    character = kanji.get("character", "?")
+    user_id = job["userId"]
+    kanji_id = job["kanjiId"]
+
+    prompt = QUIZ_PROMPT.format(character=character)
+
+    response = client.models.generate_content(
+        model="gemini-3.1-pro-preview",
+        contents=[types.Part(text=prompt)],
+        config=types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(thinking_level="MEDIUM"),
+            response_mime_type="application/json",
+        ),
+    )
+
+    cost = _calculate_cost_microdollars(response.usage_metadata)
+    quizzes = json.loads(response.text)
+
+    errors = 0
+    for q in quizzes:
+        if not _insert_quiz_and_distractor(user_id, kanji_id, q):
+            errors += 1
+
+    return cost, errors
+
+
+def _process_regen_job(client: genai.Client, job: dict) -> tuple[int, int]:
+    """Process a REGEN job. Returns (cost, error_count)."""
+    quiz_id = job.get("quizId")
+    if not quiz_id:
+        print(f"  REGEN job missing quizId")
+        return 0, 1
+
+    quiz = _get_quiz_for_regen(quiz_id)
+    if not quiz:
+        print(f"  Quiz {quiz_id} not found for regen")
+        return 0, 1
+
+    user_id = quiz["userId"]
+    kanji_id = quiz["kanjiId"]
+    familiarity = _get_user_familiarity(user_id, kanji_id)
+
+    prev_sets = quiz.get("quizDistractors_on_quiz", [])
+    prev_distractors = [s["distractors"] for s in prev_sets]
+    current_generation = max((s["generation"] for s in prev_sets), default=0)
+
+    prompt = REGEN_PROMPT.format(
+        familiarity=familiarity,
+        quiz_type=quiz["quizType"],
+        prompt=quiz["prompt"],
+        answer=quiz["answer"],
+        previous_distractors=json.dumps(prev_distractors, ensure_ascii=False),
+    )
+
+    response = client.models.generate_content(
+        model="gemini-3.1-pro-preview",
+        contents=[types.Part(text=prompt)],
+        config=types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(thinking_level="MEDIUM"),
+            response_mime_type="application/json",
+        ),
+    )
+
+    cost = _calculate_cost_microdollars(response.usage_metadata)
+    distractors = json.loads(response.text)
+
+    trigger = job.get("trigger", "milestone")
+    trigger_enum = "MILESTONE" if trigger == "milestone" else "SERVE_COUNT"
+    dist_json = json.dumps(distractors, ensure_ascii=False)
+
+    query = f"""
+        mutation {{
+            quizDistractor_insert(data: {{
+                quizId: "{quiz_id}",
+                userId: "{_escape(user_id)}",
+                distractors: {dist_json},
+                generation: {current_generation + 1},
+                trigger: {trigger_enum},
+                familiarityAtGeneration: {familiarity}
+            }})
+        }}
+    """
+    result = _execute_graphql(query)
+    errors = 1 if result.get("errors") else 0
+    return cost, errors
+
+
+def _run_quiz_generation():
+    """Shared logic for processing pending quiz generation jobs."""
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         print("GEMINI_API_KEY not configured, skipping")
@@ -386,46 +518,90 @@ def generate_quizzes(event: scheduler_fn.ScheduledEvent) -> None:
 
     for job in jobs:
         job_id = job["id"]
-        user_id = job["userId"]
-        kanji = job.get("kanji", {})
-        character = kanji.get("character", "?")
+        job_type = job.get("jobType", "INITIAL")
+        character = job.get("kanji", {}).get("character", "?")
 
-        print(f"  Job {job_id}: generating quizzes for {character}")
+        print(f"  Job {job_id} ({job_type}): {character}")
         _update_job_status(job_id, "PROCESSING")
 
         try:
-            prompt = QUIZ_PROMPT.format(
-                character=character,
-                meanings=", ".join(kanji.get("meanings", [])),
-                onyomi=", ".join(kanji.get("onyomi", [])),
-                kunyomi=", ".join(kanji.get("kunyomi", [])),
-            )
-
-            response = client.models.generate_content(
-                model="gemini-3.1-pro-preview",
-                contents=[types.Part(text=prompt)],
-                config=types.GenerateContentConfig(
-                    thinking_config=types.ThinkingConfig(thinking_level="MEDIUM"),
-                    response_mime_type="application/json",
-                ),
-            )
-
-            cost = _calculate_cost_microdollars(response.usage_metadata)
-            quizzes = json.loads(response.text)
-
-            kanji_id = job["kanjiId"]
-            errors = 0
-            for q in quizzes:
-                if not _insert_quiz_and_distractor(user_id, kanji_id, q):
-                    errors += 1
+            if job_type == "REGEN":
+                cost, errors = _process_regen_job(client, job)
+            else:
+                cost, errors = _process_initial_job(client, job)
 
             if errors == 0:
                 _update_job_status(job_id, "DONE", cost=cost)
-                print(f"  Job {job_id}: done ({len(quizzes)} quizzes, ${cost / 1_000_000:.4f})")
+                print(f"  Job {job_id}: done (${cost / 1_000_000:.4f})")
             else:
                 _update_job_status(job_id, "FAILED", cost=cost, increment_attempts=True)
-                print(f"  Job {job_id}: {errors} insert errors")
+                print(f"  Job {job_id}: {errors} errors")
 
         except Exception as e:
             print(f"  Job {job_id}: failed — {e}")
             _update_job_status(job_id, "FAILED", increment_attempts=True)
+
+
+@https_fn.on_request()
+def generate_quizzes_http(req: https_fn.Request) -> https_fn.Response:
+    """HTTP trigger for immediate quiz generation (called by Ktor after kanji selection)."""
+    _run_quiz_generation()
+    return https_fn.Response(json.dumps({"status": "ok"}), content_type="application/json")
+
+
+@scheduler_fn.on_schedule(schedule="every 2 minutes")
+def generate_quizzes(event: scheduler_fn.ScheduledEvent) -> None:
+    """Scheduled fallback for retrying failed jobs and processing any stragglers."""
+    _run_quiz_generation()
+
+
+# --- Daily Regen Cron ---
+
+@scheduler_fn.on_schedule(schedule="every 24 hours")
+def check_regen_triggers(event: scheduler_fn.ScheduledEvent) -> None:
+    """Check for quizzes that need distractor regeneration."""
+    # Find all quizzes with servedCount > 0 that have no unserved distractor set
+    query = """
+        query {
+            quizBanks(where: { servedCount: { gt: 0 } }, limit: 1000) {
+                id userId kanjiId servedCount quizType
+                quizDistractors_on_quiz(orderBy: { generation: DESC }, limit: 1) {
+                    servedAt generation
+                }
+            }
+        }
+    """
+    result = _execute_graphql(query)
+    quizzes = result.get("data", {}).get("quizBanks", [])
+
+    if not quizzes:
+        return
+
+    enqueued = 0
+    for quiz in quizzes:
+        # Skip system quizzes
+        if quiz["userId"] == "system":
+            continue
+
+        # Skip if latest distractor set is unserved (still fresh)
+        dist_sets = quiz.get("quizDistractors_on_quiz", [])
+        if dist_sets and dist_sets[0].get("servedAt") is None:
+            continue
+
+        # Trigger: serve count >= 10
+        if quiz["servedCount"] >= 10:
+            query = f"""
+                mutation {{
+                    quizGenerationJob_insert(data: {{
+                        userId: "{_escape(quiz['userId'])}",
+                        kanjiId: "{quiz['kanjiId']}",
+                        quizId: "{quiz['id']}",
+                        jobType: REGEN,
+                        trigger: "serve_count"
+                    }})
+                }}
+            """
+            _execute_graphql(query)
+            enqueued += 1
+
+    print(f"Regen cron: enqueued {enqueued} regen jobs from {len(quizzes)} eligible quizzes")

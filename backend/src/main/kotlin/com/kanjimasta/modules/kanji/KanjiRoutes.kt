@@ -15,5 +15,11 @@ fun Route.kanjiRoutes(kanjiService: KanjiService) {
             kanjiService.saveSession(user.uid, request)
             call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
         }
+
+        get("/jobs/pending") {
+            val user = call.principal<FirebaseUser>()!!
+            val count = kanjiService.getPendingJobCount(user.uid)
+            call.respond(mapOf("pending" to count))
+        }
     }
 }

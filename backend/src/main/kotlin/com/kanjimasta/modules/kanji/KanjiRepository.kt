@@ -138,5 +138,18 @@ class KanjiRepository(private val dc: DataConnectClient) {
         logger.info("Cloned {} system quizzes for user={} kanji={}", systemQuizzes.size, userId, kanjiMasterId)
     }
 
+    suspend fun countPendingJobs(userId: String): Int {
+        val query = """
+            query {
+                quizGenerationJobs(where: {
+                    userId: { eq: "${userId.escape()}" },
+                    status: { in: [PENDING, PROCESSING] }
+                }) { id }
+            }
+        """.trimIndent()
+        val result = dc.executeGraphql(query)
+        return result["data"]?.jsonObject?.get("quizGenerationJobs")?.jsonArray?.size ?: 0
+    }
+
     private fun String.escape() = replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
 }

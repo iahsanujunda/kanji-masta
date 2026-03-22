@@ -58,7 +58,7 @@ type UserKanji @table {
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
-# One row per photo, raw Claude response cached
+# One row per photo, enriched AI response cached
 type PhotoSession @table {
   id: UUID! @default(expr: "uuidV4()")
   userId: String!

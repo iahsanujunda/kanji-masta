@@ -3,7 +3,7 @@ import os
 
 import requests
 from firebase_admin import initialize_app
-from firebase_functions import https_fn
+from firebase_functions import https_fn, scheduler_fn
 from google import genai
 from google.genai import types
 
@@ -203,3 +203,229 @@ def analyze_photo(req: https_fn.Request) -> https_fn.Response:
     _update_photo_session(session_id, enriched_json, cost)
 
     return https_fn.Response(json.dumps({"status": "ok"}), content_type="application/json")
+
+
+# --- Quiz Generation (Scheduled) ---
+
+QUIZ_PROMPT = """You are building quizzes for a Japanese learner living in Japan.
+They speak conversational Japanese but are learning to read kanji from real encounters.
+Target kanji: {character} — meanings: {meanings}, onyomi: {onyomi}, kunyomi: {kunyomi}
+
+Generate exactly 5 quizzes, one of each type below.
+Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
+[
+  {{
+    "quiz_type": "meaning_recall",
+    "prompt": "電",
+    "target": "電",
+    "furigana": null,
+    "answer": "electricity",
+    "distractors": ["iron", "east", "express"],
+    "explanation": "電 is the root of 電車 (train), 電話 (phone), 電気 (electricity)"
+  }},
+  {{
+    "quiz_type": "reading_recognition",
+    "prompt": "電車",
+    "target": "電車",
+    "furigana": null,
+    "answer": "でんしゃ",
+    "distractors": ["てっどう", "きゅうこう", "ちかてつ"],
+    "explanation": "でん (on-yomi of 電) + しゃ (on-yomi of 車)"
+  }},
+  {{
+    "quiz_type": "reverse_reading",
+    "prompt": "でんしゃ",
+    "target": "でんしゃ",
+    "furigana": null,
+    "answer": "電車",
+    "distractors": ["電話", "電気", "電池"],
+    "explanation": "電車 — the kanji for electricity + vehicle"
+  }},
+  {{
+    "quiz_type": "bold_word_meaning",
+    "prompt": "電車、遅れてるじゃん。",
+    "target": "電車",
+    "furigana": "でんしゃ",
+    "answer": "train",
+    "distractors": ["bus", "taxi", "subway"],
+    "explanation": "電車 literally means electric vehicle — the standard word for train"
+  }},
+  {{
+    "quiz_type": "fill_in_the_blank",
+    "prompt": "＿＿乗り換えどこだっけ？",
+    "target": "電車",
+    "furigana": "でんしゃ",
+    "answer": "電車",
+    "distractors": ["急行", "地下鉄", "バス停"],
+    "explanation": "電車 fits here — asking where to transfer trains"
+  }}
+]
+
+Rules:
+- Sentences must be casual, natural spoken Japanese — the kind said between friends,
+  overheard on the street, or seen on informal signs. Not textbook Japanese.
+- Draw from real daily contexts: convenience stores, trains, restaurants, weather,
+  shopping, work small talk, phone messages, social media captions
+- Good sentence patterns: 〜じゃん、〜よね、〜だけど、〜てる、〜っけ、short casual commands
+- bold_word_meaning and fill_in_the_blank must use completely different sentences —
+  never the same sentence with the target word swapped for ＿＿
+- Distractors must be plausible — never obviously wrong
+- Explanations brief and memorable, not academic
+- furigana is null for word-level types; always a string for sentence-level"""
+
+QUIZ_TYPE_MAP = {
+    "meaning_recall": "MEANING_RECALL",
+    "reading_recognition": "READING_RECOGNITION",
+    "reverse_reading": "REVERSE_READING",
+    "bold_word_meaning": "BOLD_WORD_MEANING",
+    "fill_in_the_blank": "FILL_IN_THE_BLANK",
+}
+
+
+def _escape(s: str) -> str:
+    return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
+def _get_pending_jobs(limit: int = 10) -> list[dict]:
+    query = f"""
+        query {{
+            quizGenerationJobs(
+                where: {{ status: {{ eq: "PENDING" }} }},
+                limit: {limit}
+            ) {{
+                id userId kanjiId
+                kanji {{ character onyomi kunyomi meanings }}
+            }}
+        }}
+    """
+    result = _execute_graphql(query)
+    return result.get("data", {}).get("quizGenerationJobs", [])
+
+
+def _update_job_status(job_id: str, status: str, cost: int = 0, increment_attempts: bool = False):
+    attempts_field = ""
+    if increment_attempts:
+        # Read current attempts first
+        read = _execute_graphql(f'query {{ quizGenerationJob(id: "{job_id}") {{ attempts }} }}')
+        current = read.get("data", {}).get("quizGenerationJob", {}).get("attempts", 0)
+        attempts_field = f"attempts: {current + 1},"
+
+    cost_field = f"costMicrodollars: {cost}," if cost > 0 else ""
+    query = f"""
+        mutation {{
+            quizGenerationJob_update(id: "{job_id}", data: {{
+                status: {status},
+                {cost_field}
+                {attempts_field}
+            }})
+        }}
+    """
+    _execute_graphql(query)
+
+
+def _insert_quiz_and_distractor(user_id: str, kanji_id: str, quiz: dict) -> bool:
+    qt = QUIZ_TYPE_MAP.get(quiz.get("quiz_type", ""), quiz.get("quiz_type", ""))
+    furigana = quiz.get("furigana")
+    explanation = quiz.get("explanation", "")
+    furigana_field = f'furigana: "{_escape(furigana)}",' if furigana else ""
+    explanation_field = f'explanation: "{_escape(explanation)}",' if explanation else ""
+
+    insert_query = f"""
+        mutation {{
+            quizBank_insert(data: {{
+                userId: "{_escape(user_id)}",
+                kanjiId: "{kanji_id}",
+                quizType: {qt},
+                prompt: "{_escape(quiz.get('prompt', ''))}",
+                target: "{_escape(quiz.get('target', ''))}",
+                answer: "{_escape(quiz.get('answer', ''))}",
+                {furigana_field}
+                {explanation_field}
+            }})
+        }}
+    """
+    result = _execute_graphql(insert_query)
+    quiz_id = result.get("data", {}).get("quizBank_insert", {}).get("id")
+    if not quiz_id:
+        return False
+
+    distractors = quiz.get("distractors", [])
+    if distractors:
+        dist_json = json.dumps(distractors, ensure_ascii=False)
+        dist_query = f"""
+            mutation {{
+                quizDistractor_insert(data: {{
+                    quizId: "{quiz_id}",
+                    userId: "{_escape(user_id)}",
+                    distractors: {dist_json},
+                    generation: 1,
+                    trigger: INITIAL,
+                    familiarityAtGeneration: 0
+                }})
+            }}
+        """
+        _execute_graphql(dist_query)
+
+    return True
+
+
+@scheduler_fn.on_schedule(schedule="every 2 minutes")
+def generate_quizzes(event: scheduler_fn.ScheduledEvent) -> None:
+    """Process pending quiz generation jobs."""
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("GEMINI_API_KEY not configured, skipping")
+        return
+
+    jobs = _get_pending_jobs(limit=10)
+    if not jobs:
+        return
+
+    print(f"Processing {len(jobs)} quiz generation jobs")
+    client = genai.Client(api_key=api_key)
+
+    for job in jobs:
+        job_id = job["id"]
+        user_id = job["userId"]
+        kanji = job.get("kanji", {})
+        character = kanji.get("character", "?")
+
+        print(f"  Job {job_id}: generating quizzes for {character}")
+        _update_job_status(job_id, "PROCESSING")
+
+        try:
+            prompt = QUIZ_PROMPT.format(
+                character=character,
+                meanings=", ".join(kanji.get("meanings", [])),
+                onyomi=", ".join(kanji.get("onyomi", [])),
+                kunyomi=", ".join(kanji.get("kunyomi", [])),
+            )
+
+            response = client.models.generate_content(
+                model="gemini-3.1-pro-preview",
+                contents=[types.Part(text=prompt)],
+                config=types.GenerateContentConfig(
+                    thinking_config=types.ThinkingConfig(thinking_level="MEDIUM"),
+                    response_mime_type="application/json",
+                ),
+            )
+
+            cost = _calculate_cost_microdollars(response.usage_metadata)
+            quizzes = json.loads(response.text)
+
+            kanji_id = job["kanjiId"]
+            errors = 0
+            for q in quizzes:
+                if not _insert_quiz_and_distractor(user_id, kanji_id, q):
+                    errors += 1
+
+            if errors == 0:
+                _update_job_status(job_id, "DONE", cost=cost)
+                print(f"  Job {job_id}: done ({len(quizzes)} quizzes, ${cost / 1_000_000:.4f})")
+            else:
+                _update_job_status(job_id, "FAILED", cost=cost, increment_attempts=True)
+                print(f"  Job {job_id}: {errors} insert errors")
+
+        except Exception as e:
+            print(f"  Job {job_id}: failed — {e}")
+            _update_job_status(job_id, "FAILED", increment_attempts=True)

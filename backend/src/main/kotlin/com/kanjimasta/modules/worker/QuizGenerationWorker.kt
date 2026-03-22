@@ -1,5 +1,4 @@
 package com.kanjimasta.modules.worker
 
-class QuizGenerationWorker {
-    // background job — polls quiz_generation_jobs, calls ClaudeClient
-}
+// Quiz generation is handled by Firebase scheduled function `generate_quizzes`.
+// This module is reserved for future Ktor-side worker tasks (e.g. distractor regen cron).

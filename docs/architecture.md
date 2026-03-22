@@ -6,7 +6,7 @@ _Last updated: 2026-03-22_
 
 ## 1. Purpose
 
-A personal mobile-first web app for learning to read Japanese kanji through real-life encounters. The user photographs signs, menus, and notices in Japan, selects which kanji they want to learn, and receives spaced-repetition quizzes across configurable daily time slots generated in the background by Claude.
+A personal mobile-first web app for learning to read Japanese kanji through real-life encounters. The user photographs signs, menus, and notices in Japan, selects which kanji they want to learn, and receives spaced-repetition quizzes across configurable daily time slots generated in the background by Gemini.
 
 Designed for a single user profile: conversational Japanese speaker, no formal study habit, living in Japan. The app optimizes for minimum friction at two moments — the capture moment (high motivation, in the wild) and the quiz moment (low friction, fits into any gap in the day).
 
@@ -20,9 +20,10 @@ Designed for a single user profile: conversational Japanese speaker, no formal s
 | Backend | Ktor | Kotlin, `core/` + `modules/` structure — API gateway + slot engine |
 | Auth | Firebase Auth | User authentication, ID tokens |
 | Database | Firebase Data Connect | PostgreSQL via GraphQL schema — no SQL migrations |
-| Functions | Firebase Functions | Claude API calls (photo analysis, quiz generation, regen) |
-| AI (photo) | Claude Sonnet | Vision extraction — strong Japanese OCR + cultural context |
-| AI (quiz gen) | Claude Sonnet | Quiz + distractor generation — highest quality |
+| Storage | Firebase Cloud Storage | Photo uploads from client |
+| Functions | Firebase Functions (Python) | Gemini API calls (photo analysis, quiz generation, regen) |
+| AI (photo) | Gemini 3.1 Pro | Vision extraction — strong Japanese OCR + cultural context |
+| AI (quiz gen) | Gemini 3.1 Pro | Quiz + distractor generation — highest quality |
 | AI (regen) | Gemini 2.0 Flash | Distractor regen — narrow task, cost efficient |
 | Seed Data | kanjidic2 | edrdg.org, top 1500 by frequency rank |
 
@@ -34,12 +35,17 @@ Designed for a single user profile: conversational Japanese speaker, no formal s
 📸 Photo taken
      │
      ▼
-Ktor: POST /api/photo/analyze
-  → delegates to Firebase Function analyzePhoto
-    → Claude Sonnet vision call (Call #1)
+React: upload image to Cloud Storage
+  → POST /api/photo/analyze { imageUrl } (Ktor)
+    → Create PhotoSession in Data Connect
+    → Fire-and-forget to Firebase Function analyze_photo
+    ← Return { sessionId, status: "processing" }
+  → Frontend polls GET /api/photo/session/{id}
+Firebase Function analyze_photo (async):
+    → Download image from Storage URL
+    → Gemini 3.1 Pro vision call (Call #1, thinking_level: MEDIUM)
     → Enrich with KanjiMaster via Data Connect
-    → Save PhotoSession to Data Connect
-  → Return enriched kanji list to frontend
+    → Update PhotoSession with enriched result + cost
      │
      ▼
 React: Kanji selection UI
@@ -50,13 +56,13 @@ React: Kanji selection UI
      └── learning  → write UserKanji + enqueue QuizGenerationJob
      │
      ▼ (both paths)
-  example words from Claude response → insert UserWords
+  example words from Gemini response → insert UserWords
   → skip words whose kanji aren't all in KanjiMaster
   → set unlocked=true if all constituent kanji already in UserKanji
                           │
                           ▼ (async, user does not wait)
                   Firebase Scheduled Function (every 2 min)
-                    → Claude Sonnet text call (Call #2)
+                    → Gemini 3.1 Pro text call (Call #2)
                     → Generate 5 quizzes per kanji (one per type)
                     → Store in QuizBank + QuizDistractor via Data Connect
                           │
@@ -76,13 +82,16 @@ React: Kanji selection UI
 ### 4.1 Photo Analysis
 
 - User captures a photo via device camera (`accept="image/*" capture="environment"`)
-- Image uploaded to Ktor `POST /api/photo/analyze`, which delegates to Firebase Function `analyzePhoto`
-- Firebase Function calls Claude Sonnet vision API with base64 image — no storage needed for analysis
+- Image uploaded to Firebase Cloud Storage by frontend
+- Frontend sends image URL to Ktor `POST /api/photo/analyze`, which creates PhotoSession and fires Firebase Function `analyze_photo` async
+- Firebase Function downloads image from Storage URL, calls Gemini 3.1 Pro vision API with thinking_level MEDIUM
 - Returns per kanji: character, 5 example words (daily-life focused), `whyUseful`, `recommended` flag (max 3)
-- Readings and meanings for matched kanji enriched from `KanjiMaster` via Data Connect — Claude is not asked to supply these
-- Raw Claude response persisted in `PhotoSession.rawAiResponse` via Data Connect — avoids re-billing if user revisits
+- Readings and meanings for matched kanji enriched from `KanjiMaster` via Data Connect — Gemini is not asked to supply these
+- Enriched result stored in `PhotoSession.rawAiResponse` via Data Connect — avoids re-processing on poll
+- Cost tracked in `PhotoSession.costMicrodollars` from Gemini usage metadata
 - Example words from response written to `UserWords` after kanji selection (see §4.2)
-- Claude API key stored in Firebase Function environment config only — never exposed to Ktor or client
+- Gemini API key stored in Firebase Function environment config only — never exposed to Ktor or client
+- Frontend polls `GET /api/photo/session/{id}` until results arrive
 
 ### 4.2 Kanji Selection
 
@@ -91,7 +100,7 @@ React: Kanji selection UI
 - `familiar` — written to `UserKanji`, no quizzes generated; respects existing knowledge
 - `learning` — written to `UserKanji` + job enqueued in `QuizGenerationJob`
 - User dismissed immediately after tapping Done — never waits for quiz generation
-- After session saved: example words from Claude response inserted into `UserWords`
+- After session saved: example words from Gemini response inserted into `UserWords`
     - Words whose kanji are not all in `KanjiMaster` are silently skipped
     - `unlocked` set to true if all constituent kanji already exist in `UserKanji`
     - `unlocked` re-evaluated for existing `UserWords` whenever a new kanji is added
@@ -100,7 +109,7 @@ React: Kanji selection UI
 
 - Firebase scheduled Function runs every 2 minutes
 - Drains `QuizGenerationJob` queue (status = PENDING), up to 10 per cycle
-- For each job: calls Claude Sonnet text API with kanji details, generates 5 quizzes (one per type), stores in `QuizBank` + `QuizDistractor` via Data Connect
+- For each job: calls Gemini 3.1 Pro text API with kanji details, generates 5 quizzes (one per type), stores in `QuizBank` + `QuizDistractor` via Data Connect
 - Job status transitions: `PENDING → PROCESSING → DONE | FAILED`
 - Failed jobs retried up to 3 times (`attempts < 3`)
 
@@ -321,7 +330,7 @@ type UserKanji @table {
 
 ### `PhotoSession`
 
-One row per photo. Raw Claude response stored to avoid re-billing.
+One row per photo. Enriched AI response stored to avoid re-processing.
 
 ```graphql
 type PhotoSession @table {
@@ -479,11 +488,12 @@ Data Connect security rules enforce `userId == request.auth.uid` on all user-sco
 
 ## 7. API Endpoints
 
-Ktor acts as the API gateway — handles auth token verification and session logic. Claude API calls are delegated to Firebase Functions.
+Ktor acts as the API gateway — handles auth token verification and session logic. Gemini API calls are delegated to Firebase Functions.
 
 | Method | Path | Handler | Description |
 |--------|------|---------|-------------|
-| `POST` | `/api/photo/analyze` | Ktor → Firebase Fn | Multipart image → `analyzePhoto` function → enriched kanji breakdown |
+| `POST` | `/api/photo/analyze` | Ktor → Firebase Fn | JSON `{ imageUrl }` → create PhotoSession → fire `analyze_photo` async |
+| `GET` | `/api/photo/session/{id}` | Ktor | Poll PhotoSession — returns enriched kanji when Function completes |
 | `POST` | `/api/kanji/session` | Ktor | Save kanji selections, enqueue QuizGenerationJobs via Data Connect |
 | `GET` | `/api/kanji/list` | Ktor | User's full kanji list with familiarity, tier, review dates |
 | `POST` | `/api/kanji/add` | Ktor | Manually add a kanji from `KanjiMaster` |
@@ -574,7 +584,7 @@ fun checkRegenTriggers(userId: UUID) {
 }
 ```
 
-**Regen Claude prompt:**
+**Regen Gemini prompt:**
 ```
 Regenerate distractors for this quiz. The learner is now at familiarity {familiarity}/5.
 Make distractors more challenging than earlier sets — choose options that are
@@ -607,7 +617,7 @@ ORDER BY wrong_count DESC;
 
 ## 9. Backend Module Structure
 
-**Ktor (`ktor/src/`)** — API gateway and slot engine. Reads/writes Data Connect via Firebase Admin SDK. No direct Claude API calls.
+**Ktor (`backend/src/`)** — API gateway and slot engine. Reads/writes Data Connect via `executeGraphql` REST API. No direct Gemini API calls.
 
 ```
 ktor/src/
@@ -660,34 +670,32 @@ ktor/src/
   Application.kt
 ```
 
-**Firebase Functions (`functions/src/`)** — all Claude API calls. Triggered by Ktor or by schedule.
+**Firebase Functions (`functions/`)** — all Gemini API calls. Python, triggered by Ktor or by schedule.
 
 ```
-functions/src/
-  analyzePhoto.ts               # HTTP trigger: Claude vision → enrich → save PhotoSession
-  generateQuizzes.ts            # Scheduled (2 min): drain QuizGenerationJob queue, initial jobs
-  regenDistractors.ts           # Scheduled (daily): drain QuizGenerationJob regen jobs
-  milestoneCheck.ts             # Scheduled (daily): detect mature kanji milestones
-  generateChallenge.ts          # HTTP trigger: generate challenge quiz for a milestone
-  lib/
-    claudeClient.ts             # Claude API wrapper (Sonnet + Flash)
-    dataConnectClient.ts        # Data Connect GraphQL client for Functions
+functions/
+  main.py                       # HTTP trigger: analyze_photo — Gemini vision → enrich → save PhotoSession
+  requirements.txt              # google-genai, firebase-functions, firebase-admin
+  .env                          # GEMINI_API_KEY (local dev)
+  venv/                         # Python virtual environment (gitignored)
 ```
 
 **Boundary rule:** Ktor modules import from `core/` only. Firebase Functions are independently deployable — no shared code with Ktor.
 
 ---
 
-## 10. AI Usage (Claude + Firebase Functions)
+## 10. AI Usage (Gemini + Firebase Functions)
 
 ### Call #1 — Vision (photo analysis)
 
-- **Function:** `analyzePhoto` (HTTP trigger, called by Ktor)
-- **Model:** Claude Sonnet (`claude-sonnet-4-20250514`) — strong vision + Japanese cultural context
-- Input: base64 image bytes from Ktor
+- **Function:** `analyze_photo` (HTTP trigger, called by Ktor fire-and-forget)
+- **Model:** Gemini 3.1 Pro (`gemini-3.1-pro-preview`) with `thinking_level: MEDIUM`
+- Input: Image downloaded from Cloud Storage URL
 - Output: JSON array — `character`, `recommended`, `whyUseful`, `exampleWords` (5 per kanji)
+- Uses `response_mime_type: "application/json"` for clean output
 - Readings and meanings enriched post-hoc from `KanjiMaster` via Data Connect
-- Result stored in: `PhotoSession.rawAiResponse` via Data Connect
+- Enriched result stored in: `PhotoSession.rawAiResponse` via Data Connect
+- Cost tracked in `PhotoSession.costMicrodollars` from usage metadata
 - Example words written to `UserWords` after kanji session saved
 
 **Prompt:**
@@ -722,11 +730,11 @@ Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
 ### Call #2 — Text (quiz generation, `jobType = INITIAL`)
 
 - **Function:** `generateQuizzes` (scheduled every 2 min)
-- **Model:** Claude Sonnet (`claude-sonnet-4-20250514`) — highest quality for persistent quiz content
+- **Model:** Gemini 3.1 Pro (`gemini-3.1-pro-preview`) — highest quality for persistent quiz content
 - Input: kanji character + readings + meanings from `KanjiMaster` via Data Connect
 - Output: JSON array of exactly 5 quiz objects (one per `QuizType`)
 - Result stored in: `QuizBank` (one row per quiz) + `QuizDistractor` (generation 1, trigger INITIAL) via Data Connect
-- Claude API key: Firebase Function environment config only — never in Ktor or client
+- Gemini API key: Firebase Function environment config only — never in Ktor or client
 
 ### Call #3 — Text (distractor regen, `jobType = REGEN`)
 
@@ -743,7 +751,7 @@ Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
 
 **Frequency rank over JLPT for seeding.** JLPT is an academic ranking. A kanji like 働 (work) is N3 but appears constantly on job ads and storefronts. kanjidic2 frequency rank is a better proxy for real-world encounter likelihood.
 
-**Raw Claude response stored in DB.** Prevents re-billing if the user revisits a photo session.
+**Enriched AI response stored in DB.** Prevents re-processing on poll and re-billing if the user revisits. Cost tracked in `costMicrodollars` (Int64).
 
 **Background worker decouples capture from generation.** The photo capture moment is high motivation — the user must never wait. The worker runs async; the user is dismissed immediately.
 
@@ -757,9 +765,11 @@ Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
 
 **`fill_in_the_blank` input method resolved at serve time.** The quiz row is identical regardless of familiarity. The client receives `familiarity` and chooses the render path. Quiz rows never need regeneration.
 
-**Claude not asked for readings on photo analysis.** Readings and meanings come from `KanjiMaster` via Data Connect. Claude is only asked for what it does uniquely well: recognizing kanji in images and knowing which words matter for daily life in Japan.
+**Gemini not asked for readings on photo analysis.** Readings and meanings come from `KanjiMaster` via Data Connect. Gemini is only asked for what it does uniquely well: recognizing kanji in images and knowing which words matter for daily life in Japan.
 
-**No pre-seeded word dictionary.** `UserWords` grows organically from photo captures — words are guaranteed to be ones personally encountered in the wild. Claude's word selection in the photo prompt acts as the curation layer, choosing high-frequency daily-life words. This avoids the complexity of seeding and maintaining a separate word corpus while producing a more personally relevant vocabulary set.
+**Async poll pattern for photo analysis.** Ktor creates the PhotoSession and fires the Function without waiting. Frontend polls `GET /api/photo/session/{id}` every 2s. This avoids long HTTP connections and lets the Function run without timeout pressure from the client.
+
+**No pre-seeded word dictionary.** `UserWords` grows organically from photo captures — words are guaranteed to be ones personally encountered in the wild. Gemini's word selection in the photo prompt acts as the curation layer, choosing high-frequency daily-life words. This avoids the complexity of seeding and maintaining a separate word corpus while producing a more personally relevant vocabulary set.
 
 **Compound word unlocking is derived, not tracked separately.** When a kanji is added to `UserKanji`, `UserWords.unlocked` is re-evaluated for all words containing that kanji. No separate unlock event or table needed — the state is always derivable from `UserKanji` membership.
 

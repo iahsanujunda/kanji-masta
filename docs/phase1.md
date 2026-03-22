@@ -1,12 +1,12 @@
 # Kanji Learning App — Iteration Plan
 
-_Photo-Driven Kanji Acquisition · Stack: React · Ktor · Firebase (Auth + Data Connect + Functions) · Claude API_
+_Photo-Driven Kanji Acquisition · Stack: React · Ktor · Firebase (Auth + Data Connect + Functions + Storage) · Gemini API_
 
 ---
 
 ## Overview
 
-This app turns real-life kanji encounters in Japan into a structured, low-friction daily learning habit. The core loop: photograph a sign or notice → select kanji to learn → receive spaced-repetition quizzes across configurable daily time slots generated in the background by Claude.
+This app turns real-life kanji encounters in Japan into a structured, low-friction daily learning habit. The core loop: photograph a sign or notice → select kanji to learn → receive spaced-repetition quizzes across configurable daily time slots generated in the background by Gemini.
 
 Designed for an erratic, contextual learner. Study effort is minimized at the capture moment (high motivation) and at the quiz moment (low friction, fits into any gap in the day).
 
@@ -140,7 +140,7 @@ type UserKanji @table {
 }
 ```
 
-**`PhotoSession`** — one row per photo. Raw Claude response stored to avoid re-billing.
+**`PhotoSession`** — one row per photo. Raw AI response stored to avoid re-billing.
 
 ```graphql
 type PhotoSession @table {
@@ -528,7 +528,7 @@ A separate scheduled Firebase Function checks two trigger conditions daily and e
 
 Old distractor sets are never deleted — they accumulate for evaluation.
 
-### 3.5 Claude Prompt (Initial Quiz Generation)
+### 3.5 Gemini Prompt (Initial Quiz Generation)
 
 ```
 You are building quizzes for a Japanese learner living in Japan.
@@ -561,6 +561,8 @@ Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
     "prompt": "でんしゃ",
     "target": "でんしゃ",
     "furigana": null,
+    
+    
     "answer": "電車",
     "distractors": ["電話", "電気", "電池"],
     "explanation": "電車 — the kanji for electricity + vehicle"
@@ -773,27 +775,31 @@ After 2 weeks of real usage:
 | Backend | Ktor (Kotlin) | API gateway, slot engine, session management |
 | Auth | Firebase Auth | User authentication, ID tokens |
 | Database | Firebase Data Connect | PostgreSQL via GraphQL schema |
-| Functions | Firebase Functions | Claude API calls (photo analysis, quiz generation) |
-| AI | Claude API (`claude-sonnet-4-20250514`) | Vision extraction + quiz generation |
+| Storage | Firebase Cloud Storage | Photo uploads from client |
+| Functions | Firebase Functions (Python) | Gemini API calls (photo analysis, quiz generation) |
+| AI | Gemini 3.1 Pro (`gemini-3.1-pro-preview`) | Vision extraction + quiz generation |
 | Seed Data | kanjidic2 (edrdg.org) | Top 1500 kanji by frequency |
 
 ### Request Flow Summary
 
-- **Call #1 (photo)** — Ktor → Firebase Function → Claude vision → enrich from kanji_master → user selection → DB write + jobs enqueued
-- **Call #2 (background)** — Firebase scheduled function → Claude text → 5 quizzes per kanji → `QuizBank`
+- **Call #1 (photo)** — Frontend uploads to Storage → Ktor creates session → Firebase Function → Gemini vision → enrich from KanjiMaster → frontend polls → user selection → DB write + jobs enqueued
+- **Call #2 (background)** — Firebase scheduled function → Gemini text → 5 quizzes per kanji → `QuizBank`
 - **Slot quiz** — Ktor slot engine → tier-gated priority selection + weighted resurfacing → familiarity + tier update
 
 ### Key Design Decisions
 
-- Claude API key in Firebase Functions only — never exposed to client or Ktor
-- Raw photo response stored in DB — no re-billing on revisit
+- Gemini API key in Firebase Functions only — never exposed to client or Ktor
+- Image uploaded to Cloud Storage by frontend, Function downloads via URL
+- Enriched result stored in DB — no re-processing on poll, no re-billing on revisit
+- Cost tracked in `costMicrodollars` (Int64) from Gemini usage metadata
 - Background worker decouples capture (high motivation) from generation (slow)
 - Type-gated ladder with resurfacing — previous types never disappear, just become rare
 - No rollover — missed slots expire quietly, no backlog anxiety
 - Slot counter starts on first answer — fits irregular schedules
 - Quiz allowance configurable — default 5 is conservative, increase as habit solidifies
 - `fill_in_the_blank` input resolved at serve time — quiz rows never regenerated
-- Claude not asked for readings on photo — `kanji_master` is authoritative source
+- Gemini not asked for readings on photo — `KanjiMaster` is authoritative source
+- Ktor uses fire-and-forget pattern for Function calls — frontend polls for results
 - Distractors versioned, never replaced — old sets retained for evaluation and prompt fine-tuning
 - Regen triggers are milestone-first (tier crossing) with serve count as secondary safety net
 - `QuizServe` provides full answer history per distractor set — foundation for future prompt optimization

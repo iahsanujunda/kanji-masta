@@ -15,7 +15,7 @@ fun Application.configureRouting() {
             call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
         }
 
-        authenticate("supabase") {
+        authenticate("firebase") {
             photoRoutes()
             kanjiRoutes()
             quizRoutes()

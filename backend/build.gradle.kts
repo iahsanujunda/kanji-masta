@@ -29,7 +29,6 @@ dependencies {
     implementation(libs.ktor.server.content.negotiation)
     implementation(libs.ktor.server.cors)
     implementation(libs.ktor.server.auth)
-    implementation(libs.ktor.server.auth.jwt)
     implementation(libs.ktor.server.config.yaml)
     implementation(libs.ktor.serialization.kotlinx.json)
 
@@ -41,11 +40,8 @@ dependencies {
     implementation(libs.ktor.client.cio)
     implementation(libs.ktor.client.content.negotiation)
 
-    // Ktorm + PostgreSQL
-    implementation(libs.ktorm.core)
-    implementation(libs.ktorm.support.postgresql)
-    implementation(libs.postgresql)
-    implementation(libs.hikaricp)
+    // Firebase Admin SDK
+    implementation(libs.firebase.admin)
 
     // Logging
     implementation(libs.logback)

@@ -19,7 +19,7 @@ class ApplicationTest {
         application {
             configureSerialization()
             install(Authentication) {
-                provider("supabase") {
+                provider("firebase") {
                     authenticate { context ->
                         context.principal(object : Principal {})
                     }
@@ -38,7 +38,7 @@ class ApplicationTest {
         application {
             configureSerialization()
             install(Authentication) {
-                provider("supabase") {
+                provider("firebase") {
                     authenticate { context ->
                         context.principal(object : Principal {})
                     }

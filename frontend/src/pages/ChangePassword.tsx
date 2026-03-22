@@ -1,7 +1,8 @@
 import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Alert, Box, Button, TextField, Typography } from "@mui/material";
-import { supabase } from "../lib/supabase";
+import { updatePassword } from "firebase/auth";
+import { auth } from "../lib/firebase";
 
 export default function ChangePassword() {
   const navigate = useNavigate();
@@ -25,17 +26,19 @@ export default function ChangePassword() {
       return;
     }
 
-    setLoading(true);
-    const { error } = await supabase.auth.updateUser({
-      password: newPassword,
-    });
+    if (!auth.currentUser) {
+      setError("You must be signed in to change your password.");
+      return;
+    }
 
-    if (error) {
-      setError(error.message);
-    } else {
+    setLoading(true);
+    try {
+      await updatePassword(auth.currentUser, newPassword);
       setSuccess(true);
       setNewPassword("");
       setConfirmPassword("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update password");
     }
     setLoading(false);
   };

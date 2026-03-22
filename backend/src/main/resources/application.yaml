@@ -5,16 +5,9 @@ ktor:
     modules:
       - com.kanjimasta.ApplicationKt.module
 
-database:
-  host: "$SUPABASE_DB_HOST:127.0.0.1"
-  port: "$SUPABASE_DB_PORT:5432"
-  name: "$SUPABASE_DB_NAME:postgres"
-  user: "$SUPABASE_DB_USER:postgres"
-  password: "$SUPABASE_DB_PASSWORD:postgres"
-
-jwt:
-  secret: "$SUPABASE_JWT_SECRET:super-secret-jwt-token-with-at-least-32-characters-long"
-  issuer: "$SUPABASE_JWT_ISSUER:https://omuhcbxjtjyzzvznhvib.supabase.co/auth/v1"
+firebase:
+  projectId: "$FIREBASE_PROJECT_ID:demo-kanji-masta"
+  authEmulatorHost: "$FIREBASE_AUTH_EMULATOR_HOST:"
 
 claude:
   apiKey: "$CLAUDE_API_KEY:"

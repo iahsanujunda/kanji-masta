@@ -1,27 +1,19 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
-import type { Session, User } from "@supabase/supabase-js";
+import { onAuthStateChanged, type User } from "firebase/auth";
+import { auth } from "../lib/firebase";
 
 export function useAuth() {
-  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
       setIsLoading(false);
     });
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
+    return () => unsubscribe();
   }, []);
 
-  const user: User | null = session?.user ?? null;
-
-  return { session, user, isLoading };
+  return { user, isLoading };
 }

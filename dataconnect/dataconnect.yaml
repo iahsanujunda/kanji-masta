@@ -1,0 +1,11 @@
+specVersion: "v1alpha"
+serviceId: "kanji-masta"
+location: "asia-east1"
+schema:
+  source: "./schema"
+  datasource:
+    postgresql:
+      database: "kanji-masta"
+      cloudSql:
+        instanceId: "kanji-masta"
+connectorDirs: ["./connector"]

@@ -2,13 +2,14 @@ import { useNavigate } from "react-router-dom";
 import { Box, Button, List, ListItemButton, ListItemIcon, ListItemText, Paper, Typography } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import LogoutIcon from "@mui/icons-material/Logout";
-import { supabase } from "../lib/supabase";
+import { signOut } from "firebase/auth";
+import { auth } from "../lib/firebase";
 
 export default function Settings() {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await signOut(auth);
   };
 
   return (

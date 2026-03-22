@@ -6,18 +6,18 @@ import Login from "./pages/Login";
 import Settings from "./pages/Settings";
 
 export default function App() {
-  const { session, isLoading } = useAuth();
+  const { user, isLoading } = useAuth();
 
   return (
     <Routes>
       <Route
         path="/login"
-        element={session ? <Navigate to="/" replace /> : <Login />}
+        element={user ? <Navigate to="/" replace /> : <Login />}
       />
       <Route
         path="/"
         element={
-          <ProtectedRoute session={session} isLoading={isLoading}>
+          <ProtectedRoute user={user} isLoading={isLoading}>
             <Home />
           </ProtectedRoute>
         }
@@ -25,7 +25,7 @@ export default function App() {
       <Route
         path="/settings"
         element={
-          <ProtectedRoute session={session} isLoading={isLoading}>
+          <ProtectedRoute user={user} isLoading={isLoading}>
             <Settings />
           </ProtectedRoute>
         }

@@ -1,15 +1,15 @@
 import { Navigate } from "react-router-dom";
 import { Box, CircularProgress } from "@mui/material";
-import type { Session } from "@supabase/supabase-js";
+import type { User } from "firebase/auth";
 import type { ReactNode } from "react";
 
 interface Props {
-  session: Session | null;
+  user: User | null;
   isLoading: boolean;
   children: ReactNode;
 }
 
-export default function ProtectedRoute({ session, isLoading, children }: Props) {
+export default function ProtectedRoute({ user, isLoading, children }: Props) {
   if (isLoading) {
     return (
       <Box
@@ -25,7 +25,7 @@ export default function ProtectedRoute({ session, isLoading, children }: Props) 
     );
   }
 
-  if (!session) {
+  if (!user) {
     return <Navigate to="/login" replace />;
   }
 

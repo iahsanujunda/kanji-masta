@@ -1,25 +1,27 @@
 package com.kanjimasta.core.auth
 
-import com.auth0.jwt.JWT
-import com.auth0.jwt.algorithms.Algorithm
+import com.google.firebase.auth.FirebaseAuth
+import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
-import io.ktor.server.auth.jwt.*
+import io.ktor.server.response.*
+
+data class FirebaseUser(val uid: String, val email: String?) : Principal
 
 fun Application.configureAuth() {
-    val jwtSecret = environment.config.property("jwt.secret").getString()
-    val jwtIssuer = environment.config.property("jwt.issuer").getString()
-
     install(Authentication) {
-        jwt("supabase") {
-            verifier(
-                JWT.require(Algorithm.HMAC256(jwtSecret))
-                    .withIssuer(jwtIssuer)
-                    .build()
-            )
-            validate { credential ->
-                val userId = credential.payload.subject
-                if (userId != null) JWTPrincipal(credential.payload) else null
+        bearer("firebase") {
+            authenticate { tokenCredential ->
+                try {
+                    val decoded = FirebaseAuth.getInstance()
+                        .verifyIdToken(tokenCredential.token)
+                    FirebaseUser(
+                        uid = decoded.uid,
+                        email = decoded.email
+                    )
+                } catch (_: Exception) {
+                    null
+                }
             }
         }
     }

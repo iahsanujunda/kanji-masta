@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { auth } from "./firebase";
 
 const apiUrl = import.meta.env.VITE_API_URL;
 
@@ -6,10 +6,7 @@ export async function apiFetch<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const token = session?.access_token;
+  const token = await auth.currentUser?.getIdToken();
 
   const response = await fetch(`${apiUrl}${path}`, {
     ...init,

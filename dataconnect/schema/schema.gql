@@ -1,0 +1,5 @@
+type KanjiMaster @table {
+  id: UUID! @default(expr: "uuidV4()")
+  literal: String!
+  frequency: Int!
+}

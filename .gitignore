@@ -2,7 +2,9 @@
 .env
 .idea/
 scripts/data/
-supabase/.temp/
 backend/.gradle/
 backend/.kotlin/
 backend/build/
+*-service-account.json
+dataconnect/.dataconnect/
+*-debug.log

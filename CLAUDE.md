@@ -23,5 +23,5 @@
 ## Build & Run
 - Frontend: `cd frontend && npm run dev` (port 5173)
 - Backend: `cd backend && ./gradlew run` (port 8080)
-- Database: `supabase start` (Postgres on port 5432)
+- Firebase emulator: `firebase emulators:start` (Auth on port 9099)
 - Docker: `docker compose up --build` (backend:8080, frontend:3000)

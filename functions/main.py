@@ -1,4 +1,3 @@
-import base64
 import json
 import os
 
@@ -13,27 +12,31 @@ initialize_app()
 KANJI_PROMPT = """You are a Japanese kanji tutor for a conversational English speaker living in Japan.
 Analyze this image and extract all kanji visible.
 
+{known_kanji_section}
+
 For each kanji return 5 example words commonly encountered in daily life in Japan
 (shops, stations, restaurants, signage, packaging). Prioritize words the user
 is likely to hear spoken AND see written — not textbook vocabulary.
 
 Mark up to 3 kanji as recommended:true — choose the ones most worth learning
 first based on how frequently they appear in everyday Japanese life.
+Prefer recommending kanji the learner does NOT already know.
+Only recommend known kanji if there are fewer than 3 unknown kanji in the image worth learning.
 
 Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
 [
-  {
+  {{
     "character": "電",
     "recommended": true,
     "whyUseful": "Core kanji for anything electric — trains, phones, appliances",
     "exampleWords": [
-      { "word": "電車", "reading": "でんしゃ", "meaning": "train" },
-      { "word": "電話", "reading": "でんわ", "meaning": "telephone" },
-      { "word": "電気", "reading": "でんき", "meaning": "electricity / lights" },
-      { "word": "電池", "reading": "でんち", "meaning": "battery" },
-      { "word": "充電", "reading": "じゅうでん", "meaning": "charging (a device)" }
+      {{ "word": "電車", "reading": "でんしゃ", "meaning": "train" }},
+      {{ "word": "電話", "reading": "でんわ", "meaning": "telephone" }},
+      {{ "word": "電気", "reading": "でんき", "meaning": "electricity / lights" }},
+      {{ "word": "電池", "reading": "でんち", "meaning": "battery" }},
+      {{ "word": "充電", "reading": "じゅうでん", "meaning": "charging (a device)" }}
     ]
-  }
+  }}
 ]"""
 
 
@@ -55,6 +58,21 @@ def _execute_graphql(query: str, variables: dict | None = None) -> dict:
         body["variables"] = variables
     resp = requests.post(url, json=body, headers={"Content-Type": "application/json"})
     return resp.json()
+
+
+def _get_user_known_kanji(user_id: str) -> list[str]:
+    """Fetch all kanji characters the user already knows."""
+    escaped = user_id.replace('"', '\\"')
+    query = f"""
+        query {{
+            userKanjis(where: {{ userId: {{ eq: "{escaped}" }} }}) {{
+                kanji {{ character }}
+            }}
+        }}
+    """
+    result = _execute_graphql(query)
+    rows = result.get("data", {}).get("userKanjis", [])
+    return [row["kanji"]["character"] for row in rows]
 
 
 def _lookup_kanji(characters: list[str]) -> dict[str, dict]:
@@ -106,6 +124,7 @@ def analyze_photo(req: https_fn.Request) -> https_fn.Response:
         return https_fn.Response("Missing JSON body", status=400)
 
     image_url = body.get("imageUrl")
+    user_id = body.get("userId")
     session_id = body.get("sessionId")
     if not image_url or not session_id:
         return https_fn.Response("Missing imageUrl or sessionId", status=400)
@@ -118,6 +137,15 @@ def analyze_photo(req: https_fn.Request) -> https_fn.Response:
     image_bytes = img_resp.content
     content_type = img_resp.headers.get("Content-Type", "image/jpeg")
 
+    # Fetch user's known kanji for context
+    known_kanji = _get_user_known_kanji(user_id) if user_id else []
+    if known_kanji:
+        known_kanji_section = f"The learner already knows these kanji: {', '.join(known_kanji)}\nDo NOT recommend kanji they already know."
+    else:
+        known_kanji_section = "The learner is a beginner with no kanji knowledge yet."
+
+    prompt = KANJI_PROMPT.format(known_kanji_section=known_kanji_section)
+
     # Call Gemini 3.1 Pro
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -127,7 +155,7 @@ def analyze_photo(req: https_fn.Request) -> https_fn.Response:
     response = client.models.generate_content(
         model="gemini-3.1-pro-preview",
         contents=[
-            types.Part(text=KANJI_PROMPT),
+            types.Part(text=prompt),
             types.Part(inline_data=types.Blob(
                 mime_type=content_type,
                 data=image_bytes,

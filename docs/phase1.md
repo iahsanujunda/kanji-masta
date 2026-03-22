@@ -533,7 +533,7 @@ Old distractor sets are never deleted — they accumulate for evaluation.
 ```
 You are building quizzes for a Japanese learner living in Japan.
 They speak conversational Japanese but are learning to read kanji from real encounters.
-Target kanji: {character} — meanings: {meanings}, onyomi: {onyomi}, kunyomi: {kunyomi}
+Target kanji: {character}
 
 Generate exactly 5 quizzes, one of each type below.
 Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
@@ -593,7 +593,6 @@ Rules:
 - Draw from real daily contexts: convenience stores, trains, restaurants, weather,
   shopping, work small talk, phone messages, social media captions
 - Good sentence patterns: 〜じゃん、〜よね、〜だけど、〜てる、〜っけ、short casual commands
-- Avoid: keigo (polite forms), formal written style, news language, 〜ます／〜です endings
 - bold_word_meaning and fill_in_the_blank must use completely different sentences —
   never the same sentence with the target word swapped for ＿＿
 - Distractors must be plausible — never obviously wrong
@@ -670,6 +669,17 @@ For each selected quiz, the slot endpoint resolves the distractor set to use:
 - Find latest `QuizDistractor` row where `servedAt is null`
 - If none available: fall back to latest set + enqueue regen job in background
 - Mark `QuizDistractor.servedAt` when the quiz is returned to client
+
+**Serve-time distractor augmentation** — prevents option memorization without extra AI calls.
+Stored Gemini distractors are combined with random DB candidates, pool shuffled, 3 picked:
+
+| Quiz type | Random pool |
+|-----------|-------------|
+| `meaning_recall` | `KanjiMaster.meanings` of other kanji |
+| `reading_recognition` | `KanjiMaster.onyomi` / `kunyomi` of other kanji |
+| `reverse_reading` | `KanjiMaster.character` at similar frequency |
+| `bold_word_meaning` | `KanjiMaster.meanings` from user's learning set |
+| `fill_in_the_blank` | `UserWords.word` — words the user has personally encountered |
 
 ### 4.3 Quiz Card UI — Per Type
 

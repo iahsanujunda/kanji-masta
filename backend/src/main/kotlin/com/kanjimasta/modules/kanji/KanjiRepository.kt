@@ -14,6 +14,7 @@ data class SystemQuiz(
     val answer: String,
     val explanation: String?,
     val kanjiId: String,
+    val wordId: String,
     val distractors: List<String>,
 )
 
@@ -34,32 +35,53 @@ class KanjiRepository(private val dc: DataConnectClient) {
         dc.executeGraphql(query)
     }
 
-    suspend fun insertQuizGenerationJob(userId: String, kanjiMasterId: String) {
+    suspend fun insertUserWord(
+        userId: String,
+        word: String,
+        reading: String,
+        meaning: String,
+        kanjiMasterId: String,
+        source: String = "PHOTO",
+    ): String? {
         val query = """
             mutation {
-                quizGenerationJob_insert(data: {
+                userWords_insert(data: {
                     userId: "${userId.escape()}",
-                    kanjiId: "$kanjiMasterId"
+                    word: "${word.escape()}",
+                    reading: "${reading.escape()}",
+                    meaning: "${meaning.escape()}",
+                    kanjiIds: ["$kanjiMasterId"],
+                    source: $source,
+                    unlocked: true
                 })
             }
         """.trimIndent()
-        dc.executeGraphql(query)
+        val result = dc.executeGraphql(query)
+        if (result["errors"]?.jsonArray?.isNotEmpty() == true) {
+            logger.debug("Word insert issue for '{}': {}", word, result["errors"])
+            return null
+        }
+        return result["data"]?.jsonObject?.get("userWords_insert")?.jsonObject?.get("id")?.jsonPrimitive?.content
     }
 
-    suspend fun getSystemQuizzes(kanjiMasterId: String): List<SystemQuiz> {
+    suspend fun findUserWordByWord(userId: String, word: String): String? {
         val query = """
             query {
-                quizBanks(where: { userId: { eq: "system" }, kanjiId: { eq: "$kanjiMasterId" } }) {
-                    quizType
-                    prompt
-                    furigana
-                    target
-                    answer
-                    explanation
-                    kanjiId
-                    quizDistractors_on_quiz {
-                        distractors
-                    }
+                userWordss(where: { userId: { eq: "${userId.escape()}" }, word: { eq: "${word.escape()}" } }) { id }
+            }
+        """.trimIndent()
+        val result = dc.executeGraphql(query)
+        val rows = result["data"]?.jsonObject?.get("userWordss")?.jsonArray ?: return null
+        return rows.firstOrNull()?.jsonObject?.get("id")?.jsonPrimitive?.content
+    }
+
+    suspend fun getSystemQuizzesByWord(wordText: String): List<SystemQuiz> {
+        val query = """
+            query {
+                quizBanks(where: { userId: { eq: "system" } }) {
+                    quizType prompt furigana target answer explanation kanjiId wordId
+                    word { word }
+                    quizDistractors_on_quiz { distractors }
                 }
             }
         """.trimIndent()
@@ -69,6 +91,9 @@ class KanjiRepository(private val dc: DataConnectClient) {
 
         return rows.mapNotNull { row ->
             val obj = row.jsonObject
+            val w = obj["word"]?.jsonObject?.get("word")?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            if (w != wordText) return@mapNotNull null
+
             val distractorSets = obj["quizDistractors_on_quiz"]?.jsonArray
             val distractors = distractorSets?.firstOrNull()?.jsonObject
                 ?.get("distractors")?.jsonArray
@@ -82,13 +107,14 @@ class KanjiRepository(private val dc: DataConnectClient) {
                 target = obj["target"]?.jsonPrimitive?.content ?: return@mapNotNull null,
                 answer = obj["answer"]?.jsonPrimitive?.content ?: return@mapNotNull null,
                 explanation = obj["explanation"]?.jsonPrimitive?.contentOrNull,
-                kanjiId = obj["kanjiId"]?.jsonPrimitive?.content ?: kanjiMasterId,
+                kanjiId = obj["kanjiId"]?.jsonPrimitive?.content ?: return@mapNotNull null,
+                wordId = obj["wordId"]?.jsonPrimitive?.content ?: return@mapNotNull null,
                 distractors = distractors,
             )
         }
     }
 
-    suspend fun cloneQuizzesToUser(userId: String, kanjiMasterId: String, systemQuizzes: List<SystemQuiz>) {
+    suspend fun cloneQuizzesToUser(userId: String, kanjiMasterId: String, userWordId: String, systemQuizzes: List<SystemQuiz>) {
         for (quiz in systemQuizzes) {
             val furiganaField = if (quiz.furigana != null) """furigana: "${quiz.furigana.escape()}",""" else ""
             val explanationField = if (quiz.explanation != null) """explanation: "${quiz.explanation.escape()}",""" else ""
@@ -98,6 +124,7 @@ class KanjiRepository(private val dc: DataConnectClient) {
                     quizBank_insert(data: {
                         userId: "${userId.escape()}",
                         kanjiId: "$kanjiMasterId",
+                        wordId: "$userWordId",
                         quizType: ${quiz.quizType},
                         prompt: "${quiz.prompt.escape()}",
                         target: "${quiz.target.escape()}",
@@ -114,7 +141,7 @@ class KanjiRepository(private val dc: DataConnectClient) {
                 ?.get("id")?.jsonPrimitive?.content
 
             if (quizId == null) {
-                logger.error("Failed to clone quiz for kanji={}: {}", kanjiMasterId, insertResult)
+                logger.error("Failed to clone quiz: {}", insertResult)
                 continue
             }
 
@@ -135,7 +162,21 @@ class KanjiRepository(private val dc: DataConnectClient) {
                 dc.executeGraphql(distQuery)
             }
         }
-        logger.info("Cloned {} system quizzes for user={} kanji={}", systemQuizzes.size, userId, kanjiMasterId)
+        logger.info("Cloned {} quizzes for user={} word={}", systemQuizzes.size, userId, userWordId)
+    }
+
+    suspend fun insertQuizGenerationJob(userId: String, kanjiMasterId: String, wordId: String? = null) {
+        val wordField = if (wordId != null) """wordId: "$wordId",""" else ""
+        val query = """
+            mutation {
+                quizGenerationJob_insert(data: {
+                    userId: "${userId.escape()}",
+                    kanjiId: "$kanjiMasterId",
+                    $wordField
+                })
+            }
+        """.trimIndent()
+        dc.executeGraphql(query)
     }
 
     suspend fun countPendingJobs(userId: String): Int {

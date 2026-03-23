@@ -45,7 +45,7 @@ fun Application.module() {
     val photoService = PhotoService(photoRepository, httpClient, functionsBaseUrl, projectId)
 
     val kanjiRepository = KanjiRepository(dcClient)
-    val kanjiService = KanjiService(kanjiRepository, httpClient, functionsBaseUrl, projectId)
+    val kanjiService = KanjiService(kanjiRepository, photoRepository, httpClient, functionsBaseUrl, projectId)
 
     configureRouting(photoService, kanjiService)
 }

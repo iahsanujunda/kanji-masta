@@ -209,7 +209,7 @@ def analyze_photo(req: https_fn.Request) -> https_fn.Response:
 
 QUIZ_PROMPT = """You are building quizzes for a Japanese learner living in Japan.
 They speak conversational Japanese but are learning to read kanji from real encounters.
-Target kanji: {character}
+Target word: {word} ({reading}) — meaning: {meaning}
 
 Generate exactly 5 quizzes, one of each type below.
 Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
@@ -293,8 +293,9 @@ def _get_pending_jobs(limit: int = 10) -> list[dict]:
                 where: {{ status: {{ eq: "PENDING" }} }},
                 limit: {limit}
             ) {{
-                id userId kanjiId jobType trigger quizId
+                id userId kanjiId wordId jobType trigger quizId
                 kanji {{ character onyomi kunyomi meanings }}
+                word {{ word reading meaning }}
             }}
         }}
     """
@@ -323,7 +324,7 @@ def _update_job_status(job_id: str, status: str, cost: int = 0, increment_attemp
     _execute_graphql(query)
 
 
-def _insert_quiz_and_distractor(user_id: str, kanji_id: str, quiz: dict) -> bool:
+def _insert_quiz_and_distractor(user_id: str, kanji_id: str, word_id: str, quiz: dict) -> bool:
     qt = QUIZ_TYPE_MAP.get(quiz.get("quiz_type", ""), quiz.get("quiz_type", ""))
     furigana = quiz.get("furigana")
     explanation = quiz.get("explanation", "")
@@ -335,6 +336,7 @@ def _insert_quiz_and_distractor(user_id: str, kanji_id: str, quiz: dict) -> bool
             quizBank_insert(data: {{
                 userId: "{_escape(user_id)}",
                 kanjiId: "{kanji_id}",
+                wordId: "{word_id}",
                 quizType: {qt},
                 prompt: "{_escape(quiz.get('prompt', ''))}",
                 target: "{_escape(quiz.get('target', ''))}",
@@ -414,12 +416,16 @@ def _get_user_familiarity(user_id: str, kanji_id: str) -> int:
 
 def _process_initial_job(client: genai.Client, job: dict) -> tuple[int, int]:
     """Process an INITIAL job. Returns (cost, error_count)."""
-    kanji = job.get("kanji", {})
-    character = kanji.get("character", "?")
     user_id = job["userId"]
     kanji_id = job["kanjiId"]
+    word_id = job.get("wordId", "")
+    word_data = job.get("word") or {}
 
-    prompt = QUIZ_PROMPT.format(character=character)
+    prompt = QUIZ_PROMPT.format(
+        word=word_data.get("word", "?"),
+        reading=word_data.get("reading", "?"),
+        meaning=word_data.get("meaning", "?"),
+    )
 
     response = client.models.generate_content(
         model="gemini-3.1-pro-preview",
@@ -435,7 +441,7 @@ def _process_initial_job(client: genai.Client, job: dict) -> tuple[int, int]:
 
     errors = 0
     for q in quizzes:
-        if not _insert_quiz_and_distractor(user_id, kanji_id, q):
+        if not _insert_quiz_and_distractor(user_id, kanji_id, word_id, q):
             errors += 1
 
     return cost, errors
@@ -605,3 +611,110 @@ def check_regen_triggers(event: scheduler_fn.ScheduledEvent) -> None:
             enqueued += 1
 
     print(f"Regen cron: enqueued {enqueued} regen jobs from {len(quizzes)} eligible quizzes")
+
+
+# --- Word Discovery ---
+
+DISCOVERY_PROMPT = """The learner is studying the kanji: {character}
+They already know these words well: {known_words}
+
+Suggest 5 more common daily-life words containing {character} that are
+NOT in the known list. Words the learner is likely to encounter in Japan
+(shops, stations, restaurants, signage, packaging).
+
+Return ONLY a valid JSON array — no markdown, no preamble:
+[
+  {{ "word": "会話", "reading": "かいわ", "meaning": "conversation" }}
+]"""
+
+
+@https_fn.on_request()
+def discover_words(req: https_fn.Request) -> https_fn.Response:
+    """Discover fresh words for a kanji when most example words are already familiar."""
+    body = req.get_json(silent=True)
+    if not body:
+        return https_fn.Response("Missing JSON body", status=400)
+
+    user_id = body.get("userId")
+    kanji_id = body.get("kanjiId")
+    character = body.get("character")
+    known_words = body.get("knownWords", [])
+
+    if not user_id or not kanji_id or not character:
+        return https_fn.Response("Missing required fields", status=400)
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return https_fn.Response("GEMINI_API_KEY not configured", status=500)
+
+    prompt = DISCOVERY_PROMPT.format(
+        character=character,
+        known_words="、".join(known_words) if known_words else "(none)",
+    )
+
+    client = genai.Client(api_key=api_key)
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=[types.Part(text=prompt)],
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+        ),
+    )
+
+    try:
+        new_words = json.loads(response.text)
+    except json.JSONDecodeError:
+        return https_fn.Response(json.dumps({"error": "Failed to parse response"}), status=500,
+                                 content_type="application/json")
+
+    inserted = 0
+    for w in new_words:
+        word_text = w.get("word", "")
+        reading = w.get("reading", "")
+        meaning = w.get("meaning", "")
+        if not word_text:
+            continue
+
+        # Check if word already exists for this user
+        check = _execute_graphql(f"""
+            query {{
+                userWordss(where: {{ userId: {{ eq: "{_escape(user_id)}" }}, word: {{ eq: "{_escape(word_text)}" }} }}) {{ id }}
+            }}
+        """)
+        existing = check.get("data", {}).get("userWordss", [])
+        if existing:
+            continue
+
+        # Insert UserWord
+        insert_result = _execute_graphql(f"""
+            mutation {{
+                userWords_insert(data: {{
+                    userId: "{_escape(user_id)}",
+                    word: "{_escape(word_text)}",
+                    reading: "{_escape(reading)}",
+                    meaning: "{_escape(meaning)}",
+                    kanjiIds: ["{kanji_id}"],
+                    source: DISCOVERY,
+                    discoveredViaKanjiId: "{kanji_id}",
+                    unlocked: true
+                }})
+            }}
+        """)
+        word_id = insert_result.get("data", {}).get("userWords_insert", {}).get("id")
+        if not word_id:
+            continue
+
+        # Enqueue quiz generation for this word
+        _execute_graphql(f"""
+            mutation {{
+                quizGenerationJob_insert(data: {{
+                    userId: "{_escape(user_id)}",
+                    kanjiId: "{kanji_id}",
+                    wordId: "{word_id}"
+                }})
+            }}
+        """)
+        inserted += 1
+
+    print(f"Word discovery for {character}: inserted {inserted} new words for user {user_id}")
+    return https_fn.Response(json.dumps({"inserted": inserted}), content_type="application/json")

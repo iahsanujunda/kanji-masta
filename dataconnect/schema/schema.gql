@@ -33,6 +33,7 @@ enum WordSource {
   PHOTO
   QUIZ
   CHALLENGE
+  DISCOVERY
 }
 
 # Seeded once from kanjidic2, read-only at runtime
@@ -46,6 +47,7 @@ type KanjiMaster @table {
 }
 
 # One row per kanji the user has interacted with
+# familiarity and currentTier are cached — derived from UserWords
 type UserKanji @table {
   id: UUID! @default(expr: "uuidV4()")
   userId: String!
@@ -73,6 +75,7 @@ type QuizGenerationJob @table {
   id: UUID! @default(expr: "uuidV4()")
   userId: String!
   kanji: KanjiMaster!
+  word: UserWords
   quiz: QuizBank
   jobType: JobType! @default(value: "INITIAL")
   trigger: String
@@ -82,11 +85,12 @@ type QuizGenerationJob @table {
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
-# Stable quiz question content
+# Stable quiz question content — one quiz per word per type
 type QuizBank @table {
   id: UUID! @default(expr: "uuidV4()")
   userId: String!
   kanji: KanjiMaster!
+  word: UserWords!
   quizType: QuizType!
   prompt: String!
   furigana: String
@@ -118,7 +122,7 @@ type QuizServe @table {
   distractorSet: QuizDistractor!
   slot: QuizSlot!
   userId: String!
-  familiarityAtServe: Int!
+  wordFamiliarityAtServe: Int!
   correct: Boolean!
   answeredAt: Timestamp! @default(expr: "request.time")
 }
@@ -135,7 +139,8 @@ type QuizSlot @table {
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
-# Compound words encountered via photos
+# Compound words — primary unit for quiz tracking
+# familiarity tracked per word, kanji familiarity derived from words
 type UserWords @table {
   id: UUID! @default(expr: "uuidV4()")
   userId: String!
@@ -144,6 +149,10 @@ type UserWords @table {
   meaning: String!
   kanjiIds: [UUID!]!
   source: WordSource! @default(value: "PHOTO")
+  familiarity: Int! @default(value: 0)
+  currentTier: QuizType! @default(value: "MEANING_RECALL")
+  nextReview: Timestamp
+  discoveredViaKanjiId: UUID
   unlocked: Boolean! @default(value: false)
   createdAt: Timestamp! @default(expr: "request.time")
 }

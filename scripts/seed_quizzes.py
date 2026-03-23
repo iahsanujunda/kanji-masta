@@ -1,5 +1,8 @@
 """
-Generate quizzes for JLPT N5/N4 kanji using Gemini 3.1 Pro and seed into Data Connect.
+Generate word-centric quizzes for JLPT kanji using Gemini 3.1 Pro.
+
+For each kanji, Gemini returns 3 compound words with 5 quizzes each.
+Creates system UserWords + QuizBank + QuizDistractor rows.
 
 Usage:
     python seed_quizzes.py --file data/kanjidic2.xml --jlpt 5 --dry-run
@@ -7,7 +10,7 @@ Usage:
     python seed_quizzes.py --file data/kanjidic2.xml --jlpt 4 --persist          # N5 + N4
     python seed_quizzes.py --file data/kanjidic2.xml --jlpt 5 --persist --prod
     python seed_quizzes.py --file data/kanjidic2.xml --jlpt 5 --clear-and-persist
-    python seed_quizzes.py --file data/kanjidic2.xml --jlpt 5 --persist --resume  # skip already seeded
+    python seed_quizzes.py --file data/kanjidic2.xml --jlpt 5 --persist --resume
 """
 
 import argparse
@@ -27,77 +30,80 @@ from google.genai import types
 SYSTEM_USER_ID = "system"
 CHECKPOINT_FILE = "scripts/.quiz_seed_checkpoint.json"
 
-# kanjidic2 uses old JLPT levels: 4=N5, 3=N4, 2=N3, 1=N2/N1
 JLPT_MAP = {5: 4, 4: 3, 3: 2, 2: 1, 1: 1}
 
-QUIZ_PROMPT = """You are building quizzes for a Japanese learner living in Japan.
+WORD_QUIZ_PROMPT = """You are building quizzes for a Japanese learner living in Japan.
 They speak conversational Japanese but are learning to read kanji from real encounters.
-Target kanji: {character} — meanings: {meanings}, onyomi: {onyomi}, kunyomi: {kunyomi}
 
-Generate exactly 5 quizzes, one of each type below.
-Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
+Target kanji: {character}
+
+First, choose 3 common daily-life compound words containing this kanji.
+Then for each word, generate exactly 5 quizzes (one per type).
+
+Return ONLY valid JSON — no markdown, no preamble:
 [
   {{
-    "quiz_type": "meaning_recall",
-    "prompt": "電",
-    "target": "電",
-    "furigana": null,
-    "answer": "electricity",
-    "distractors": ["iron", "east", "express"],
-    "explanation": "電 is the root of 電車 (train), 電話 (phone), 電気 (electricity)"
-  }},
-  {{
-    "quiz_type": "reading_recognition",
-    "prompt": "電車",
-    "target": "電車",
-    "furigana": null,
-    "answer": "でんしゃ",
-    "distractors": ["てっどう", "きゅうこう", "ちかてつ"],
-    "explanation": "でん (on-yomi of 電) + しゃ (on-yomi of 車)"
-  }},
-  {{
-    "quiz_type": "reverse_reading",
-    "prompt": "でんしゃ",
-    "target": "でんしゃ",
-    "furigana": null,
-    "answer": "電車",
-    "distractors": ["電話", "電気", "電池"],
-    "explanation": "電車 — the kanji for electricity + vehicle"
-  }},
-  {{
-    "quiz_type": "bold_word_meaning",
-    "prompt": "電車、遅れてるじゃん。",
-    "target": "電車",
-    "furigana": "でんしゃ",
-    "answer": "train",
-    "distractors": ["bus", "taxi", "subway"],
-    "explanation": "電車 literally means electric vehicle — the standard word for train"
-  }},
-  {{
-    "quiz_type": "fill_in_the_blank",
-    "prompt": "＿＿乗り換えどこだっけ？",
-    "target": "電車",
-    "furigana": "でんしゃ",
-    "answer": "電車",
-    "distractors": ["急行", "地下鉄", "バス停"],
-    "explanation": "電車 fits here — asking where to transfer trains"
+    "word": "電車",
+    "reading": "でんしゃ",
+    "meaning": "train",
+    "quizzes": [
+      {{
+        "quiz_type": "meaning_recall",
+        "prompt": "電車",
+        "target": "電車",
+        "furigana": null,
+        "answer": "train",
+        "distractors": ["phone call", "electricity", "battery"],
+        "explanation": "電車 — 電 (electric) + 車 (vehicle) = train"
+      }},
+      {{
+        "quiz_type": "reading_recognition",
+        "prompt": "電車",
+        "target": "電車",
+        "furigana": null,
+        "answer": "でんしゃ",
+        "distractors": ["てっどう", "きゅうこう", "ちかてつ"],
+        "explanation": "でん (on-yomi of 電) + しゃ (on-yomi of 車)"
+      }},
+      {{
+        "quiz_type": "reverse_reading",
+        "prompt": "でんしゃ",
+        "target": "でんしゃ",
+        "furigana": null,
+        "answer": "電車",
+        "distractors": ["電話", "電気", "電池"],
+        "explanation": "電車 — the kanji for electricity + vehicle"
+      }},
+      {{
+        "quiz_type": "bold_word_meaning",
+        "prompt": "電車、遅れてるじゃん。",
+        "target": "電車",
+        "furigana": "でんしゃ",
+        "answer": "train",
+        "distractors": ["bus", "taxi", "subway"],
+        "explanation": "電車 literally means electric vehicle — the standard word for train"
+      }},
+      {{
+        "quiz_type": "fill_in_the_blank",
+        "prompt": "＿＿乗り換えどこだっけ？",
+        "target": "電車",
+        "furigana": "でんしゃ",
+        "answer": "電車",
+        "distractors": ["急行", "地下鉄", "バス停"],
+        "explanation": "電車 fits here — asking where to transfer trains"
+      }}
+    ]
   }}
 ]
 
 Rules:
-- Sentences must be casual, natural spoken Japanese — the kind said between friends,
-  overheard on the street, or seen on informal signs. Not textbook Japanese.
-- Draw from real daily contexts: convenience stores, trains, restaurants, weather,
-  shopping, work small talk, phone messages, social media captions
-- Good sentence patterns: 〜じゃん、〜よね、〜だけど、〜てる、〜っけ、short casual commands
-- Avoid: keigo (polite forms), formal written style, news language, 〜ます／〜です endings
-- bold_word_meaning and fill_in_the_blank must use completely different sentences —
-  never the same sentence with the target word swapped for ＿＿
+- Pick words commonly encountered in daily life in Japan (shops, stations, restaurants, signage)
+- Sentences must be casual, natural spoken Japanese — not textbook style
+- Good sentence patterns: 〜じゃん、〜よね、〜だけど、〜てる、〜っけ
+- bold_word_meaning and fill_in_the_blank must use completely different sentences
 - Distractors must be plausible — never obviously wrong
 - Explanations brief and memorable, not academic
-- furigana is null for word-level types; always a string for sentence-level
-- for a jlpt N5 kanji, if prompt require showing kanji that is not N5, please write it in hiragana.
-"""
+- furigana is null for word-level types; always a string for sentence-level"""
 
 QUIZ_TYPE_MAP = {
     "meaning_recall": "MEANING_RECALL",
@@ -108,7 +114,7 @@ QUIZ_TYPE_MAP = {
 }
 
 
-# --- Data Connect helpers (same pattern as seed.py) ---
+# --- Data Connect helpers ---
 
 def _build_endpoint(prod: bool) -> tuple[str, dict]:
     load_dotenv()
@@ -147,19 +153,19 @@ def _execute_graphql(url: str, headers: dict, query: str) -> dict:
     return resp.json()
 
 
+def _escape(s: str) -> str:
+    return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
 # --- XML parsing ---
 
 def parse_jlpt_kanji(filepath: str, jlpt_level: int, freq_limit: int | None = None) -> list[dict]:
-    """Parse kanjidic2.xml and return kanji at or below the given JLPT level."""
     path = Path(filepath)
     if not path.exists():
         raise FileNotFoundError(f"File not found: {filepath}")
 
-    # kanjidic2 uses old levels: 4=N5, 3=N4, etc.
-    # --jlpt 5 means N5 only (old level 4)
-    # --jlpt 4 means N5+N4 (old levels 4 and 3)
     max_old_level = JLPT_MAP[jlpt_level]
-    valid_old_levels = {lv for lv in range(max_old_level, 5)}  # e.g. {3, 4} for --jlpt 4
+    valid_old_levels = {lv for lv in range(max_old_level, 5)}
 
     open_fn = gzip.open if path.suffix == ".gz" else open
     print(f"Parsing {path.name} for JLPT N{jlpt_level} and above ...")
@@ -188,20 +194,12 @@ def parse_jlpt_kanji(filepath: str, jlpt_level: int, freq_limit: int | None = No
                 elem.clear()
                 continue
 
-            onyomi = [r.text for r in elem.findall("reading_meaning/rmgroup/reading[@r_type='ja_on']") if r.text]
-            kunyomi = [r.text for r in elem.findall("reading_meaning/rmgroup/reading[@r_type='ja_kun']") if r.text]
-            meanings = [m.text for m in elem.findall("reading_meaning/rmgroup/meaning") if m.text and m.get("m_lang") is None]
-
             kanji_list.append({
                 "character": literal,
                 "frequency": frequency,
-                "onyomi": onyomi,
-                "kunyomi": kunyomi,
-                "meanings": meanings,
             })
             elem.clear()
 
-    # Sort by frequency (most common first)
     kanji_list.sort(key=lambda k: k.get("frequency") or 99999)
 
     label = f"JLPT N{jlpt_level}+"
@@ -213,14 +211,9 @@ def parse_jlpt_kanji(filepath: str, jlpt_level: int, freq_limit: int | None = No
 
 # --- Gemini ---
 
-def generate_quizzes_for_kanji(client: genai.Client, kanji: dict) -> tuple[list[dict], int]:
-    """Call Gemini to generate 5 quizzes for a single kanji. Returns (quizzes, cost_microdollars)."""
-    prompt = QUIZ_PROMPT.format(
-        character=kanji["character"],
-        meanings=", ".join(kanji["meanings"]),
-        onyomi=", ".join(kanji["onyomi"]),
-        kunyomi=", ".join(kanji["kunyomi"]),
-    )
+def generate_words_and_quizzes(client: genai.Client, kanji: dict) -> tuple[list[dict], int]:
+    """Call Gemini to get 3 words + 5 quizzes each for a kanji. Returns (word_quiz_list, cost_microdollars)."""
+    prompt = WORD_QUIZ_PROMPT.format(character=kanji["character"])
 
     response = client.models.generate_content(
         model="gemini-3.1-pro-preview",
@@ -236,23 +229,16 @@ def generate_quizzes_for_kanji(client: genai.Client, kanji: dict) -> tuple[list[
     output_tokens = getattr(usage, "candidates_token_count", 0) or 0
     cost = int((input_tokens * 2.50 / 1_000_000 + output_tokens * 15.00 / 1_000_000) * 1_000_000)
 
-    quizzes = json.loads(response.text)
-    return quizzes, cost
+    words = json.loads(response.text)
+    return words, cost
 
 
 # --- Data Connect persistence ---
 
-def _escape(s: str) -> str:
-    return s.replace("\\", "\\\\").replace('"', '\\"')
-
-
 def _lookup_kanji_master_id(url: str, headers: dict, character: str) -> str | None:
-    """Find KanjiMaster ID by character."""
     query = f"""
         query {{
-            kanjiMasters(where: {{ character: {{ eq: "{_escape(character)}" }} }}) {{
-                id
-            }}
+            kanjiMasters(where: {{ character: {{ eq: "{_escape(character)}" }} }}) {{ id }}
         }}
     """
     result = _execute_graphql(url, headers, query)
@@ -260,35 +246,58 @@ def _lookup_kanji_master_id(url: str, headers: dict, character: str) -> str | No
     return rows[0]["id"] if rows else None
 
 
-def _get_existing_quiz_characters(url: str, headers: dict) -> set[str]:
-    """Get characters that already have system quizzes."""
-    query = """
-        query {
-            quizBanks(where: { userId: { eq: "system" } }, limit: 10000) {
-                kanji { character }
-            }
-        }
+def _find_system_word(url: str, headers: dict, word: str) -> str | None:
+    """Check if a system UserWords row already exists for this word."""
+    query = f"""
+        query {{
+            userWordss(where: {{ userId: {{ eq: "system" }}, word: {{ eq: "{_escape(word)}" }} }}) {{ id }}
+        }}
     """
     result = _execute_graphql(url, headers, query)
-    rows = result.get("data", {}).get("quizBanks", [])
-    return {r["kanji"]["character"] for r in rows}
+    rows = result.get("data", {}).get("userWordss", [])
+    return rows[0]["id"] if rows else None
 
 
-def insert_quiz(url: str, headers: dict, kanji_master_id: str, quiz: dict) -> str | None:
-    """Insert a single QuizBank row, return its ID."""
-    qt = QUIZ_TYPE_MAP.get(quiz["quiz_type"], quiz["quiz_type"])
-    furigana_field = f'furigana: "{_escape(quiz["furigana"])}",' if quiz.get("furigana") else ""
-    explanation_field = f'explanation: "{_escape(quiz.get("explanation", ""))}",' if quiz.get("explanation") else ""
+def _insert_system_word(url: str, headers: dict, word: dict, kanji_master_id: str) -> str | None:
+    """Insert a system UserWords row. Returns the ID."""
+    kanji_ids_json = json.dumps([kanji_master_id])
+    query = f"""
+        mutation {{
+            userWords_insert(data: {{
+                userId: "{SYSTEM_USER_ID}",
+                word: "{_escape(word['word'])}",
+                reading: "{_escape(word['reading'])}",
+                meaning: "{_escape(word['meaning'])}",
+                kanjiIds: {kanji_ids_json},
+                source: QUIZ,
+                unlocked: true
+            }})
+        }}
+    """
+    result = _execute_graphql(url, headers, query)
+    if result.get("errors"):
+        print(f"    Word insert error: {result['errors'][0].get('message', '')[:100]}")
+        return None
+    return result.get("data", {}).get("userWords_insert", {}).get("id")
+
+
+def _insert_quiz(url: str, headers: dict, kanji_master_id: str, word_id: str, quiz: dict) -> str | None:
+    qt = QUIZ_TYPE_MAP.get(quiz.get("quiz_type", ""), quiz.get("quiz_type", ""))
+    furigana = quiz.get("furigana")
+    explanation = quiz.get("explanation", "")
+    furigana_field = f'furigana: "{_escape(furigana)}",' if furigana else ""
+    explanation_field = f'explanation: "{_escape(explanation)}",' if explanation else ""
 
     query = f"""
         mutation {{
             quizBank_insert(data: {{
                 userId: "{SYSTEM_USER_ID}",
                 kanjiId: "{kanji_master_id}",
+                wordId: "{word_id}",
                 quizType: {qt},
-                prompt: "{_escape(quiz["prompt"])}",
-                target: "{_escape(quiz["target"])}",
-                answer: "{_escape(quiz["answer"])}",
+                prompt: "{_escape(quiz.get('prompt', ''))}",
+                target: "{_escape(quiz.get('target', ''))}",
+                answer: "{_escape(quiz.get('answer', ''))}",
                 {furigana_field}
                 {explanation_field}
             }})
@@ -296,13 +305,12 @@ def insert_quiz(url: str, headers: dict, kanji_master_id: str, quiz: dict) -> st
     """
     result = _execute_graphql(url, headers, query)
     if result.get("errors"):
-        print(f"    QuizBank insert error: {result['errors'][0].get('message', '')[:100]}")
+        print(f"    Quiz insert error: {result['errors'][0].get('message', '')[:100]}")
         return None
     return result.get("data", {}).get("quizBank_insert", {}).get("id")
 
 
-def insert_distractor(url: str, headers: dict, quiz_id: str, distractors: list[str]):
-    """Insert a QuizDistractor row for a quiz."""
+def _insert_distractor(url: str, headers: dict, quiz_id: str, distractors: list[str]):
     dist_json = json.dumps(distractors, ensure_ascii=False)
     query = f"""
         mutation {{
@@ -318,52 +326,42 @@ def insert_distractor(url: str, headers: dict, quiz_id: str, distractors: list[s
     """
     result = _execute_graphql(url, headers, query)
     if result.get("errors"):
-        print(f"    QuizDistractor insert error: {result['errors'][0].get('message', '')[:100]}")
+        print(f"    Distractor insert error: {result['errors'][0].get('message', '')[:100]}")
+
+
+def _get_existing_quiz_characters(url: str, headers: dict) -> set[str]:
+    query = """
+        query {
+            quizBanks(where: { userId: { eq: "system" } }, limit: 10000) {
+                kanji { character }
+            }
+        }
+    """
+    result = _execute_graphql(url, headers, query)
+    rows = result.get("data", {}).get("quizBanks", [])
+    return {r["kanji"]["character"] for r in rows}
 
 
 def clear_system_quizzes(url: str, headers: dict):
-    """Delete all system user quizzes (distractors first, then quiz bank)."""
+    """Delete system user quizzes: distractors → quiz bank → user words."""
     print("\nClearing system quizzes ...")
 
-    # Delete distractors first (FK constraint)
-    total = 0
-    while True:
-        query = """
-            query {
-                quizDistractors(where: { userId: { eq: "system" } }, limit: 1000) { id }
-            }
-        """
-        result = _execute_graphql(url, headers, query)
-        rows = result.get("data", {}).get("quizDistractors", [])
-        if not rows:
-            break
-        ids = [r["id"] for r in rows]
-        for i in range(0, len(ids), 100):
-            batch = ids[i:i + 100]
-            id_list = ", ".join(f'"{uid}"' for uid in batch)
-            _execute_graphql(url, headers, f'mutation {{ quizDistractor_deleteMany(where: {{ id: {{ in: [{id_list}] }} }}) }}')
-        total += len(ids)
-    print(f"  Deleted {total} distractor rows.")
-
-    # Delete quiz bank
-    total = 0
-    while True:
-        query = """
-            query {
-                quizBanks(where: { userId: { eq: "system" } }, limit: 1000) { id }
-            }
-        """
-        result = _execute_graphql(url, headers, query)
-        rows = result.get("data", {}).get("quizBanks", [])
-        if not rows:
-            break
-        ids = [r["id"] for r in rows]
-        for i in range(0, len(ids), 100):
-            batch = ids[i:i + 100]
-            id_list = ", ".join(f'"{uid}"' for uid in batch)
-            _execute_graphql(url, headers, f'mutation {{ quizBank_deleteMany(where: {{ id: {{ in: [{id_list}] }} }}) }}')
-        total += len(ids)
-    print(f"  Deleted {total} quiz bank rows.")
+    for table, label in [("quizDistractors", "distractor"), ("quizBanks", "quiz bank"), ("userWordss", "user words")]:
+        total = 0
+        while True:
+            query = f'query {{ {table}(where: {{ userId: {{ eq: "system" }} }}, limit: 1000) {{ id }} }}'
+            result = _execute_graphql(url, headers, query)
+            rows = result.get("data", {}).get(table, [])
+            if not rows:
+                break
+            ids = [r["id"] for r in rows]
+            singular = table.rstrip("s")
+            for i in range(0, len(ids), 100):
+                batch = ids[i:i + 100]
+                id_list = ", ".join(f'"{uid}"' for uid in batch)
+                _execute_graphql(url, headers, f'mutation {{ {singular}_deleteMany(where: {{ id: {{ in: [{id_list}] }} }}) }}')
+            total += len(ids)
+        print(f"  Deleted {total} {label} rows.")
 
 
 # --- Checkpoint ---
@@ -383,32 +381,30 @@ def save_checkpoint(completed: set[str]):
 # --- Main ---
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate quizzes for JLPT kanji via Gemini")
+    parser = argparse.ArgumentParser(description="Generate word-centric quizzes for JLPT kanji via Gemini")
     parser.add_argument("--file", default="kanjidic2.xml", help="Path to kanjidic2.xml or .xml.gz")
-    parser.add_argument("--jlpt", type=int, required=True, choices=[1, 2, 3, 4, 5], help="JLPT level (5=N5 only, 4=N5+N4, etc.)")
+    parser.add_argument("--jlpt", type=int, required=True, choices=[1, 2, 3, 4, 5])
     parser.add_argument("--limit", type=int, default=None, help="Only include kanji with frequency rank <= this value")
-    parser.add_argument("--persist", action="store_true", help="Write quizzes to Data Connect")
-    parser.add_argument("--clear-and-persist", action="store_true", help="Clear existing system quizzes then write")
-    parser.add_argument("--prod", action="store_true", help="Target production")
-    parser.add_argument("--dry-run", action="store_true", help="Call Gemini but don't write to DB")
-    parser.add_argument("--resume", action="store_true", help="Skip kanji already in checkpoint or DB")
-    parser.add_argument("--delay", type=float, default=1.0, help="Seconds between Gemini calls (default: 1.0)")
+    parser.add_argument("--persist", action="store_true")
+    parser.add_argument("--clear-and-persist", action="store_true")
+    parser.add_argument("--prod", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--delay", type=float, default=1.0)
     args = parser.parse_args()
 
     kanji_list = parse_jlpt_kanji(args.file, args.jlpt, freq_limit=args.limit)
     if not kanji_list:
-        print("No kanji found. Check file path and JLPT level.")
+        print("No kanji found.")
         return
 
-    # Setup Gemini client
     load_dotenv()
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        print("Error: GEMINI_API_KEY not set. Add it to .env or environment.")
+        print("Error: GEMINI_API_KEY not set.")
         sys.exit(1)
     gemini_client = genai.Client(api_key=api_key)
 
-    # Setup Data Connect
     should_persist = args.persist or args.clear_and_persist
     url, headers = None, None
     if should_persist or args.resume:
@@ -417,43 +413,42 @@ def main():
     if args.clear_and_persist:
         clear_system_quizzes(url, headers)
 
-    # Determine which kanji to skip
     completed = load_checkpoint() if args.resume else set()
     if args.resume and url:
         db_existing = _get_existing_quiz_characters(url, headers)
         completed |= db_existing
-        print(f"Resuming: {len(completed)} kanji already done, {len(kanji_list) - len(completed)} remaining.")
+        print(f"Resuming: {len(completed)} kanji done, {len(kanji_list) - len(completed)} remaining.")
 
-    # Generate and persist
     total_cost = 0
+    total_words = 0
+    total_quizzes = 0
     errors = 0
     env_label = "production" if args.prod else "local emulator"
 
-    print(f"\nGenerating quizzes for {len(kanji_list)} kanji ...")
+    print(f"\nGenerating word-centric quizzes for {len(kanji_list)} kanji ...")
     if should_persist:
         print(f"Persisting to {env_label}")
-    if args.dry_run:
-        print("DRY RUN — will not write to DB")
 
     for i, kanji in enumerate(kanji_list):
         char = kanji["character"]
         if char in completed:
             continue
 
-        print(f"\n[{i + 1}/{len(kanji_list)}] {char} ({', '.join(kanji['meanings'][:3])})")
+        print(f"\n[{i + 1}/{len(kanji_list)}] {char}")
 
         try:
-            quizzes, cost = generate_quizzes_for_kanji(gemini_client, kanji)
+            words, cost = generate_words_and_quizzes(gemini_client, kanji)
             total_cost += cost
-            print(f"  Generated {len(quizzes)} quizzes (cost: ${cost / 1_000_000:.4f})")
+            print(f"  Got {len(words)} words (cost: ${cost / 1_000_000:.4f})")
         except Exception as e:
             print(f"  Gemini error: {e}")
             errors += 1
             continue
 
         if args.dry_run:
-            for q in quizzes:
-                print(f"    {q['quiz_type']}: {q['prompt'][:40]}... → {q['answer']}")
+            for w in words:
+                quizzes = w.get("quizzes", [])
+                print(f"    {w['word']} ({w['reading']}) — {w['meaning']} → {len(quizzes)} quizzes")
             completed.add(char)
             save_checkpoint(completed)
             time.sleep(args.delay)
@@ -463,36 +458,46 @@ def main():
             completed.add(char)
             continue
 
-        # Look up KanjiMaster ID
         km_id = _lookup_kanji_master_id(url, headers, char)
         if not km_id:
-            print(f"  Kanji '{char}' not found in KanjiMaster, skipping.")
+            print(f"  Kanji '{char}' not in KanjiMaster, skipping.")
             errors += 1
             continue
 
-        # Insert quizzes + distractors
-        quiz_errors = 0
-        for q in quizzes:
-            quiz_id = insert_quiz(url, headers, km_id, q)
-            if not quiz_id:
-                quiz_errors += 1
+        word_errors = 0
+        for w in words:
+            # Deduplicate: check if this word already exists as system word
+            word_id = _find_system_word(url, headers, w["word"])
+            if not word_id:
+                word_id = _insert_system_word(url, headers, w, km_id)
+            if not word_id:
+                word_errors += 1
                 continue
-            insert_distractor(url, headers, quiz_id, q.get("distractors", []))
+            total_words += 1
 
-        if quiz_errors == 0:
-            print(f"  Persisted 5 quizzes + 5 distractors")
+            for q in w.get("quizzes", []):
+                quiz_id = _insert_quiz(url, headers, km_id, word_id, q)
+                if quiz_id:
+                    _insert_distractor(url, headers, quiz_id, q.get("distractors", []))
+                    total_quizzes += 1
+                else:
+                    word_errors += 1
+
+        if word_errors == 0:
+            print(f"  Persisted {len(words)} words + quizzes")
             completed.add(char)
             save_checkpoint(completed)
         else:
-            print(f"  {quiz_errors} quiz insert errors for {char}")
+            print(f"  {word_errors} errors for {char}")
             errors += 1
 
         time.sleep(args.delay)
 
     print(f"\n{'=' * 50}")
     print(f"Done. {len(completed)} kanji processed, {errors} errors.")
+    print(f"Total: {total_words} words, {total_quizzes} quizzes")
     print(f"Total Gemini cost: ${total_cost / 1_000_000:.4f}")
-    print(f"Checkpoint saved to {CHECKPOINT_FILE}")
+    print(f"Checkpoint: {CHECKPOINT_FILE}")
 
 
 if __name__ == "__main__":

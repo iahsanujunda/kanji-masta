@@ -49,12 +49,34 @@ mutation InsertUserKanji(
   })
 }
 
+mutation InsertUserWord(
+  $userId: String!,
+  $word: String!,
+  $reading: String!,
+  $meaning: String!,
+  $kanjiIds: [UUID!]!,
+  $source: WordSource,
+  $discoveredViaKanjiId: UUID
+) @auth(level: NO_ACCESS) {
+  userWords_insert(data: {
+    userId: $userId,
+    word: $word,
+    reading: $reading,
+    meaning: $meaning,
+    kanjiIds: $kanjiIds,
+    source: $source,
+    discoveredViaKanjiId: $discoveredViaKanjiId
+  })
+}
+
 mutation InsertQuizGenerationJob(
   $userId: String!,
-  $kanjiId: UUID!
+  $kanjiId: UUID!,
+  $wordId: UUID
 ) @auth(level: NO_ACCESS) {
   quizGenerationJob_insert(data: {
     userId: $userId,
-    kanjiId: $kanjiId
+    kanjiId: $kanjiId,
+    wordId: $wordId
   })
 }

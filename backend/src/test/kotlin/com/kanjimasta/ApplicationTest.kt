@@ -32,7 +32,7 @@ fun Application.testModule() {
     val httpClient = HttpClient(CIO)
     val dcClient = DataConnectClient(httpClient, "http://localhost:9399/unused")
     val photoService = PhotoService(PhotoRepository(dcClient), httpClient, "http://localhost:5001", "test")
-    val kanjiService = KanjiService(KanjiRepository(dcClient), httpClient, "http://localhost:5001", "test")
+    val kanjiService = KanjiService(KanjiRepository(dcClient), PhotoRepository(dcClient), httpClient, "http://localhost:5001", "test")
     configureRouting(photoService, kanjiService)
 }
 

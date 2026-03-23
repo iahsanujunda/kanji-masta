@@ -63,6 +63,11 @@ def parse_kanjidic2(filepath: str, freq_limit: int | None = None) -> pd.DataFram
             freq_el = elem.find("misc/freq")
             frequency = int(freq_el.text) if freq_el is not None else None
 
+            # --- JLPT level (old system: 4=N5, 3=N4, 2=N3, 1=N2/N1) ---
+            jlpt_el = elem.find("misc/jlpt")
+            OLD_TO_NEW_JLPT = {4: 5, 3: 4, 2: 3, 1: 2}
+            jlpt = OLD_TO_NEW_JLPT.get(int(jlpt_el.text)) if jlpt_el is not None else None
+
             # --- Readings ---
             onyomi = [
                 r.text for r in elem.findall(
@@ -89,6 +94,7 @@ def parse_kanjidic2(filepath: str, freq_limit: int | None = None) -> pd.DataFram
             rows.append({
                 "character": literal,
                 "frequency": frequency,
+                "jlpt": jlpt,
                 "onyomi": onyomi,
                 "kunyomi": kunyomi,
                 "meanings": meanings,
@@ -209,6 +215,7 @@ def persist_to_dataconnect(df: pd.DataFrame, prod: bool = False, clear: bool = F
             "kunyomi": row["kunyomi"],
             "meanings": row["meanings"],
             "frequency": int(row["frequency"]) if pd.notna(row["frequency"]) else None,
+            "jlpt": int(row["jlpt"]) if pd.notna(row["jlpt"]) else None,
         }
         for _, row in df.iterrows()
     ]
@@ -222,13 +229,14 @@ def persist_to_dataconnect(df: pd.DataFrame, prod: bool = False, clear: bool = F
         data_entries = []
         for rec in batch:
             freq = rec["frequency"] if rec["frequency"] is not None else "null"
+            jlpt = rec["jlpt"] if rec["jlpt"] is not None else "null"
             onyomi = json.dumps(rec["onyomi"], ensure_ascii=False)
             kunyomi = json.dumps(rec["kunyomi"], ensure_ascii=False)
             meanings = json.dumps(rec["meanings"], ensure_ascii=False)
             char = rec["character"].replace("\\", "\\\\").replace('"', '\\"')
             data_entries.append(
                 f'{{ character: "{char}", onyomi: {onyomi}, kunyomi: {kunyomi}, '
-                f'meanings: {meanings}, frequency: {freq} }}'
+                f'meanings: {meanings}, frequency: {freq}, jlpt: {jlpt} }}'
             )
 
         data_literal = ",\n            ".join(data_entries)

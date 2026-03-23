@@ -44,6 +44,7 @@ type KanjiMaster @table {
   kunyomi: [String!]!
   meanings: [String!]!
   frequency: Int
+  jlpt: Int
 }
 
 # One row per kanji the user has interacted with

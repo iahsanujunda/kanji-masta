@@ -33,6 +33,23 @@ fun Route.kanjiRoutes(kanjiService: KanjiService) {
         }
     }
 
+    route("/api/onboarding") {
+        get("/kanji") {
+            val user = call.principal<FirebaseUser>()!!
+            val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 10
+            val result = kanjiService.getOnboardingKanji(user.uid, offset, limit)
+            call.respond(result)
+        }
+
+        post("/select") {
+            val user = call.principal<FirebaseUser>()!!
+            val request = call.receive<OnboardingSelectRequest>()
+            kanjiService.saveOnboardingSelections(user.uid, request.selections)
+            call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
+        }
+    }
+
     route("/api/words") {
         get("/list") {
             val user = call.principal<FirebaseUser>()!!

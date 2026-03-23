@@ -15,6 +15,7 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
 import TranslateIcon from "@mui/icons-material/Translate";
+import SpaIcon from "@mui/icons-material/Spa";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import PageHeader from "@/components/PageHeader";
@@ -166,13 +167,21 @@ export default function Home() {
         {loading ? (
           <Skeleton variant="rounded" height={160} sx={{ borderRadius: 4 }} />
         ) : kanjiLearning === 0 && wordCount === 0 ? (
-          /* No kanji yet — prompt to capture */
+          /* No kanji yet — onboarding prompt */
           <Paper elevation={4} sx={{ bgcolor: "#4338ca", color: "white", borderRadius: 4, p: 3, textAlign: "center" }}>
-            <CameraAltIcon sx={{ fontSize: 40, opacity: 0.7, mb: 1.5 }} />
-            <Typography fontWeight="bold" sx={{ mb: 0.5 }}>No quizzes yet</Typography>
-            <Typography variant="body2" sx={{ opacity: 0.7 }}>
-              Capture a photo of Japanese text to start learning kanji
+            <SpaIcon sx={{ fontSize: 40, opacity: 0.7, mb: 1.5 }} />
+            <Typography fontWeight="bold" sx={{ mb: 0.5 }}>Plant Your First Seeds</Typography>
+            <Typography variant="body2" sx={{ opacity: 0.7, mb: 2 }}>
+              Choose kanji you already know and ones you want to learn
             </Typography>
+            <Button
+              fullWidth
+              variant="contained"
+              onClick={() => navigate("/onboarding")}
+              sx={{ bgcolor: "white", color: "#4338ca", fontWeight: "bold", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "grey.100" } }}
+            >
+              Start Learning
+            </Button>
           </Paper>
         ) : hasActiveSlot && slotRemaining > 0 ? (
           /* Active slot with quizzes remaining */

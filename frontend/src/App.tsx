@@ -10,6 +10,7 @@ import Quiz from "@/pages/Quiz";
 import KanjiList from "@/pages/KanjiList";
 import Dictionary from "@/pages/Dictionary";
 import AddKanji from "@/pages/AddKanji";
+import Onboarding from "@/pages/Onboarding";
 
 export default function App() {
   const { user, isLoading } = useAuth();
@@ -81,6 +82,14 @@ export default function App() {
         element={
           <ProtectedRoute user={user} isLoading={isLoading}>
             <AddKanji />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/onboarding"
+        element={
+          <ProtectedRoute user={user} isLoading={isLoading}>
+            <Onboarding />
           </ProtectedRoute>
         }
       />

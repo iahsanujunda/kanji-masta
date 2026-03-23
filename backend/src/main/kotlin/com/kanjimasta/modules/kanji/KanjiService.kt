@@ -97,6 +97,58 @@ class KanjiService(
         return kanjiRepository.getUserWords(userId, query, offset, limit)
     }
 
+    suspend fun getOnboardingKanji(userId: String, offset: Int, limit: Int): OnboardingResponse {
+        val (items, hasMore) = kanjiRepository.getOnboardingKanji(userId, offset, limit)
+        return OnboardingResponse(kanji = items, hasMore = hasMore)
+    }
+
+    suspend fun saveOnboardingSelections(userId: String, selections: List<KanjiSelection>) {
+        val learningIds = mutableListOf<String>()
+        for (selection in selections) {
+            kanjiRepository.insertUserKanji(
+                userId = userId,
+                kanjiMasterId = selection.kanjiMasterId,
+                status = selection.status,
+                sourcePhotoId = null,
+            )
+            if (selection.status == "learning") {
+                learningIds.add(selection.kanjiMasterId)
+            }
+        }
+
+        // Process words + quizzes in background (same as photo session flow)
+        if (learningIds.isNotEmpty()) {
+            scope.launch {
+                for (kanjiMasterId in learningIds) {
+                    // Find system words for this kanji and clone them
+                    val systemWords = findSystemWordsForKanji(kanjiMasterId)
+                    var jobsEnqueued = false
+                    for (sw in systemWords) {
+                        var wordId = kanjiRepository.findUserWordByWord(userId, sw.word)
+                        if (wordId == null) {
+                            wordId = kanjiRepository.insertUserWord(userId, sw.word, sw.reading, sw.meaning, kanjiMasterId)
+                        }
+                        if (wordId == null) continue
+
+                        val systemQuizzes = kanjiRepository.getSystemQuizzesByWord(sw.word)
+                        if (systemQuizzes.isNotEmpty()) {
+                            kanjiRepository.cloneQuizzesToUser(userId, kanjiMasterId, wordId, systemQuizzes)
+                        } else {
+                            kanjiRepository.insertQuizGenerationJob(userId, kanjiMasterId, wordId)
+                            jobsEnqueued = true
+                        }
+                    }
+                    if (jobsEnqueued) triggerQuizGeneration()
+                }
+                logger.info("Onboarding quiz processing complete for {} learning kanji", learningIds.size)
+            }
+        }
+    }
+
+    private suspend fun findSystemWordsForKanji(kanjiMasterId: String): List<ExampleWord> {
+        return kanjiRepository.getSystemWordsForKanji(kanjiMasterId)
+    }
+
     private suspend fun loadExampleWords(sessionId: String): Map<String, List<ExampleWord>> {
         val session = photoRepository.getSession(sessionId) ?: return emptyMap()
         val rawResponse = session.rawAiResponse ?: return emptyMap()

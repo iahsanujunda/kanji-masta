@@ -42,3 +42,33 @@ data class WordListResponse(
     val total: Int,
     val hasMore: Boolean,
 )
+
+@Serializable
+data class SeenAs(
+    val word: String,
+    val reading: String,
+    val meaning: String,
+)
+
+@Serializable
+data class OnboardingKanjiItem(
+    val kanjiMasterId: String,
+    val character: String,
+    val onyomi: List<String> = emptyList(),
+    val kunyomi: List<String> = emptyList(),
+    val meanings: List<String> = emptyList(),
+    val jlpt: Int? = null,
+    val frequency: Int? = null,
+    val seenAs: SeenAs? = null,
+)
+
+@Serializable
+data class OnboardingResponse(
+    val kanji: List<OnboardingKanjiItem>,
+    val hasMore: Boolean,
+)
+
+@Serializable
+data class OnboardingSelectRequest(
+    val selections: List<KanjiSelection>,
+)

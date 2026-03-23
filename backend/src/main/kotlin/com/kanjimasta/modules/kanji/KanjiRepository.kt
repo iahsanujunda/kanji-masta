@@ -192,6 +192,110 @@ class KanjiRepository(private val dc: DataConnectClient) {
         return result["data"]?.jsonObject?.get("quizGenerationJobs")?.jsonArray?.size ?: 0
     }
 
+    // --- Onboarding ---
+
+    suspend fun getOnboardingKanji(userId: String, offset: Int, limit: Int): Pair<List<OnboardingKanjiItem>, Boolean> {
+        // Get all KanjiMaster with JLPT, sorted by jlpt ASC then frequency ASC
+        val fetchLimit = offset + limit + 1 // +1 to check hasMore
+        val query = """
+            query {
+                kanjiMasters(
+                    where: { jlpt: { isNull: false } },
+                    orderBy: [{ jlpt: ASC }, { frequency: ASC }],
+                    limit: $fetchLimit
+                ) { id character onyomi kunyomi meanings jlpt frequency }
+            }
+        """.trimIndent()
+        val result = dc.executeGraphql(query)
+        val allKanji = result["data"]?.jsonObject?.get("kanjiMasters")?.jsonArray ?: return emptyList<OnboardingKanjiItem>() to false
+
+        // Get user's existing kanji IDs to filter out
+        val userKanjiQuery = """
+            query {
+                userKanjis(where: { userId: { eq: "${userId.escape()}" } }, limit: 1000) { kanjiId }
+            }
+        """.trimIndent()
+        val userResult = dc.executeGraphql(userKanjiQuery)
+        val existingIds = userResult["data"]?.jsonObject?.get("userKanjis")?.jsonArray
+            ?.mapNotNull { it.jsonObject["kanjiId"]?.jsonPrimitive?.contentOrNull }
+            ?.toSet() ?: emptySet()
+
+        // Filter out already-added kanji
+        val available = allKanji.filter { row ->
+            val id = row.jsonObject["id"]?.jsonPrimitive?.content ?: ""
+            id !in existingIds
+        }
+
+        val paged = available.drop(offset).take(limit)
+        val hasMore = available.size > offset + limit
+
+        val items = paged.map { row ->
+            val obj = row.jsonObject
+            val kmId = obj["id"]?.jsonPrimitive?.content ?: ""
+            OnboardingKanjiItem(
+                kanjiMasterId = kmId,
+                character = obj["character"]?.jsonPrimitive?.content ?: "",
+                onyomi = obj["onyomi"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
+                kunyomi = obj["kunyomi"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
+                meanings = obj["meanings"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
+                jlpt = obj["jlpt"]?.jsonPrimitive?.intOrNull,
+                frequency = obj["frequency"]?.jsonPrimitive?.intOrNull,
+                seenAs = getSystemWordForKanji(kmId),
+            )
+        }
+
+        return items to hasMore
+    }
+
+    private suspend fun getSystemWordForKanji(kanjiMasterId: String): SeenAs? {
+        // Look up one system UserWords row whose kanjiIds contains this kanji
+        val query = """
+            query {
+                userWordss(where: { userId: { eq: "system" } }, limit: 50) {
+                    word reading meaning kanjiIds
+                }
+            }
+        """.trimIndent()
+        val result = dc.executeGraphql(query)
+        val words = result["data"]?.jsonObject?.get("userWordss")?.jsonArray ?: return null
+
+        // Find first word that contains this kanjiMasterId
+        for (w in words) {
+            val obj = w.jsonObject
+            val ids = obj["kanjiIds"]?.jsonArray?.map { it.jsonPrimitive.content } ?: continue
+            if (kanjiMasterId in ids) {
+                return SeenAs(
+                    word = obj["word"]?.jsonPrimitive?.content ?: "",
+                    reading = obj["reading"]?.jsonPrimitive?.content ?: "",
+                    meaning = obj["meaning"]?.jsonPrimitive?.content ?: "",
+                )
+            }
+        }
+        return null
+    }
+
+    suspend fun getSystemWordsForKanji(kanjiMasterId: String): List<ExampleWord> {
+        val query = """
+            query {
+                userWordss(where: { userId: { eq: "system" } }, limit: 100) {
+                    word reading meaning kanjiIds
+                }
+            }
+        """.trimIndent()
+        val result = dc.executeGraphql(query)
+        val words = result["data"]?.jsonObject?.get("userWordss")?.jsonArray ?: return emptyList()
+        return words.mapNotNull { w ->
+            val obj = w.jsonObject
+            val ids = obj["kanjiIds"]?.jsonArray?.map { it.jsonPrimitive.content } ?: return@mapNotNull null
+            if (kanjiMasterId !in ids) return@mapNotNull null
+            ExampleWord(
+                word = obj["word"]?.jsonPrimitive?.content ?: "",
+                reading = obj["reading"]?.jsonPrimitive?.content ?: "",
+                meaning = obj["meaning"]?.jsonPrimitive?.content ?: "",
+            )
+        }
+    }
+
     // --- List queries ---
 
     suspend fun getAllUserKanji(userId: String): List<KanjiListItem> {

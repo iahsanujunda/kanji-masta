@@ -37,10 +37,10 @@ export default function KanjiList() {
   }, [config.min, config.max]);
 
   const bgTransform = {
-    canopy: "scale(3.5) translate(45%, 25%)",
-    trunk: "scale(3.5) translate(45%, -15%)",
-    roots: "scale(3.5) translate(45%, -55%)",
-  }[zone] || "scale(3.5) translate(45%, 25%)";
+    canopy: "scale(1.8) translate(30%, 10%)",
+    trunk: "scale(1.8) translate(30%, -10%)",
+    roots: "scale(1.8) translate(30%, -35%)",
+  }[zone] || "scale(1.8) translate(30%, 10%)";
 
   return (
     <Box
@@ -57,11 +57,11 @@ export default function KanjiList() {
     >
       {/* Zoomed tree background */}
       <Box sx={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none" }}>
-        <Box sx={{ position: "absolute", inset: 0, transform: bgTransform, opacity: 0.4, filter: "blur(1px)", transformOrigin: "center" }}>
+        <Box sx={{ position: "absolute", inset: 0, transform: bgTransform, opacity: 0.5, filter: "blur(1px)", transformOrigin: "center" }}>
           <TreeBackground />
         </Box>
-        <Box sx={{ position: "absolute", inset: 0, background: "linear-gradient(to right, #0a0a0f, rgba(10,10,15,0.8), rgba(10,10,15,0.1))" }} />
-        <Box sx={{ position: "absolute", inset: 0, background: "linear-gradient(to top, #0a0a0f, transparent, transparent)" }} />
+        <Box sx={{ position: "absolute", inset: 0, background: "linear-gradient(to right, #0a0a0f 10%, rgba(10,10,15,0.5) 50%, rgba(10,10,15,0.1) 100%)" }} />
+        <Box sx={{ position: "absolute", inset: 0, background: "linear-gradient(to top, #0a0a0f 5%, transparent 40%)" }} />
       </Box>
 
       <PageHeader

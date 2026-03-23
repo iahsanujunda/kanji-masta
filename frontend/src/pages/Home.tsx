@@ -165,6 +165,15 @@ export default function Home() {
         {/* Quiz slot card */}
         {loading ? (
           <Skeleton variant="rounded" height={160} sx={{ borderRadius: 4 }} />
+        ) : kanjiLearning === 0 && wordCount === 0 ? (
+          /* No kanji yet — prompt to capture */
+          <Paper elevation={4} sx={{ bgcolor: "#4338ca", color: "white", borderRadius: 4, p: 3, textAlign: "center" }}>
+            <CameraAltIcon sx={{ fontSize: 40, opacity: 0.7, mb: 1.5 }} />
+            <Typography fontWeight="bold" sx={{ mb: 0.5 }}>No quizzes yet</Typography>
+            <Typography variant="body2" sx={{ opacity: 0.7 }}>
+              Capture a photo of Japanese text to start learning kanji
+            </Typography>
+          </Paper>
         ) : hasActiveSlot && slotRemaining > 0 ? (
           /* Active slot with quizzes remaining */
           <Paper elevation={4} sx={{ bgcolor: "#4338ca", color: "white", borderRadius: 4, p: 3 }}>

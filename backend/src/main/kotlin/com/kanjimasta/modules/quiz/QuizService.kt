@@ -94,9 +94,16 @@ class QuizService(private val quizRepository: QuizRepository) {
 
             val quiz = quizRepository.getQuizForWord(userId, wordId, quizType)
                 ?: quizRepository.getAnyQuizForWord(userId, wordId)
-                ?: continue
+            if (quiz == null) {
+                logger.debug("No quiz found for user={} word='{}' type={}", userId, wordText, quizType)
+                continue
+            }
 
             val quizId = quiz["id"]?.jsonPrimitive?.content ?: continue
+            val actualType = quiz["quizType"]?.jsonPrimitive?.content ?: quizType
+            if (actualType != quizType) {
+                logger.warn("Wanted {} but got {} for word='{}' (fallback)", quizType, actualType, wordText)
+            }
             val answer = quiz["answer"]?.jsonPrimitive?.content ?: ""
 
             // Resolve distractors

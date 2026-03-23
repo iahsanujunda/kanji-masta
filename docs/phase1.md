@@ -1325,28 +1325,355 @@ After 2 weeks of real usage, query `QuizServe` to check:
 
 # Iteration 6 — Challenge Sessions (Consolidation + Maturity)
 
-Two challenge types that sit outside the daily slot. Both trigger automatically, sit pending until started, never expire, and do not count against slot allowance.
+Two types of challenge session that sit outside the daily slot queue. Both are triggered automatically, sit pending until the user starts them, never expire, and do not count against slot allowance.
 
-> _Full spec unchanged from previously designed iteration 6 — consolidation and maturity challenges. One update: challenge triggers now check **word familiarity** not kanji familiarity, since familiarity is now tracked at the word level._
+| | Consolidation | Maturity |
+|---|---|---|
+| Trigger | 5 **words** cross familiarity 2 or 4 within 7 days | Every 10 **kanji** reach derived familiarity 5 |
+| Quiz pool | `meaning_recall` + `reading_recognition` from QuizBank for those words' kanji | Gemini-generated multi-kanji sentences |
+| Length | Up to 10 questions (2 types × 5 words) | 5 questions |
+| Affects familiarity? | Yes — wrong answer → word familiarity -1, kanji familiarity recomputed | No — purely evaluative |
+| Tone | Checkpoint — real gate before progressing | Celebration — showcase of how far you've come |
 
-**Updated trigger check:**
+> **Word vs kanji tracking:** familiarity is tracked at the word level (`UserWords.familiarity`). Kanji familiarity is a derived cached value (minimum of top 3 words). Consolidation triggers on word familiarity crossings — you're consolidating vocabulary. Maturity triggers on derived kanji familiarity milestones — reaching kanji mastery is the celebration unit.
 
-```kotlin
-// Consolidation — fires when 5 words cross familiarity 2 or 4 within 7 days
-// (was: 5 kanji — now: 5 words)
-val recentWords = userWordsRepo.findRecentlyReachedFamiliarity(
-    userId = userId,
-    familiarity = newWordFamiliarity,
-    withinDays = 7,
-    excludeAlreadyChallenged = true
-)
-if (recentWords.size >= 5) { ... }
+---
 
-// Maturity — fires when derived UserKanji.familiarity reaches 5 for 10th kanji
-// (kanji familiarity is still the milestone marker — it represents overall mastery)
-val matureKanjiCount = userKanjiRepo.countByFamiliarity(userId, 5)
+## 6.1 Schema Updates
+
+Add `ChallengeType` and `ConsolidationTier` enums plus new tables in `dataconnect/schema/schema.gql`:
+
+```graphql
+enum ChallengeType { CONSOLIDATION, MATURITY }
+enum ConsolidationTier { FAMILIARITY_2, FAMILIARITY_4 }
+
+type ChallengeSession @table {
+  id: UUID! @default(expr: "uuidV4()")
+  userId: String!
+  type: ChallengeType!
+  tier: ConsolidationTier          # CONSOLIDATION only
+  milestone: Int                   # MATURITY only — mature kanji count at trigger (10, 20, 30...)
+  wordIds: [UUID!]!                # UserWords IDs involved (CONSOLIDATION)
+  kanjiIds: [UUID!]!               # KanjiMaster IDs involved (both types)
+  quizOrder: [UUID!]!              # pre-computed interleaved QuizBank IDs (CONSOLIDATION)
+  generatedQuestions: String       # JSON — Gemini sentences (MATURITY only)
+  triggeredAt: Timestamp!
+  completedAt: Timestamp
+  score: Int                       # correct out of total
+  affectsFamiliarity: Boolean!     # true for CONSOLIDATION, false for MATURITY
+}
+
+type ChallengeQuizServe @table {
+  id: UUID! @default(expr: "uuidV4()")
+  challengeSession: ChallengeSession!
+  userId: String!
+  quizId: UUID                     # QuizBank ID (CONSOLIDATION) or null (MATURITY)
+  questionIndex: Int!              # position in challenge (0-based)
+  correct: Boolean!
+  answeredAt: Timestamp! @default(expr: "request.time")
+}
 ```
 
-Consolidation triggers on word familiarity crossings — you're consolidating vocabulary, not abstract kanji. Maturity triggers on kanji familiarity milestones — reaching kanji mastery is the celebration milestone.
+> `quizOrder` stores the pre-computed interleaved sequence so order is consistent if the user exits and resumes mid-challenge.
 
-Everything else in iteration 6 (interleaving, Gemini prompt, schema, UI, API) remains as previously specified.
+---
+
+## 6.2 Trigger Logic
+
+Both triggers fire inside `POST /api/quiz/result` after the SM-2 update. Called in this order:
+
+```kotlin
+// POST /api/quiz/result — after updating word familiarity + recomputing kanji familiarity
+checkConsolidationTrigger(userId, newWordFamiliarity)   // fires at word familiarity 2 and 4
+checkMaturityTrigger(userId, kanjiId)                   // fires when derived kanji familiarity reaches 5
+checkRegenTriggers(userId, quizId, newWordFamiliarity)  // existing — distractor regen
+```
+
+**Priority when multiple challenges pending:**
+`CONSOLIDATION (tier 2)` → `CONSOLIDATION (tier 4)` → `MATURITY`
+
+Consolidation shown first because it affects familiarity progression — better to consolidate before stress-testing.
+
+### Consolidation Trigger
+
+Fires when 5 words cross word familiarity 2 or 4 within a 7-day rolling window.
+
+```kotlin
+val CONSOLIDATION_TRIGGERS = listOf(2, 4)
+
+fun checkConsolidationTrigger(userId: String, newWordFamiliarity: Int) {
+    if (newWordFamiliarity !in CONSOLIDATION_TRIGGERS) return
+
+    // Find words that recently crossed this familiarity threshold
+    val recentWords = userWordsRepo.findRecentlyReachedFamiliarity(
+        userId = userId,
+        familiarity = newWordFamiliarity,
+        withinDays = 7,
+        excludeAlreadyChallenged = true   // not already used in a CONSOLIDATION at this tier
+    )
+
+    if (recentWords.size >= 5) {
+        val group = recentWords.takeLast(5)   // 5 most recent
+
+        // Collect the kanji these words contain
+        val kanjiIds = group.flatMap { it.kanjiIds }.distinct()
+
+        // Pre-compute interleaved quiz order from QuizBank
+        val quizOrder = buildInterleavedOrder(group, newWordFamiliarity)
+
+        challengeRepo.createConsolidation(
+            userId = userId,
+            wordIds = group.map { it.id },
+            kanjiIds = kanjiIds,
+            quizOrder = quizOrder,
+            tier = if (newWordFamiliarity == 2) ConsolidationTier.FAMILIARITY_2
+                   else ConsolidationTier.FAMILIARITY_4
+        )
+    }
+}
+```
+
+### Maturity Trigger
+
+Fires when derived `UserKanji.familiarity` reaches 5 for every 10th kanji. Kanji familiarity is the milestone marker — it represents overall vocabulary mastery around that kanji.
+
+```kotlin
+fun checkMaturityTrigger(userId: String, kanjiId: UUID) {
+    // Only check if derived kanji familiarity just reached 5
+    val kanjiWords = userWordsRepo.findByKanjiId(userId, kanjiId)
+    val derivedFamiliarity = computeKanjiFamiliarity(kanjiWords)
+    if (derivedFamiliarity != 5) return
+
+    val matureKanjiCount = userKanjiRepo.countByFamiliarity(userId, familiarity = 5)
+    val lastMilestone = challengeRepo.lastMaturityMilestone(userId) ?: 0
+
+    if (matureKanjiCount >= lastMilestone + 10) {
+        val matureKanji = userKanjiRepo.findByFamiliarity(userId, familiarity = 5)
+        val unlockedWords = userWordsRepo.findUnlocked(userId)
+
+        val sessionId = challengeRepo.createMaturity(
+            userId = userId,
+            milestone = matureKanjiCount,
+            kanjiIds = matureKanji.map { it.kanjiId }
+        )
+
+        // Fire-and-forget — questions generated async, stored before user opens challenge
+        firebaseFunction.call("generate_challenge", mapOf(
+            "challengeSessionId" to sessionId,
+            "matureKanji" to matureKanji.map { it.character },
+            "unlockedWords" to unlockedWords.map { it.word }
+        ))
+    }
+}
+```
+
+---
+
+## 6.3 Consolidation — Interleaving Mechanism
+
+Quiz types selected: `meaning_recall` + `reading_recognition` only — the two lowest tiers, cementing foundation skills before the word progresses further.
+
+**Quiz source:** `QuizBank` rows where `wordMasterId` matches one of the 5 words' `WordMaster` references. These are the global shared quiz rows — no per-user generation needed.
+
+**Ordering — spaced interleave by type:**
+
+All `meaning_recall` quizzes first (random word order), then all `reading_recognition` quizzes (different random order). Same cognitive skill, varied stimuli — the most effective interleaving pattern for discrimination learning.
+
+```
+Round 1 — meaning_recall (5 quizzes, random word order):
+  電話 → 電車 → 電気 → 充電 → 電池
+
+Round 2 — reading_recognition (5 quizzes, different random order):
+  電池 → 充電 → 電車 → 電話 → 電気
+```
+
+```kotlin
+fun buildInterleavedOrder(words: List<UserWord>, familiarity: Int): List<UUID> {
+    val quizTypes = listOf(QuizType.MEANING_RECALL, QuizType.READING_RECOGNITION)
+
+    return quizTypes.flatMap { type ->
+        val wordMasterIds = words.map { it.wordMasterId }
+        val quizzes = quizBankRepo.findByWordMasterIdsAndType(
+            wordMasterIds = wordMasterIds,
+            quizType = type
+        )
+        quizzes.shuffled().map { it.id }
+    }
+}
+```
+
+**Familiarity effect during consolidation:**
+
+- Correct answer → no familiarity change, `UserWords.nextReview` refreshed, `UserKanji.familiarity` recomputed
+- Wrong answer → `UserWords.familiarity - 1` on that specific word, `nextReview = tomorrow`, `UserKanji.familiarity` recomputed
+  - Word drops below the consolidation threshold
+  - Re-enters daily slot queue, progresses naturally back to familiarity 2 or 4
+  - When 5 words group up again at that threshold, a new consolidation triggers automatically
+
+---
+
+## 6.4 Maturity Challenge — Gemini Generation
+
+Triggered async when the 10th (20th, 30th...) kanji reaches derived familiarity 5. Questions generated by Firebase Function `generate_challenge` and stored in `ChallengeSession.generatedQuestions` before the user opens the challenge. No Gemini call at open time.
+
+**Gemini Prompt:**
+
+```
+You are generating a celebration challenge for a Japanese learner living in Japan.
+They have mastered these kanji: {matureKanji}
+They have also encountered these compound words: {unlockedWords}
+
+Generate exactly 5 challenge questions. Each question is a casual Japanese sentence
+containing at least 2 kanji from the mastered list. The learner must read the sentence
+and provide the full English meaning.
+
+This is a celebration — sentences should feel rewarding to read, like something
+they would actually encounter in daily life in Japan.
+
+Rules:
+- Each sentence must use at least 2 kanji from the mastered list
+- Use compound words from their list where natural
+- Casual spoken Japanese only — no keigo, no ます/です
+- No furigana anywhere — full recall required
+- Sentences should reflect real daily life: trains, shops, restaurants, weather, friends
+- Answer is the full English meaning of the sentence
+- Explanation highlights which kanji appeared and why the sentence works
+
+Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
+[
+  {
+    "prompt": "駅で急行待ってたら電車止まっちゃった。",
+    "targetKanji": ["急行", "電車"],
+    "answer": "I was waiting for the express at the station and the train stopped.",
+    "explanation": "急行 (express) + 電車 (train) — both learned kanji in a real station scenario"
+  }
+]
+```
+
+**Response stored in `ChallengeSession.generatedQuestions`** as a JSON string. Parsed at open time by the frontend.
+
+---
+
+## 6.5 Firebase Function: `generate_challenge`
+
+HTTP trigger in `functions/main.py`. Called fire-and-forget from Ktor when a maturity challenge is created.
+
+```python
+@https_fn.on_request()
+def generate_challenge(req: https_fn.Request) -> https_fn.Response:
+    data = req.get_json()
+    session_id = data["challengeSessionId"]
+    mature_kanji = data["matureKanji"]      # ["電", "車", "東", ...]
+    unlocked_words = data["unlockedWords"]  # ["電車", "急行", ...]
+
+    prompt = build_challenge_prompt(mature_kanji, unlocked_words)
+
+    response = gemini_client.generate_content(
+        prompt,
+        generation_config={"response_mime_type": "application/json"}
+    )
+
+    questions_json = response.text
+    cost = extract_cost(response.usage_metadata)
+
+    data_connect.update_challenge_session(
+        session_id=session_id,
+        generated_questions=questions_json,
+        cost_microdollars=cost
+    )
+
+    return https_fn.Response("ok", status=200)
+```
+
+---
+
+## 6.6 API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/challenge/pending` | Returns highest-priority pending challenge with type + metadata |
+| `GET` | `/api/challenge/{id}` | Returns full challenge — quiz list or generated questions |
+| `POST` | `/api/challenge/{id}/result` | Submit one answer — updates word familiarity if CONSOLIDATION |
+| `POST` | `/api/challenge/{id}/complete` | Mark challenge done, store final score |
+
+**GET /api/challenge/pending response:**
+
+```json
+{
+  "challenge": {
+    "id": "uuid",
+    "type": "CONSOLIDATION",
+    "tier": "FAMILIARITY_2",
+    "wordCount": 5,
+    "questionCount": 10,
+    "triggeredAt": "2026-03-23T..."
+  }
+}
+```
+
+Returns `{ "challenge": null }` when nothing pending.
+
+**POST /api/challenge/{id}/result:**
+
+```json
+{ "quizId": "uuid", "correct": true }
+```
+
+- CONSOLIDATION + wrong → `UserWords.familiarity - 1`, `nextReview = tomorrow`, recompute `UserKanji.familiarity`
+- CONSOLIDATION + correct → `UserWords.nextReview` refreshed, no familiarity change, recompute `UserKanji.familiarity`
+- MATURITY → no familiarity effect either direction
+
+---
+
+## 6.7 React UI
+
+**Home screen badge** — shown when a pending challenge exists. Priority order determines which badge shows if multiple are pending.
+
+```
+┌─────────────────────────────────────┐
+│  ⚡ Consolidation Ready             │
+│  5 words to review · 10 questions   │
+│  [ Start Challenge ]                │
+└─────────────────────────────────────┘
+```
+
+For maturity:
+```
+┌─────────────────────────────────────┐
+│  🎉 10 Kanji Mastered!              │
+│  Your celebration challenge awaits  │
+│  [ Take Challenge ]                 │
+└─────────────────────────────────────┘
+```
+
+**Challenge screen** — separate from quiz slot UI, same card components:
+
+- CONSOLIDATION: standard quiz cards (`meaning_recall` + `reading_recognition`) in pre-computed `quizOrder`
+- MATURITY: sentence card only — full Japanese sentence, user types English meaning
+- Both: progress bar, no timer, exit allowed at any time
+- Summary on completion: score breakdown per word, which ones were knocked back (CONSOLIDATION)
+
+**Exit and resume** — `quizOrder` stores the full pre-computed sequence. Progress tracked by counting `ChallengeQuizServe` rows for this session. Resuming picks up from `questionIndex = completedCount`.
+
+---
+
+## Definition of Done
+
+- [ ] `ChallengeType`, `ConsolidationTier` enums added to schema
+- [ ] `ChallengeSession` added with `wordIds`, `kanjiIds`, `tier`, `quizOrder`, `generatedQuestions`, `affectsFamiliarity`
+- [ ] `ChallengeQuizServe` table added to schema
+- [ ] `checkConsolidationTrigger` fires at **word** familiarity 2 and 4 crossings
+- [ ] `checkMaturityTrigger` fires when **derived kanji** familiarity reaches 5 for every 10th kanji
+- [ ] Consolidation uses words' `WordMaster` to find shared `QuizBank` rows
+- [ ] Consolidation quiz order: all `meaning_recall` then all `reading_recognition`, each round independently shuffled
+- [ ] Consolidation wrong answer → `UserWords.familiarity - 1`, recomputes `UserKanji.familiarity`
+- [ ] Consolidation correct answer → `UserWords.nextReview` refreshed only
+- [ ] Maturity questions generated by `generate_challenge` Firebase Function (fire-and-forget)
+- [ ] Maturity questions stored in `ChallengeSession.generatedQuestions` before user opens challenge
+- [ ] Maturity has no familiarity effect either direction
+- [ ] `GET /api/challenge/pending` returns correct priority ordering
+- [ ] Challenge UI separate from daily slot — does not consume slot allowance
+- [ ] Exit and resume works — `questionIndex` tracked via `ChallengeQuizServe` count
+- [ ] Home screen badge shows correct type and tone (checkpoint vs celebration)
+- [ ] Summary screen shows per-word breakdown on completion
+- [ ] Score stored in `ChallengeSession.score`

@@ -22,11 +22,9 @@ class KanjiService(
     private val scope = CoroutineScope(Dispatchers.IO)
 
     suspend fun saveSession(userId: String, request: SaveSessionRequest) {
-        var jobsEnqueued = false
+        val learningKanjiIds = mutableListOf<String>()
 
-        // Read example words from PhotoSession for word creation
-        val exampleWordsByKanji = loadExampleWords(request.sessionId)
-
+        // Fast path: insert UserKanji rows only (< 1s total)
         for (selection in request.selections) {
             kanjiRepository.insertUserKanji(
                 userId = userId,
@@ -34,34 +32,48 @@ class KanjiService(
                 status = selection.status,
                 sourcePhotoId = request.sessionId,
             )
-
             if (selection.status == "learning") {
-                val exampleWords = exampleWordsByKanji[selection.kanjiMasterId] ?: emptyList()
+                learningKanjiIds.add(selection.kanjiMasterId)
+            }
+        }
 
-                for (ew in exampleWords) {
-                    // Create UserWord (or find existing)
-                    var wordId = kanjiRepository.findUserWordByWord(userId, ew.word)
-                    if (wordId == null) {
-                        wordId = kanjiRepository.insertUserWord(
-                            userId = userId,
-                            word = ew.word,
-                            reading = ew.reading,
-                            meaning = ew.meaning,
-                            kanjiMasterId = selection.kanjiMasterId,
-                        )
-                    }
-                    if (wordId == null) continue
+        // Heavy work in background: create words + clone/generate quizzes
+        if (learningKanjiIds.isNotEmpty()) {
+            val sessionId = request.sessionId
+            scope.launch {
+                processWordsAndQuizzes(userId, sessionId, learningKanjiIds)
+            }
+        }
+    }
 
-                    // Check for system quizzes by word text
-                    val systemQuizzes = kanjiRepository.getSystemQuizzesByWord(ew.word)
-                    if (systemQuizzes.isNotEmpty()) {
-                        logger.info("Cloning {} system quizzes for word '{}'", systemQuizzes.size, ew.word)
-                        kanjiRepository.cloneQuizzesToUser(userId, selection.kanjiMasterId, wordId, systemQuizzes)
-                    } else {
-                        logger.info("No system quizzes for word '{}', enqueueing job", ew.word)
-                        kanjiRepository.insertQuizGenerationJob(userId, selection.kanjiMasterId, wordId)
-                        jobsEnqueued = true
-                    }
+    private suspend fun processWordsAndQuizzes(userId: String, sessionId: String, kanjiIds: List<String>) {
+        val exampleWordsByKanji = loadExampleWords(sessionId)
+        var jobsEnqueued = false
+
+        for (kanjiMasterId in kanjiIds) {
+            val exampleWords = exampleWordsByKanji[kanjiMasterId] ?: emptyList()
+
+            for (ew in exampleWords) {
+                var wordId = kanjiRepository.findUserWordByWord(userId, ew.word)
+                if (wordId == null) {
+                    wordId = kanjiRepository.insertUserWord(
+                        userId = userId,
+                        word = ew.word,
+                        reading = ew.reading,
+                        meaning = ew.meaning,
+                        kanjiMasterId = kanjiMasterId,
+                    )
+                }
+                if (wordId == null) continue
+
+                val systemQuizzes = kanjiRepository.getSystemQuizzesByWord(ew.word)
+                if (systemQuizzes.isNotEmpty()) {
+                    logger.info("Cloning {} system quizzes for word '{}'", systemQuizzes.size, ew.word)
+                    kanjiRepository.cloneQuizzesToUser(userId, kanjiMasterId, wordId, systemQuizzes)
+                } else {
+                    logger.info("No system quizzes for word '{}', enqueueing job", ew.word)
+                    kanjiRepository.insertQuizGenerationJob(userId, kanjiMasterId, wordId)
+                    jobsEnqueued = true
                 }
             }
         }
@@ -69,6 +81,8 @@ class KanjiService(
         if (jobsEnqueued) {
             triggerQuizGeneration()
         }
+
+        logger.info("Background word+quiz processing complete for {} kanji", kanjiIds.size)
     }
 
     suspend fun getPendingJobCount(userId: String): Int {

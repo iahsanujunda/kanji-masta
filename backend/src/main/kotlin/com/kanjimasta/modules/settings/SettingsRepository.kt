@@ -39,6 +39,10 @@ class SettingsRepository(private val dc: DataConnectClient) {
                 })
             }
         """.trimIndent()
-        dc.executeGraphql(query)
+        val result = dc.executeGraphql(query)
+        val errors = result["errors"]?.jsonArray
+        if (errors != null && errors.isNotEmpty()) {
+            org.slf4j.LoggerFactory.getLogger("settings").error("Settings upsert failed: {}", errors)
+        }
     }
 }

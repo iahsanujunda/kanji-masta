@@ -20,6 +20,15 @@ import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import PageHeader from "@/components/PageHeader";
 import { apiFetch } from "@/lib/api";
 
+function formatTimeLeft(endDate: Date): string {
+  const diffMs = endDate.getTime() - Date.now();
+  if (diffMs <= 0) return "expired";
+  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+  const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  if (hours > 0) return `${hours}h ${mins}m left`;
+  return `${mins}m left`;
+}
+
 interface UserSummary {
   kanjiLearning: number;
   kanjiFamiliar: number;
@@ -49,7 +58,8 @@ export default function Home() {
     }
   }, []);
 
-  useEffect(() => { loadSummary(); }, [loadSummary]);
+  // Re-fetch every time user navigates to Home (location.key changes on each navigation)
+  useEffect(() => { loadSummary(); }, [loadSummary, location.key]);
 
   // Handle navigation state from Capture page
   useEffect(() => {
@@ -76,8 +86,9 @@ export default function Home() {
   const slotRemaining = summary?.slotRemaining ?? 0;
   const slotTotal = summary?.slotTotal ?? 5;
   const slotEndsAt = summary?.slotEndsAt;
-  const hasActiveSlot = slotEndsAt != null && new Date(slotEndsAt) > new Date();
-  const slotEndTime = slotEndsAt ? new Date(slotEndsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+  const slotEndDate = slotEndsAt ? new Date(slotEndsAt) : null;
+  const hasActiveSlot = slotEndDate != null && slotEndDate > new Date();
+  const slotTimeLeft = slotEndDate ? formatTimeLeft(slotEndDate) : "";
 
   return (
     <Box
@@ -155,26 +166,39 @@ export default function Home() {
         {loading ? (
           <Skeleton variant="rounded" height={160} sx={{ borderRadius: 4 }} />
         ) : hasActiveSlot && slotRemaining > 0 ? (
+          /* Active slot with quizzes remaining */
           <Paper elevation={4} sx={{ bgcolor: "#4338ca", color: "white", borderRadius: 4, p: 3 }}>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 3 }}>
               <Box>
-                <Typography variant="body2" sx={{ opacity: 0.8, mb: 0.5 }}>Session Available</Typography>
+                <Typography variant="body2" sx={{ opacity: 0.8, mb: 0.5 }}>Session Active</Typography>
                 <Typography variant="h3" fontWeight="bold" component="div">
                   {slotRemaining}{" "}
-                  <Typography component="span" variant="h6" sx={{ opacity: 0.7, fontWeight: "normal" }}>quizzes</Typography>
+                  <Typography component="span" variant="h6" sx={{ opacity: 0.7, fontWeight: "normal" }}>remaining</Typography>
                 </Typography>
               </Box>
-              <Chip label={`Ends ${slotEndTime}`} size="small" sx={{ bgcolor: "rgba(30, 27, 75, 0.5)", color: "inherit", fontSize: "0.75rem" }} />
+              <Chip label={slotTimeLeft} size="small" sx={{ bgcolor: "rgba(30, 27, 75, 0.5)", color: "inherit", fontSize: "0.75rem" }} />
             </Box>
             <Button
               fullWidth size="large" variant="contained" endIcon={<ChevronRightIcon />}
               onClick={() => navigate("/quiz")}
               sx={{ bgcolor: "white", color: "#4338ca", fontWeight: "bold", fontSize: "1.1rem", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "grey.100" } }}
             >
-              Start Session
+              Continue Session
             </Button>
           </Paper>
+        ) : hasActiveSlot && slotRemaining === 0 ? (
+          /* Slot complete */
+          <Paper variant="outlined" sx={{ borderRadius: 4, p: 3, borderColor: "success.dark", bgcolor: "rgba(46, 125, 50, 0.08)" }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1 }}>
+              <CheckCircleIcon color="success" />
+              <Typography fontWeight="bold" color="success.main">Session Complete</Typography>
+            </Box>
+            <Typography variant="body2" color="text.secondary">
+              Great job! Your next session starts whenever you're ready.
+            </Typography>
+          </Paper>
         ) : (
+          /* No active slot — ready to start */
           <Paper elevation={4} sx={{ bgcolor: "#4338ca", color: "white", borderRadius: 4, p: 3 }}>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 3 }}>
               <Box>

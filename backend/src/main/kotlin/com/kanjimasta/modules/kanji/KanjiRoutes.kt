@@ -21,5 +21,26 @@ fun Route.kanjiRoutes(kanjiService: KanjiService) {
             val count = kanjiService.getPendingJobCount(user.uid)
             call.respond(mapOf("pending" to count))
         }
+
+        get("/list") {
+            val user = call.principal<FirebaseUser>()!!
+            val result = kanjiService.getKanjiList(user.uid)
+            call.respond(result)
+        }
+
+        post("/add") {
+            call.respond(HttpStatusCode.NotImplemented, mapOf("message" to "Manual kanji add coming soon"))
+        }
+    }
+
+    route("/api/words") {
+        get("/list") {
+            val user = call.principal<FirebaseUser>()!!
+            val query = call.request.queryParameters["q"]
+            val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 30
+            val result = kanjiService.getWordList(user.uid, query, offset, limit)
+            call.respond(result)
+        }
     }
 }

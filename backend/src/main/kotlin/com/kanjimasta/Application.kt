@@ -52,5 +52,9 @@ fun Application.module() {
     val quizRepository = QuizRepository(dcClient)
     val quizService = QuizService(quizRepository)
 
-    configureRouting(photoService, kanjiService, quizService)
+    val settingsRepository = com.kanjimasta.modules.settings.SettingsRepository(dcClient)
+    val userRepository = com.kanjimasta.modules.user.UserRepository(dcClient)
+    val userService = com.kanjimasta.modules.user.UserService(userRepository, quizRepository)
+
+    configureRouting(photoService, kanjiService, quizService, userService, settingsRepository)
 }

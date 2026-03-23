@@ -1,13 +1,12 @@
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Box, Button, Typography } from "@mui/material";
 import PageHeader from "@/components/PageHeader";
+import { apiFetch } from "@/lib/api";
 
-// Mock data — will be replaced with real API calls
-const mockCollection = {
-  total: 128,
-  canopy: { count: 42, label: "Mastered", tier: "Tier 4-5" },
-  trunk: { count: 56, label: "Growing", tier: "Tier 2-3" },
-  roots: { count: 30, label: "Seeded", tier: "Tier 0-1" },
-};
+interface KanjiItem {
+  familiarity: number;
+}
 
 type Zone = "canopy" | "trunk" | "roots" | null;
 
@@ -129,6 +128,7 @@ function ZoneBadge({
   color,
   hoveredZone,
   onHover,
+  onClick,
   sx,
 }: {
   zone: Zone;
@@ -138,6 +138,7 @@ function ZoneBadge({
   color: string;
   hoveredZone: Zone;
   onHover: (zone: Zone) => void;
+  onClick?: () => void;
   sx: object;
 }) {
   const isHovered = hoveredZone === zone;
@@ -147,6 +148,7 @@ function ZoneBadge({
     <Box
       onMouseEnter={() => onHover(zone)}
       onMouseLeave={() => onHover(null)}
+      onClick={onClick}
       sx={{
         position: "absolute",
         zIndex: 10,
@@ -194,10 +196,21 @@ function ZoneBadge({
   );
 }
 
-import { useState } from "react";
-
 export default function Collection() {
+  const navigate = useNavigate();
   const [hoveredZone, setHoveredZone] = useState<Zone>(null);
+  const [kanjiList, setKanjiList] = useState<KanjiItem[]>([]);
+
+  useEffect(() => {
+    apiFetch<KanjiItem[]>("/api/kanji/list").then(setKanjiList).catch(() => {});
+  }, []);
+
+  const collection = {
+    total: kanjiList.length,
+    canopy: { count: kanjiList.filter((k) => k.familiarity >= 4).length, label: "Mastered", tier: "Tier 4-5" },
+    trunk: { count: kanjiList.filter((k) => k.familiarity >= 2 && k.familiarity <= 3).length, label: "Growing", tier: "Tier 2-3" },
+    roots: { count: kanjiList.filter((k) => k.familiarity <= 1).length, label: "Seeded", tier: "Tier 0-1" },
+  };
 
   return (
     <Box
@@ -214,7 +227,7 @@ export default function Collection() {
     >
       <PageHeader
         title="Your Tree"
-        subtitle={`${mockCollection.total} Kanji in Ecosystem`}
+        subtitle={`${collection.total} Kanji in Ecosystem`}
         backTo="/"
         sx={{ zIndex: 20 }}
         backButtonSx={{
@@ -233,36 +246,39 @@ export default function Collection() {
         {/* Canopy badge */}
         <ZoneBadge
           zone="canopy"
-          label={mockCollection.canopy.label}
-          count={mockCollection.canopy.count}
-          tier={mockCollection.canopy.tier}
+          label={collection.canopy.label}
+          count={collection.canopy.count}
+          tier={collection.canopy.tier}
           color="#34d399"
           hoveredZone={hoveredZone}
           onHover={setHoveredZone}
+          onClick={() => navigate("/collection/list?zone=canopy")}
           sx={{ top: "18%", left: 32 }}
         />
 
         {/* Trunk badge */}
         <ZoneBadge
           zone="trunk"
-          label={mockCollection.trunk.label}
-          count={mockCollection.trunk.count}
-          tier={mockCollection.trunk.tier}
+          label={collection.trunk.label}
+          count={collection.trunk.count}
+          tier={collection.trunk.tier}
           color="#818cf8"
           hoveredZone={hoveredZone}
           onHover={setHoveredZone}
+          onClick={() => navigate("/collection/list?zone=trunk")}
           sx={{ top: "50%", right: 32 }}
         />
 
         {/* Roots badge */}
         <ZoneBadge
           zone="roots"
-          label={mockCollection.roots.label}
-          count={mockCollection.roots.count}
-          tier={mockCollection.roots.tier}
+          label={collection.roots.label}
+          count={collection.roots.count}
+          tier={collection.roots.tier}
           color="#c084fc"
           hoveredZone={hoveredZone}
           onHover={setHoveredZone}
+          onClick={() => navigate("/collection/list?zone=roots")}
           sx={{ bottom: "10%", left: 48 }}
         />
       </Box>
@@ -273,6 +289,7 @@ export default function Collection() {
           fullWidth
           variant="contained"
           size="large"
+          onClick={() => navigate("/kanji/add")}
           sx={{
             bgcolor: "#4338ca",
             fontWeight: "bold",

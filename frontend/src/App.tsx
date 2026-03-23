@@ -7,6 +7,9 @@ import Settings from "@/pages/Settings";
 import Collection from "@/pages/Collection";
 import Capture from "@/pages/Capture";
 import Quiz from "@/pages/Quiz";
+import KanjiList from "@/pages/KanjiList";
+import Dictionary from "@/pages/Dictionary";
+import AddKanji from "@/pages/AddKanji";
 
 export default function App() {
   const { user, isLoading } = useAuth();
@@ -54,6 +57,30 @@ export default function App() {
         element={
           <ProtectedRoute user={user} isLoading={isLoading}>
             <Capture />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/collection/list"
+        element={
+          <ProtectedRoute user={user} isLoading={isLoading}>
+            <KanjiList />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dictionary"
+        element={
+          <ProtectedRoute user={user} isLoading={isLoading}>
+            <Dictionary />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/kanji/add"
+        element={
+          <ProtectedRoute user={user} isLoading={isLoading}>
+            <AddKanji />
           </ProtectedRoute>
         }
       />

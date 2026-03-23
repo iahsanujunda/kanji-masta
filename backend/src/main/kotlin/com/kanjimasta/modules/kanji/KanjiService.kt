@@ -89,6 +89,14 @@ class KanjiService(
         return kanjiRepository.countPendingJobs(userId)
     }
 
+    suspend fun getKanjiList(userId: String): List<KanjiListItem> {
+        return kanjiRepository.getAllUserKanji(userId)
+    }
+
+    suspend fun getWordList(userId: String, query: String?, offset: Int, limit: Int): WordListResponse {
+        return kanjiRepository.getUserWords(userId, query, offset, limit)
+    }
+
     private suspend fun loadExampleWords(sessionId: String): Map<String, List<ExampleWord>> {
         val session = photoRepository.getSession(sessionId) ?: return emptyMap()
         val rawResponse = session.rawAiResponse ?: return emptyMap()

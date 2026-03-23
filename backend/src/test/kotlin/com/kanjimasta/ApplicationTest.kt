@@ -33,8 +33,11 @@ fun Application.testModule() {
     val dcClient = DataConnectClient(httpClient, "http://localhost:9399/unused")
     val photoService = PhotoService(PhotoRepository(dcClient), httpClient, "http://localhost:5001", "test")
     val kanjiService = KanjiService(KanjiRepository(dcClient), PhotoRepository(dcClient), httpClient, "http://localhost:5001", "test")
-    val quizService = com.kanjimasta.modules.quiz.QuizService(com.kanjimasta.modules.quiz.QuizRepository(dcClient))
-    configureRouting(photoService, kanjiService, quizService)
+    val quizRepository = com.kanjimasta.modules.quiz.QuizRepository(dcClient)
+    val quizService = com.kanjimasta.modules.quiz.QuizService(quizRepository)
+    val settingsRepository = com.kanjimasta.modules.settings.SettingsRepository(dcClient)
+    val userService = com.kanjimasta.modules.user.UserService(com.kanjimasta.modules.user.UserRepository(dcClient), quizRepository)
+    configureRouting(photoService, kanjiService, quizService, userService, settingsRepository)
 }
 
 class ApplicationTest {

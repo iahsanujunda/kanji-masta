@@ -249,6 +249,7 @@ export default function Home() {
               size="large"
               variant="contained"
               endIcon={<ChevronRightIcon />}
+              onClick={() => navigate("/quiz")}
               sx={{
                 bgcolor: "white",
                 color: "#4338ca",

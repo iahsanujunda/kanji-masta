@@ -6,6 +6,7 @@ import Login from "@/pages/Login";
 import Settings from "@/pages/Settings";
 import Collection from "@/pages/Collection";
 import Capture from "@/pages/Capture";
+import Quiz from "@/pages/Quiz";
 
 export default function App() {
   const { user, isLoading } = useAuth();
@@ -37,6 +38,14 @@ export default function App() {
         element={
           <ProtectedRoute user={user} isLoading={isLoading}>
             <Collection />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/quiz"
+        element={
+          <ProtectedRoute user={user} isLoading={isLoading}>
+            <Quiz />
           </ProtectedRoute>
         }
       />

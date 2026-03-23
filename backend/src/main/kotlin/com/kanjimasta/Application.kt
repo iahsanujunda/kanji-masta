@@ -11,6 +11,8 @@ import com.kanjimasta.modules.kanji.KanjiRepository
 import com.kanjimasta.modules.kanji.KanjiService
 import com.kanjimasta.modules.photo.PhotoRepository
 import com.kanjimasta.modules.photo.PhotoService
+import com.kanjimasta.modules.quiz.QuizRepository
+import com.kanjimasta.modules.quiz.QuizService
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
@@ -47,5 +49,8 @@ fun Application.module() {
     val kanjiRepository = KanjiRepository(dcClient)
     val kanjiService = KanjiService(kanjiRepository, photoRepository, httpClient, functionsBaseUrl, projectId)
 
-    configureRouting(photoService, kanjiService)
+    val quizRepository = QuizRepository(dcClient)
+    val quizService = QuizService(quizRepository)
+
+    configureRouting(photoService, kanjiService, quizService)
 }

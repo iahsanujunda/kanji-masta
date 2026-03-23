@@ -4,6 +4,7 @@ import com.kanjimasta.modules.kanji.KanjiService
 import com.kanjimasta.modules.kanji.kanjiRoutes
 import com.kanjimasta.modules.photo.PhotoService
 import com.kanjimasta.modules.photo.photoRoutes
+import com.kanjimasta.modules.quiz.QuizService
 import com.kanjimasta.modules.quiz.quizRoutes
 import io.ktor.http.*
 import io.ktor.server.application.*
@@ -11,7 +12,7 @@ import io.ktor.server.auth.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 
-fun Application.configureRouting(photoService: PhotoService, kanjiService: KanjiService) {
+fun Application.configureRouting(photoService: PhotoService, kanjiService: KanjiService, quizService: QuizService) {
     routing {
         get("/health") {
             call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
@@ -20,7 +21,7 @@ fun Application.configureRouting(photoService: PhotoService, kanjiService: Kanji
         authenticate("firebase") {
             photoRoutes(photoService)
             kanjiRoutes(kanjiService)
-            quizRoutes()
+            quizRoutes(quizService)
         }
     }
 }

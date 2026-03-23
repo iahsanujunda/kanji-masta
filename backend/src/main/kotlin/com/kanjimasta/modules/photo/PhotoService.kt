@@ -33,6 +33,8 @@ class PhotoService(
             try {
                 val response = httpClient.post(functionUrl) {
                     contentType(ContentType.Application.Json)
+                    header("X-Call-Id", org.slf4j.MDC.get("callId") ?: "no-call")
+                    header("X-User-Id", userId)
                     setBody(buildJsonObject {
                         put("imageUrl", imageUrl)
                         put("userId", userId)

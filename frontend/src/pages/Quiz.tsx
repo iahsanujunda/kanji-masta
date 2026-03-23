@@ -89,12 +89,19 @@ export default function Quiz() {
     }).catch(() => {});
   }, [isAnswered, textInput, currentQuiz]);
 
+  const [transitioning, setTransitioning] = useState(false);
+
   const handleNext = useCallback(() => {
     if (currentIndex < quizzes.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-      setSelectedOption(null);
-      setTextInput("");
+      setTransitioning(true);
+      // Hide feedback sheet instantly, then swap quiz after a frame
       setIsAnswered(false);
+      requestAnimationFrame(() => {
+        setCurrentIndex(currentIndex + 1);
+        setSelectedOption(null);
+        setTextInput("");
+        setTransitioning(false);
+      });
     } else {
       setIsFinished(true);
     }
@@ -163,9 +170,16 @@ export default function Quiz() {
       </Box>
 
       {/* Prompt area */}
-      <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", px: 3, mb: 4, minHeight: 160 }}>
+      <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", px: 3, mb: 4, minHeight: 160, opacity: transitioning ? 0 : 1 }}>
         {currentQuiz.quizType === "MEANING_RECALL" && (
-          <Typography sx={{ fontSize: "5rem", fontWeight: 500 }}>{currentQuiz.prompt}</Typography>
+          <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+            <Typography sx={{ fontSize: "5rem", fontWeight: 500 }}>{currentQuiz.prompt}</Typography>
+            {currentQuiz.wordReading && (
+              <Typography sx={{ fontSize: "1rem", color: "grey.500", mt: 1, letterSpacing: 2 }}>
+                {currentQuiz.wordReading}
+              </Typography>
+            )}
+          </Box>
         )}
         {currentQuiz.quizType === "READING_RECOGNITION" && (
           <Typography sx={{ fontSize: "3.5rem", fontWeight: 500, letterSpacing: 4 }}>{currentQuiz.prompt}</Typography>

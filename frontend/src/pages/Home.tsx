@@ -15,16 +15,14 @@ import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
-import CircularProgress from "@mui/material/CircularProgress";
 import PageHeader from "@/components/PageHeader";
-import { apiFetch } from "@/lib/api";
 
 export default function Home() {
   const navigate = useNavigate();
   const location = useLocation();
   const [slotState] = useState<"active" | "completed">("active");
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
-  const [quizBanner, setQuizBanner] = useState<"generating" | "done" | null>(null);
+  const [quizBanner, setQuizBanner] = useState(false);
 
   // Handle navigation state from Capture page
   useEffect(() => {
@@ -38,29 +36,11 @@ export default function Home() {
     }
 
     if (state?.quizGenerating) {
-      setQuizBanner("generating");
+      setQuizBanner(true);
+      const timer = setTimeout(() => setQuizBanner(false), 4000);
+      return () => clearTimeout(timer);
     }
   }, [location.state]);
-
-  // Poll for quiz generation completion
-  useEffect(() => {
-    if (quizBanner !== "generating") return;
-
-    const interval = setInterval(async () => {
-      try {
-        const result = await apiFetch<{ pending: number }>("/api/kanji/jobs/pending");
-        if (result.pending === 0) {
-          clearInterval(interval);
-          setQuizBanner("done");
-          setTimeout(() => setQuizBanner(null), 2000);
-        }
-      } catch {
-        // Keep polling
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [quizBanner]);
 
   // Mocked data — will be replaced with real API calls
   const userStats = { streak: 12, learning: 24, familiar: 108 };
@@ -154,13 +134,9 @@ export default function Home() {
               display: "flex",
               alignItems: "center",
               gap: 1.5,
-              bgcolor: quizBanner === "generating"
-                ? "rgba(67, 56, 202, 0.12)"
-                : "rgba(16, 185, 129, 0.12)",
+              bgcolor: "rgba(67, 56, 202, 0.12)",
               border: "1px solid",
-              borderColor: quizBanner === "generating"
-                ? "rgba(67, 56, 202, 0.3)"
-                : "rgba(16, 185, 129, 0.3)",
+              borderColor: "rgba(67, 56, 202, 0.3)",
             }}
           >
             <Box
@@ -168,33 +144,21 @@ export default function Home() {
                 width: 32,
                 height: 32,
                 borderRadius: "50%",
-                bgcolor: quizBanner === "generating"
-                  ? "rgba(67, 56, 202, 0.2)"
-                  : "rgba(16, 185, 129, 0.2)",
+                bgcolor: "rgba(67, 56, 202, 0.2)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 flexShrink: 0,
               }}
             >
-              {quizBanner === "generating" ? (
-                <CircularProgress size={16} sx={{ color: "#818cf8" }} />
-              ) : (
-                <CheckCircleIcon sx={{ fontSize: 18, color: "#34d399" }} />
-              )}
+              <CheckCircleIcon sx={{ fontSize: 18, color: "#818cf8" }} />
             </Box>
             <Box>
-              <Typography variant="body2" fontWeight="bold" sx={{
-                color: quizBanner === "generating" ? "#c7d2fe" : "#a7f3d0",
-              }}>
-                {quizBanner === "generating" ? "Generating Quizzes..." : "Quizzes Ready!"}
+              <Typography variant="body2" fontWeight="bold" sx={{ color: "#c7d2fe" }}>
+                Kanji saved
               </Typography>
-              <Typography variant="caption" sx={{
-                color: quizBanner === "generating" ? "#a5b4fc" : "#6ee7b7",
-              }}>
-                {quizBanner === "generating"
-                  ? "Building contextual sentences in background"
-                  : "Added to your upcoming learning slots"}
+              <Typography variant="caption" sx={{ color: "#a5b4fc" }}>
+                Quizzes are being prepared in the background
               </Typography>
             </Box>
           </Box>

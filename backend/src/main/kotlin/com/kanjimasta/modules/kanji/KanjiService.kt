@@ -121,6 +121,7 @@ class KanjiService(
             try {
                 httpClient.post(functionUrl) {
                     contentType(ContentType.Application.Json)
+                    header("X-Call-Id", org.slf4j.MDC.get("callId") ?: "no-call")
                     setBody("{}")
                 }
             } catch (e: Exception) {

@@ -7,6 +7,12 @@ class QuizRepository(private val dc: DataConnectClient) {
 
     private fun String.escape() = replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
 
+    /** Safely get the "data" object from a GraphQL result, handling null/JsonNull. */
+    private fun JsonObject.dataOrNull(): JsonObject? {
+        val d = get("data") ?: return null
+        return if (d is JsonObject) d else null
+    }
+
     // --- Slot ---
 
     suspend fun getActiveSlot(userId: String): JsonObject? {
@@ -20,7 +26,7 @@ class QuizRepository(private val dc: DataConnectClient) {
             }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        val slots = result["data"]?.jsonObject?.get("quizSlots")?.jsonArray ?: return null
+        val slots = result.dataOrNull()?.get("quizSlots")?.jsonArray ?: return null
         return slots.firstOrNull()?.jsonObject
     }
 
@@ -37,7 +43,7 @@ class QuizRepository(private val dc: DataConnectClient) {
             }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        return result["data"]?.jsonObject?.get("quizSlot_insert")?.jsonObject?.get("id")?.jsonPrimitive?.content
+        return result.dataOrNull()?.get("quizSlot_insert")?.jsonObject?.get("id")?.jsonPrimitive?.content
     }
 
     suspend fun incrementSlotCompleted(slotId: String) {
@@ -58,7 +64,8 @@ class QuizRepository(private val dc: DataConnectClient) {
             }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        val settings = result["data"]?.jsonObject?.get("userSettings")?.jsonObject
+        val settingsEl = result.dataOrNull()?.get("userSettings")
+        val settings = if (settingsEl is JsonObject) settingsEl else null
         val allowance = settings?.get("quizAllowancePerSlot")?.jsonPrimitive?.int ?: 5
         val duration = settings?.get("slotDurationHours")?.jsonPrimitive?.int ?: 6
         return allowance to duration
@@ -77,7 +84,7 @@ class QuizRepository(private val dc: DataConnectClient) {
             }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        return result["data"]?.jsonObject?.get("userWordss")?.jsonArray ?: JsonArray(emptyList())
+        return result.dataOrNull()?.get("userWordss")?.jsonArray ?: JsonArray(emptyList())
     }
 
     suspend fun getNewWords(userId: String, limit: Int): JsonArray {
@@ -90,7 +97,7 @@ class QuizRepository(private val dc: DataConnectClient) {
             }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        return result["data"]?.jsonObject?.get("userWordss")?.jsonArray ?: JsonArray(emptyList())
+        return result.dataOrNull()?.get("userWordss")?.jsonArray ?: JsonArray(emptyList())
     }
 
     suspend fun getLearningWords(userId: String, limit: Int): JsonArray {
@@ -103,7 +110,7 @@ class QuizRepository(private val dc: DataConnectClient) {
             }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        return result["data"]?.jsonObject?.get("userWordss")?.jsonArray ?: JsonArray(emptyList())
+        return result.dataOrNull()?.get("userWordss")?.jsonArray ?: JsonArray(emptyList())
     }
 
     // --- Quiz Lookup ---
@@ -112,13 +119,13 @@ class QuizRepository(private val dc: DataConnectClient) {
         val query = """
             query {
                 quizBanks(
-                    where: { userId: { eq: "${userId.escape()}" }, wordId: { eq: "$wordId" }, quizType: { eq: "$quizType" } },
+                    where: { userId: { eq: "${userId.escape()}" }, wordId: { eq: "$wordId" }, quizType: { eq: $quizType } },
                     limit: 1
                 ) { id quizType prompt target furigana answer explanation servedCount wordId kanjiId }
             }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        return result["data"]?.jsonObject?.get("quizBanks")?.jsonArray?.firstOrNull()?.jsonObject
+        return result.dataOrNull()?.get("quizBanks")?.jsonArray?.firstOrNull()?.jsonObject
     }
 
     suspend fun getAnyQuizForWord(userId: String, wordId: String): JsonObject? {
@@ -131,7 +138,7 @@ class QuizRepository(private val dc: DataConnectClient) {
             }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        return result["data"]?.jsonObject?.get("quizBanks")?.jsonArray?.firstOrNull()?.jsonObject
+        return result.dataOrNull()?.get("quizBanks")?.jsonArray?.firstOrNull()?.jsonObject
     }
 
     // --- Distractor ---
@@ -147,7 +154,7 @@ class QuizRepository(private val dc: DataConnectClient) {
             }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        return result["data"]?.jsonObject?.get("quizDistractors")?.jsonArray?.firstOrNull()?.jsonObject
+        return result.dataOrNull()?.get("quizDistractors")?.jsonArray?.firstOrNull()?.jsonObject
     }
 
     suspend fun getLatestDistractor(quizId: String): JsonObject? {
@@ -161,7 +168,7 @@ class QuizRepository(private val dc: DataConnectClient) {
             }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        return result["data"]?.jsonObject?.get("quizDistractors")?.jsonArray?.firstOrNull()?.jsonObject
+        return result.dataOrNull()?.get("quizDistractors")?.jsonArray?.firstOrNull()?.jsonObject
     }
 
     suspend fun markDistractorServed(distractorId: String) {
@@ -177,7 +184,7 @@ class QuizRepository(private val dc: DataConnectClient) {
             query { kanjiMasters(limit: $limit) { meanings } }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        return result["data"]?.jsonObject?.get("kanjiMasters")?.jsonArray
+        return result.dataOrNull()?.get("kanjiMasters")?.jsonArray
             ?.flatMap { it.jsonObject["meanings"]?.jsonArray?.map { m -> m.jsonPrimitive.content } ?: emptyList() }
             ?.shuffled()
             ?.take(limit * 2)
@@ -189,7 +196,7 @@ class QuizRepository(private val dc: DataConnectClient) {
             query { kanjiMasters(limit: $limit) { onyomi kunyomi } }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        return result["data"]?.jsonObject?.get("kanjiMasters")?.jsonArray
+        return result.dataOrNull()?.get("kanjiMasters")?.jsonArray
             ?.flatMap {
                 val obj = it.jsonObject
                 (obj["onyomi"]?.jsonArray?.map { r -> r.jsonPrimitive.content } ?: emptyList()) +
@@ -205,7 +212,7 @@ class QuizRepository(private val dc: DataConnectClient) {
             query { kanjiMasters(limit: ${limit * 3}) { character } }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        return result["data"]?.jsonObject?.get("kanjiMasters")?.jsonArray
+        return result.dataOrNull()?.get("kanjiMasters")?.jsonArray
             ?.map { it.jsonObject["character"]!!.jsonPrimitive.content }
             ?.shuffled()
             ?.take(limit * 2)
@@ -219,7 +226,7 @@ class QuizRepository(private val dc: DataConnectClient) {
             }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        return result["data"]?.jsonObject?.get("userWordss")?.jsonArray
+        return result.dataOrNull()?.get("userWordss")?.jsonArray
             ?.map { it.jsonObject["word"]!!.jsonPrimitive.content }
             ?.shuffled()
             ?.take(limit * 2)
@@ -233,7 +240,7 @@ class QuizRepository(private val dc: DataConnectClient) {
             query { quizBank(id: "$quizId") { id quizType prompt target answer wordId kanjiId servedCount } }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        return result["data"]?.jsonObject?.get("quizBank")?.jsonObject
+        return result.dataOrNull()?.get("quizBank")?.jsonObject
     }
 
     suspend fun getWordById(wordId: String): JsonObject? {
@@ -241,7 +248,7 @@ class QuizRepository(private val dc: DataConnectClient) {
             query { userWords(id: "$wordId") { id word familiarity currentTier kanjiIds } }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        return result["data"]?.jsonObject?.get("userWords")?.jsonObject
+        return result.dataOrNull()?.get("userWords")?.jsonObject
     }
 
     suspend fun incrementServedCount(quizId: String) {
@@ -292,7 +299,7 @@ class QuizRepository(private val dc: DataConnectClient) {
             }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        val allWords = result["data"]?.jsonObject?.get("userWordss")?.jsonArray ?: return JsonArray(emptyList())
+        val allWords = result.dataOrNull()?.get("userWordss")?.jsonArray ?: return JsonArray(emptyList())
         // Filter client-side for words containing this kanjiId
         val filtered = allWords.filter { word ->
             word.jsonObject["kanjiIds"]?.jsonArray?.any { it.jsonPrimitive.content == kanjiId } == true

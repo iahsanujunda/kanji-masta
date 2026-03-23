@@ -90,6 +90,17 @@ db: ## Show key table counts
 		-H "Content-Type: application/json" \
 		-d '{"query": "query { quizGenerationJobs { id status kanji { character } } }"}' | python3 -c "import sys,json; d=json.load(sys.stdin); rows=d['data']['quizGenerationJobs']; print(f'  {len(rows)} rows'); [print(f'    {r[\"kanji\"][\"character\"]} — {r[\"status\"]}') for r in rows]"
 
+reset-quiz: ## Reset quiz progress (keep generated quizzes, reset familiarity/slots/serves)
+	@psql -h 127.0.0.1 -p 5432 -U postgres -c "\
+		TRUNCATE quiz_serve, quiz_slot CASCADE; \
+		UPDATE quiz_bank SET served_count = 0, served_at = NULL; \
+		UPDATE quiz_distractor SET served_at = NULL; \
+		UPDATE user_words SET familiarity = 0, current_tier = 'MEANING_RECALL', next_review = NULL; \
+		SELECT count(*) as ready_quizzes FROM quiz_bank WHERE user_id != 'system';"
+
+trigger-quizzes: ## Trigger quiz generation function manually
+	curl -s -X POST http://127.0.0.1:5001/kanji-masta/us-central1/generate_quizzes_http | python3 -m json.tool
+
 psql: ## Connect to Data Connect emulator PostgreSQL
 	psql -h 127.0.0.1 -p 5432 -U postgres
 

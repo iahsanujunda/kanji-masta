@@ -216,14 +216,18 @@ class QuizService(private val quizRepository: QuizRepository) {
     }
 
     private fun pickQuizType(familiarity: Int): String {
-        val weights = RESURFACING_WEIGHTS[familiarity.coerceIn(0, 5)] ?: RESURFACING_WEIGHTS[0]!!
+        val baseWeights = RESURFACING_WEIGHTS[familiarity.coerceIn(0, 5)] ?: RESURFACING_WEIGHTS[0]!!
+        // Zero out types above the current tier — can't resurface what hasn't been unlocked
+        val maxTypeIndex = familiarity.coerceIn(0, QUIZ_TYPES.size - 1)
+        val weights = baseWeights.mapIndexed { i, w -> if (i <= maxTypeIndex) w else 0 }
         val total = weights.sum()
+        if (total == 0) return QUIZ_TYPES[0]
         var roll = Random.nextInt(total)
         for (i in weights.indices) {
             roll -= weights[i]
             if (roll < 0) return QUIZ_TYPES[i]
         }
-        return QUIZ_TYPES.last()
+        return QUIZ_TYPES[0]
     }
 
     private suspend fun getRandomCandidates(quizType: String, answer: String, userId: String): List<String> {

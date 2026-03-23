@@ -1,5 +1,7 @@
 import json
+import logging
 import os
+import time
 
 import requests
 from firebase_admin import initialize_app
@@ -8,6 +10,42 @@ from google import genai
 from google.genai import types
 
 initialize_app()
+
+log = logging.getLogger("functions")
+log.setLevel(logging.INFO)
+
+
+class TraceContext:
+    """Trace context extracted from request headers."""
+    call_id: str = "no-call"
+    user_id: str = "anon"
+
+    @classmethod
+    def from_request(cls, req) -> "TraceContext":
+        ctx = cls()
+        if req:
+            ctx.call_id = req.headers.get("X-Call-Id", "no-call")
+            ctx.user_id = req.headers.get("X-User-Id", "anon")
+            body = req.get_json(silent=True) or {}
+            if ctx.user_id == "anon" and body.get("userId"):
+                ctx.user_id = body["userId"]
+        return ctx
+
+    @property
+    def _prefix(self) -> str:
+        return f"[{self.call_id}] [{self.user_id}]"
+
+    def log_info(self, msg, *args):
+        print(f"{self._prefix} INFO {msg % args}" if args else f"{self._prefix} INFO {msg}")
+
+    def log_error(self, msg, *args):
+        print(f"{self._prefix} ERROR {msg % args}" if args else f"{self._prefix} ERROR {msg}")
+
+    def log_warn(self, msg, *args):
+        print(f"{self._prefix} WARN {msg % args}" if args else f"{self._prefix} WARN {msg}")
+
+
+_default_ctx = TraceContext()
 
 KANJI_PROMPT = """You are a Japanese kanji tutor for a conversational English speaker living in Japan.
 Analyze this image and extract all kanji visible.
@@ -43,6 +81,11 @@ Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
 def _get_data_connect_url():
     project_id = os.environ.get("GCLOUD_PROJECT", "kanji-masta")
     dc_host = os.environ.get("FIREBASE_DATACONNECT_EMULATOR_HOST")
+
+    # Auto-detect: if running in emulator, default to local Data Connect
+    if not dc_host and os.environ.get("FUNCTIONS_EMULATOR"):
+        dc_host = "127.0.0.1:9399"
+
     if dc_host:
         return f"http://{dc_host}/v1alpha/projects/{project_id}/locations/asia-east1/services/kanji-masta:executeGraphql"
     return (
@@ -51,13 +94,17 @@ def _get_data_connect_url():
     )
 
 
-def _execute_graphql(query: str, variables: dict | None = None) -> dict:
+def _execute_graphql(query: str, variables: dict | None = None) -> dict | None:
     url = _get_data_connect_url()
     body = {"query": query}
     if variables:
         body["variables"] = variables
-    resp = requests.post(url, json=body, headers={"Content-Type": "application/json"})
-    return resp.json()
+    try:
+        resp = requests.post(url, json=body, headers={"Content-Type": "application/json"}, timeout=10)
+        return resp.json()
+    except Exception as e:
+        print(f"Data Connect query failed: {e} (url: {url})")
+        return None
 
 
 def _get_user_known_kanji(user_id: str) -> list[str]:
@@ -117,8 +164,11 @@ def _calculate_cost_microdollars(usage) -> int:
     return int((input_cost + output_cost) * 1_000_000)
 
 
-@https_fn.on_request()
+@https_fn.on_request(timeout_sec=300)
 def analyze_photo(req: https_fn.Request) -> https_fn.Response:
+    ctx = TraceContext.from_request(req)
+    start = time.time()
+
     body = req.get_json(silent=True)
     if not body:
         return https_fn.Response("Missing JSON body", status=400)
@@ -129,9 +179,12 @@ def analyze_photo(req: https_fn.Request) -> https_fn.Response:
     if not image_url or not session_id:
         return https_fn.Response("Missing imageUrl or sessionId", status=400)
 
+    ctx.log_info("analyze_photo: session=%s downloading image", session_id)
+
     # Download image
     img_resp = requests.get(image_url)
     if img_resp.status_code != 200:
+        ctx.log_error("analyze_photo: failed to download image, status=%d", img_resp.status_code)
         return https_fn.Response(f"Failed to download image: {img_resp.status_code}", status=500)
 
     image_bytes = img_resp.content
@@ -145,6 +198,8 @@ def analyze_photo(req: https_fn.Request) -> https_fn.Response:
         known_kanji_section = "The learner is a beginner with no kanji knowledge yet."
 
     prompt = KANJI_PROMPT.format(known_kanji_section=known_kanji_section)
+
+    ctx.log_info("analyze_photo: session=%s calling Gemini (known kanji: %d)", session_id, len(known_kanji))
 
     # Call Gemini 3.1 Pro
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -169,11 +224,13 @@ def analyze_photo(req: https_fn.Request) -> https_fn.Response:
 
     raw_text = response.text
     cost = _calculate_cost_microdollars(response.usage_metadata)
+    ctx.log_info("analyze_photo: session=%s Gemini done, cost=$%.4f", session_id, cost / 1_000_000)
 
     # Parse Gemini response
     try:
         kanji_list = json.loads(raw_text)
     except json.JSONDecodeError:
+        ctx.log_error("analyze_photo: session=%s failed to parse JSON response", session_id)
         _update_photo_session(session_id, raw_text, cost)
         return https_fn.Response(json.dumps({"error": "Failed to parse AI response"}), status=500,
                                  content_type="application/json")
@@ -202,6 +259,8 @@ def analyze_photo(req: https_fn.Request) -> https_fn.Response:
     enriched_json = json.dumps(enriched, ensure_ascii=False)
     _update_photo_session(session_id, enriched_json, cost)
 
+    elapsed = time.time() - start
+    ctx.log_info("analyze_photo: session=%s done, %d kanji enriched in %.1fs", session_id, len(enriched), elapsed)
     return https_fn.Response(json.dumps({"status": "ok"}), content_type="application/json")
 
 
@@ -290,7 +349,7 @@ def _get_pending_jobs(limit: int = 10) -> list[dict]:
     query = f"""
         query {{
             quizGenerationJobs(
-                where: {{ status: {{ eq: "PENDING" }} }},
+                where: {{ status: {{ eq: PENDING }} }},
                 limit: {limit}
             ) {{
                 id userId kanjiId wordId jobType trigger quizId
@@ -300,7 +359,14 @@ def _get_pending_jobs(limit: int = 10) -> list[dict]:
         }}
     """
     result = _execute_graphql(query)
-    return result.get("data", {}).get("quizGenerationJobs", [])
+    if not result:
+        print("_get_pending_jobs: no result from Data Connect")
+        return []
+    data = result.get("data")
+    if not data:
+        print(f"_get_pending_jobs: query error: {result.get('errors', [])}")
+        return []
+    return data.get("quizGenerationJobs", [])
 
 
 def _update_job_status(job_id: str, status: str, cost: int = 0, increment_attempts: bool = False):
@@ -308,7 +374,9 @@ def _update_job_status(job_id: str, status: str, cost: int = 0, increment_attemp
     if increment_attempts:
         # Read current attempts first
         read = _execute_graphql(f'query {{ quizGenerationJob(id: "{job_id}") {{ attempts }} }}')
-        current = read.get("data", {}).get("quizGenerationJob", {}).get("attempts", 0)
+        current = (read or {}).get("data", {})
+        current = (current or {}).get("quizGenerationJob", {})
+        current = (current or {}).get("attempts", 0)
         attempts_field = f"attempts: {current + 1},"
 
     cost_field = f"costMicrodollars: {cost}," if cost > 0 else ""
@@ -508,26 +576,29 @@ def _process_regen_job(client: genai.Client, job: dict) -> tuple[int, int]:
     return cost, errors
 
 
-def _run_quiz_generation():
+def _run_quiz_generation(ctx: TraceContext | None = None):
     """Shared logic for processing pending quiz generation jobs."""
+    ctx = ctx or _default_ctx
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        print("GEMINI_API_KEY not configured, skipping")
+        ctx.log_warn("generate_quizzes: GEMINI_API_KEY not configured")
         return
 
     jobs = _get_pending_jobs(limit=10)
     if not jobs:
+        ctx.log_info("generate_quizzes: no pending jobs")
         return
 
-    print(f"Processing {len(jobs)} quiz generation jobs")
+    ctx.log_info("generate_quizzes: processing %d jobs", len(jobs))
     client = genai.Client(api_key=api_key)
 
     for job in jobs:
         job_id = job["id"]
         job_type = job.get("jobType", "INITIAL")
         character = job.get("kanji", {}).get("character", "?")
+        word_text = (job.get("word") or {}).get("word", "(no word)")
 
-        print(f"  Job {job_id} ({job_type}): {character}")
+        ctx.log_info("generate_quizzes: job=%s type=%s kanji=%s word=%s", job_id[:8], job_type, character, word_text)
         _update_job_status(job_id, "PROCESSING")
 
         try:
@@ -538,20 +609,24 @@ def _run_quiz_generation():
 
             if errors == 0:
                 _update_job_status(job_id, "DONE", cost=cost)
-                print(f"  Job {job_id}: done (${cost / 1_000_000:.4f})")
+                ctx.log_info("generate_quizzes: job=%s done, cost=$%.4f", job_id[:8], cost / 1_000_000)
             else:
                 _update_job_status(job_id, "FAILED", cost=cost, increment_attempts=True)
-                print(f"  Job {job_id}: {errors} errors")
+                ctx.log_error("generate_quizzes: job=%s had %d insert errors", job_id[:8], errors)
 
         except Exception as e:
-            print(f"  Job {job_id}: failed — {e}")
+            ctx.log_error("generate_quizzes: job=%s failed — %s", job_id[:8], e)
             _update_job_status(job_id, "FAILED", increment_attempts=True)
 
 
-@https_fn.on_request()
+@https_fn.on_request(timeout_sec=540)
 def generate_quizzes_http(req: https_fn.Request) -> https_fn.Response:
     """HTTP trigger for immediate quiz generation (called by Ktor after kanji selection)."""
-    _run_quiz_generation()
+    ctx = TraceContext.from_request(req)
+    start = time.time()
+    _run_quiz_generation(ctx)
+    elapsed = time.time() - start
+    ctx.log_info("generate_quizzes_http: completed in %.1fs", elapsed)
     return https_fn.Response(json.dumps({"status": "ok"}), content_type="application/json")
 
 

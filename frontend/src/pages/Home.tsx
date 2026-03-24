@@ -47,11 +47,13 @@ export default function Home() {
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [quizBanner, setQuizBanner] = useState(false);
 
-  const { data: summary, isLoading: loading } = useQuery({
+  const { data: summary } = useQuery({
     queryKey: ["user-summary"],
     queryFn: () => apiFetch<UserSummary>("/api/user/summary"),
-    staleTime: 30_000, // consider fresh for 30s
+    staleTime: 30_000,
+    gcTime: 5 * 60_000, // keep in cache 5 min after unmount
   });
+  const loading = !summary;
 
   // Handle navigation state from Capture page
   useEffect(() => {

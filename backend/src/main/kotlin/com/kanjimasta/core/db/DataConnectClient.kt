@@ -17,7 +17,7 @@ class DataConnectClient(
 
     private val credentials: GoogleCredentials? = if (useAuth) {
         GoogleCredentials.getApplicationDefault()
-            .createScoped("https://www.googleapis.com/auth/firebase.dataconnect")
+            .createScoped("https://www.googleapis.com/auth/cloud-platform")
     } else null
 
     suspend fun executeGraphql(query: String, variables: JsonObject? = null): JsonObject {

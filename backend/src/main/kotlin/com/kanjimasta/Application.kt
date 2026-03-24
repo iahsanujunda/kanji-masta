@@ -33,8 +33,11 @@ fun Application.module() {
     val functionsHost = environment.config.property("firebase.functionsHost").getString()
     val functionsRegion = environment.config.property("firebase.functionsRegion").getString()
 
-    val dcUrl = "http://$dcHost/v1alpha/projects/$projectId/locations/asia-east1/services/kanji-masta:executeGraphql"
-    val functionsBaseUrl = "http://$functionsHost"
+    val dcUrl = if (dcHost.isNotBlank())
+        "http://$dcHost/v1alpha/projects/$projectId/locations/asia-east1/services/kanji-masta:executeGraphql"
+    else
+        "https://firebasedataconnect.googleapis.com/v1alpha/projects/$projectId/locations/asia-east1/services/kanji-masta:executeGraphql"
+    val functionsBaseUrl = if (functionsHost.isNotBlank()) "http://$functionsHost" else "https://$functionsRegion-$projectId.cloudfunctions.net"
 
     val httpClient = HttpClient(CIO) {
         install(HttpTimeout) {
@@ -42,7 +45,8 @@ fun Application.module() {
             connectTimeoutMillis = 10_000
         }
     }
-    val dcClient = DataConnectClient(httpClient, dcUrl)
+    val isProduction = dcHost.isBlank()
+    val dcClient = DataConnectClient(httpClient, dcUrl, useAuth = isProduction)
 
     val photoRepository = PhotoRepository(dcClient)
     val photoService = PhotoService(photoRepository, httpClient, functionsBaseUrl, projectId, functionsRegion)

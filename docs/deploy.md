@@ -192,27 +192,22 @@ npm run build
 
 Output in `frontend/dist/`.
 
-### 7.3 Deploy options
+### 7.3 Deploy via Firebase Hosting
 
-**Firebase Hosting (simplest):**
+Firebase Hosting is already configured in `firebase.json` — SPA rewrite rule routes all paths to `index.html` for React Router.
+
 ```bash
+# Build with production env vars
+cd frontend && npm run build
+cd ..
+
+# Deploy
 firebase deploy --only hosting
 ```
 
-Add to `firebase.json`:
-```json
-{
-  "hosting": {
-    "public": "frontend/dist",
-    "rewrites": [{ "source": "**", "destination": "/index.html" }]
-  }
-}
-```
+Your site will be available at `https://kanji-masta.web.app` (or your custom domain).
 
-**Or Nginx (existing Docker setup):**
-```bash
-docker compose up -d frontend
-```
+To set up a custom domain: Firebase Console → Hosting → Add custom domain.
 
 ---
 

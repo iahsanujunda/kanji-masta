@@ -7,6 +7,7 @@ backend/.kotlin/
 backend/build/
 *-service-account.json
 dataconnect/.dataconnect/
+dataconnect/frontend/
 *-debug.log
 functions/venv/
 __pycache__/

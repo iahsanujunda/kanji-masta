@@ -118,6 +118,25 @@ clean: ## Clean build artifacts
 	cd frontend && rm -rf dist node_modules/.vite
 	rm -rf functions/venv
 
+check-deploy: ## Show what needs deploying based on git changes
+	@echo "Checking changes since last deploy tag (or last 5 commits)..."
+	@echo ""
+	@changes=$$(git diff --name-only HEAD~5 2>/dev/null || git diff --name-only HEAD); \
+	fe=$$(echo "$$changes" | grep -c "^frontend/" || true); \
+	be=$$(echo "$$changes" | grep -c "^backend/" || true); \
+	fn=$$(echo "$$changes" | grep -c "^functions/" || true); \
+	dc=$$(echo "$$changes" | grep -c "^dataconnect/" || true); \
+	sr=$$(echo "$$changes" | grep -c "^storage" || true); \
+	sc=$$(echo "$$changes" | grep -c "^scripts/" || true); \
+	if [ "$$fe" -gt 0 ]; then echo "  \033[36mfrontend/\033[0m     → npm run build && firebase deploy --only hosting"; fi; \
+	if [ "$$be" -gt 0 ]; then echo "  \033[36mbackend/\033[0m      → ./gradlew build && gcloud run deploy"; fi; \
+	if [ "$$fn" -gt 0 ]; then echo "  \033[36mfunctions/\033[0m    → firebase deploy --only functions"; fi; \
+	if [ "$$dc" -gt 0 ]; then echo "  \033[36mdataconnect/\033[0m  → firebase deploy --only dataconnect"; fi; \
+	if [ "$$sr" -gt 0 ]; then echo "  \033[36mstorage*\033[0m      → firebase deploy --only storage && make deploy-cors"; fi; \
+	if [ "$$sc" -gt 0 ]; then echo "  \033[36mscripts/\033[0m      → re-run seed commands with --prod"; fi; \
+	if [ "$$fe$$be$$fn$$dc$$sr$$sc" = "000000" ]; then echo "  No deployment-relevant changes detected."; fi; \
+	echo ""
+
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 

@@ -1330,9 +1330,10 @@ Two types of challenge session that sit outside the daily slot queue. Both are t
 | | Consolidation | Maturity |
 |---|---|---|
 | Trigger | 5 **words** cross familiarity 2 or 4 within 7 days | Every 10 **kanji** reach derived familiarity 5 |
-| Quiz pool | `meaning_recall` + `reading_recognition` from QuizBank for those words' kanji | Gemini-generated multi-kanji sentences |
-| Length | Up to 10 questions (2 types × 5 words) | 5 questions |
+| Quiz pool | `meaning_recall` + `reading_recognition` from QuizBank for those words' kanji | Gemini-generated reading passage |
+| Length | Up to 10 questions (2 types × 5 words) | 1 passage (~5 sentences), 1 free-text answer |
 | Affects familiarity? | Yes — wrong answer → word familiarity -1, kanji familiarity recomputed | No — purely evaluative |
+| Answer checking | Multiple choice / standard | Second Gemini call as judge |
 | Tone | Checkpoint — real gate before progressing | Celebration — showcase of how far you've come |
 
 > **Word vs kanji tracking:** familiarity is tracked at the word level (`UserWords.familiarity`). Kanji familiarity is a derived cached value (minimum of top 3 words). Consolidation triggers on word familiarity crossings — you're consolidating vocabulary. Maturity triggers on derived kanji familiarity milestones — reaching kanji mastery is the celebration unit.
@@ -1341,7 +1342,7 @@ Two types of challenge session that sit outside the daily slot queue. Both are t
 
 ## 6.1 Schema Updates
 
-Add `ChallengeType` and `ConsolidationTier` enums plus new tables in `dataconnect/schema/schema.gql`:
+Add enums and new tables in `dataconnect/schema/schema.gql`:
 
 ```graphql
 enum ChallengeType { CONSOLIDATION, MATURITY }
@@ -1356,7 +1357,7 @@ type ChallengeSession @table {
   wordIds: [UUID!]!                # UserWords IDs involved (CONSOLIDATION)
   kanjiIds: [UUID!]!               # KanjiMaster IDs involved (both types)
   quizOrder: [UUID!]!              # pre-computed interleaved QuizBank IDs (CONSOLIDATION)
-  generatedQuestions: String       # JSON — Gemini sentences (MATURITY only)
+  generatedQuestions: String       # JSON — single passage object (MATURITY only)
   triggeredAt: Timestamp!
   completedAt: Timestamp
   score: Int                       # correct out of total
@@ -1369,6 +1370,8 @@ type ChallengeQuizServe @table {
   userId: String!
   quizId: UUID                     # QuizBank ID (CONSOLIDATION) or null (MATURITY)
   questionIndex: Int!              # position in challenge (0-based)
+  userAnswer: String               # free-text typed answer (MATURITY only)
+  feedback: String                 # LLM judge feedback (MATURITY only)
   correct: Boolean!
   answeredAt: Timestamp! @default(expr: "request.time")
 }
@@ -1396,7 +1399,7 @@ Consolidation shown first because it affects familiarity progression — better 
 
 ### Consolidation Trigger
 
-Fires when 5 words cross word familiarity 2 or 4 within a 7-day rolling window.
+Fires when 5 words cross word familiarity 2, or 4 within a 7-day rolling window.
 
 ```kotlin
 val CONSOLIDATION_TRIGGERS = listOf(2, 4)
@@ -1404,21 +1407,16 @@ val CONSOLIDATION_TRIGGERS = listOf(2, 4)
 fun checkConsolidationTrigger(userId: String, newWordFamiliarity: Int) {
     if (newWordFamiliarity !in CONSOLIDATION_TRIGGERS) return
 
-    // Find words that recently crossed this familiarity threshold
     val recentWords = userWordsRepo.findRecentlyReachedFamiliarity(
         userId = userId,
         familiarity = newWordFamiliarity,
         withinDays = 7,
-        excludeAlreadyChallenged = true   // not already used in a CONSOLIDATION at this tier
+        excludeAlreadyChallenged = true
     )
 
     if (recentWords.size >= 5) {
-        val group = recentWords.takeLast(5)   // 5 most recent
-
-        // Collect the kanji these words contain
+        val group = recentWords.takeLast(5)
         val kanjiIds = group.flatMap { it.kanjiIds }.distinct()
-
-        // Pre-compute interleaved quiz order from QuizBank
         val quizOrder = buildInterleavedOrder(group, newWordFamiliarity)
 
         challengeRepo.createConsolidation(
@@ -1435,11 +1433,10 @@ fun checkConsolidationTrigger(userId: String, newWordFamiliarity: Int) {
 
 ### Maturity Trigger
 
-Fires when derived `UserKanji.familiarity` reaches 5 for every 10th kanji. Kanji familiarity is the milestone marker — it represents overall vocabulary mastery around that kanji.
+Fires when derived `UserKanji.familiarity` reaches 5 for every 10th kanji.
 
 ```kotlin
 fun checkMaturityTrigger(userId: String, kanjiId: UUID) {
-    // Only check if derived kanji familiarity just reached 5
     val kanjiWords = userWordsRepo.findByKanjiId(userId, kanjiId)
     val derivedFamiliarity = computeKanjiFamiliarity(kanjiWords)
     if (derivedFamiliarity != 5) return
@@ -1448,20 +1445,22 @@ fun checkMaturityTrigger(userId: String, kanjiId: UUID) {
     val lastMilestone = challengeRepo.lastMaturityMilestone(userId) ?: 0
 
     if (matureKanjiCount >= lastMilestone + 10) {
-        val matureKanji = userKanjiRepo.findByFamiliarity(userId, familiarity = 5)
+        val justMatureKanji = userKanjiRepo.findByFamiliarity(userId, familiarity = 5)
+        val allKnownKanji = userKanjiRepo.findAll(userId)         // all UserKanji for context
         val unlockedWords = userWordsRepo.findUnlocked(userId)
 
         val sessionId = challengeRepo.createMaturity(
             userId = userId,
             milestone = matureKanjiCount,
-            kanjiIds = matureKanji.map { it.kanjiId }
+            kanjiIds = justMatureKanji.map { it.kanjiId }
         )
 
-        // Fire-and-forget — questions generated async, stored before user opens challenge
+        // Fire-and-forget — passage generated async, stored before user opens challenge
         firebaseFunction.call("generate_challenge", mapOf(
             "challengeSessionId" to sessionId,
-            "matureKanji" to matureKanji.map { it.character },
-            "unlockedWords" to unlockedWords.map { it.word }
+            "justMatureKanji" to justMatureKanji.map { it.character },
+            "unlockedWords" to unlockedWords.map { it.word },
+            "knownKanji" to allKnownKanji.map { it.character }
         ))
     }
 }
@@ -1512,49 +1511,145 @@ fun buildInterleavedOrder(words: List<UserWord>, familiarity: Int): List<UUID> {
 
 ---
 
-## 6.4 Maturity Challenge — Gemini Generation
+## 6.4 Maturity Challenge — Passage Generation
 
-Triggered async when the 10th (20th, 30th...) kanji reaches derived familiarity 5. Questions generated by Firebase Function `generate_challenge` and stored in `ChallengeSession.generatedQuestions` before the user opens the challenge. No Gemini call at open time.
+Triggered async when the 10th (20th, 30th...) kanji reaches derived familiarity 5. A single reading passage (~5 sentences) is generated by Firebase Function `generate_challenge` and stored in `ChallengeSession.generatedQuestions` before the user opens the challenge. No Gemini call at open time.
 
-**Gemini Prompt:**
+The passage naturally incorporates the just-matured kanji. The user reads the full passage and types the English meaning. Correctness is checked by a second Gemini call — not string matching.
+
+**What ktor passes to the function:**
+
+```kotlin
+firebaseFunction.call("generate_challenge", mapOf(
+    "challengeSessionId" to sessionId,
+    "justMatureKanji" to justMatureKanji.map { it.character },
+    "unlockedWords" to unlockedWords.map { it.word },
+    "knownKanji" to allKnownKanji.map { it.character }
+))
+```
+
+**Generation Prompt:**
+
+> Should use 3.1 pro model with high thinking level.
 
 ```
 You are generating a celebration challenge for a Japanese learner living in Japan.
-They have mastered these kanji: {matureKanji}
+They have just mastered these kanji: {justMatureKanji}
 They have also encountered these compound words: {unlockedWords}
+They are also familiar with these kanji: {knownKanji}
 
-Generate exactly 5 challenge questions. Each question is a casual Japanese sentence
-containing at least 2 kanji from the mastered list. The learner must read the sentence
-and provide the full English meaning.
+Generate 1 challenge passage of around 5 sentences, unless a longer one gives
+a better result. The passage should naturally showcase kanji from the just mastered
+list. The learner must read the full passage and provide the complete English meaning.
 
-This is a celebration — sentences should feel rewarding to read, like something
+This is a celebration — the passage should feel rewarding to read, like something
 they would actually encounter in daily life in Japan.
 
 Rules:
-- Each sentence must use at least 2 kanji from the mastered list
 - Use compound words from their list where natural
-- Casual spoken Japanese only — no keigo, no ます/です
+- Broader known kanji may appear as supporting context but mastered kanji are the focus
 - No furigana anywhere — full recall required
-- Sentences should reflect real daily life: trains, shops, restaurants, weather, friends
-- Answer is the full English meaning of the sentence
-- Explanation highlights which kanji appeared and why the sentence works
+- Sentences should reflect real daily life: trains, shops, restaurants, friends, newspaper
+- fullAnswer is the complete English meaning of the entire passage
+- Each sentence entry has its own answer for judge reference — these do not need to be shown to the user
+- Explanation highlights which mastered kanji appeared and why the passage works
 
-Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
-[
-  {
-    "prompt": "駅で急行待ってたら電車止まっちゃった。",
-    "targetKanji": ["急行", "電車"],
-    "answer": "I was waiting for the express at the station and the train stopped.",
-    "explanation": "急行 (express) + 電車 (train) — both learned kanji in a real station scenario"
-  }
-]
+Reread your final answer and review the accuracy against these instructions.
+
+Return ONLY a valid JSON object — no markdown, no preamble, no trailing commas:
+{
+  "passage": "今日は電車が遅れてたから、急行に乗り換えた。駅員に聞いたら、事故があったって。",
+  "targetKanji": ["電車", "急行", "駅員", "事故"],
+  "sentences": [
+    {
+      "text": "今日は電車が遅れてたから、急行に乗り換えた。",
+      "answer": "The train was late today so I transferred to the express.",
+      "targetKanji": ["電車", "急行"]
+    },
+    {
+      "text": "駅員に聞いたら、事故があったって。",
+      "answer": "When I asked the station staff, they said there had been an accident.",
+      "targetKanji": ["駅員", "事故"]
+    }
+  ]
+}
 ```
+
+> Returns a single JSON **object**, not an array — one passage per challenge.
 
 **Response stored in `ChallengeSession.generatedQuestions`** as a JSON string. Parsed at open time by the frontend.
 
 ---
 
-## 6.5 Firebase Function: `generate_challenge`
+## 6.5 Answer Checking — LLM as Judge
+
+The user types a free-text English translation of the passage. A second Gemini call checks whether the meaning is captured correctly — not whether the wording matches exactly. Called **synchronously** from Ktor — the user waits ~1–3s for feedback before seeing the result.
+
+**Firebase Function: `check_challenge_answer`**
+
+```python
+@https_fn.on_request()
+def check_challenge_answer(req: https_fn.Request) -> https_fn.Response:
+  data = req.get_json()
+  passage = data["passage"]
+  sentences = data["sentences"]        # [{text, answer, targetKanji}, ...]
+  full_answer = data["fullAnswer"]
+  user_answer = data["userAnswer"]
+
+  sentences_formatted = "\n".join(
+    f"{i+1}. {s['text']} → {s['answer']}"
+    for i, s in enumerate(sentences)
+  )
+
+  prompt = f"""You are checking a Japanese reading comprehension answer.
+
+Passage: {passage}
+
+Sentence breakdown (for reference only — not shown to user):
+{sentences_formatted}
+
+Full reference answer: {full_answer}
+User's answer: {user_answer}
+
+Check whether the user captured the overall meaning. Use the sentence breakdown
+to identify which specific parts they missed or misread. Minor wording differences
+are fine. Missing key details or misunderstanding core meaning counts as incorrect.
+
+Return ONLY valid JSON — no markdown, no preamble:
+{{
+  "correct": true,
+  "feedback": "Good overall. You got the train delay and transfer. '駅員' refers specifically to station staff — worth noting.",
+  "missedSentences": []
+}}
+
+missedSentences is a 0-based array of sentence indices the user missed or misread.
+Empty array if all correct or substantially correct.
+"""
+
+  # use gemini 3 flash
+  response = gemini_client.generate_content(
+    prompt,
+    generation_config={"response_mime_type": "application/json"}
+  )
+
+  result = json.loads(response.text)
+  cost = extract_cost(response.usage_metadata)
+
+  return https_fn.Response(
+    json.dumps({
+      "correct": result["correct"],
+      "feedback": result["feedback"],
+      "missedSentences": result.get("missedSentences", []),
+      "costMicrodollars": cost
+    }),
+    status=200,
+    headers={"Content-Type": "application/json"}
+  )
+```
+
+---
+
+## 6.6 Firebase Function: `generate_challenge`
 
 HTTP trigger in `functions/main.py`. Called fire-and-forget from Ktor when a maturity challenge is created.
 
@@ -1563,22 +1658,23 @@ HTTP trigger in `functions/main.py`. Called fire-and-forget from Ktor when a mat
 def generate_challenge(req: https_fn.Request) -> https_fn.Response:
     data = req.get_json()
     session_id = data["challengeSessionId"]
-    mature_kanji = data["matureKanji"]      # ["電", "車", "東", ...]
-    unlocked_words = data["unlockedWords"]  # ["電車", "急行", ...]
+    just_mature_kanji = data["justMatureKanji"]   # ["電", "車", "東", ...]
+    unlocked_words = data["unlockedWords"]         # ["電車", "急行", ...]
+    known_kanji = data["knownKanji"]               # all known kanji for context
 
-    prompt = build_challenge_prompt(mature_kanji, unlocked_words)
+    prompt = build_challenge_prompt(just_mature_kanji, unlocked_words, known_kanji)
 
     response = gemini_client.generate_content(
         prompt,
         generation_config={"response_mime_type": "application/json"}
     )
 
-    questions_json = response.text
+    passage_json = response.text
     cost = extract_cost(response.usage_metadata)
 
     data_connect.update_challenge_session(
         session_id=session_id,
-        generated_questions=questions_json,
+        generated_questions=passage_json,
         cost_microdollars=cost
     )
 
@@ -1587,13 +1683,13 @@ def generate_challenge(req: https_fn.Request) -> https_fn.Response:
 
 ---
 
-## 6.6 API Endpoints
+## 6.7 API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/challenge/pending` | Returns highest-priority pending challenge with type + metadata |
-| `GET` | `/api/challenge/{id}` | Returns full challenge — quiz list or generated questions |
-| `POST` | `/api/challenge/{id}/result` | Submit one answer — updates word familiarity if CONSOLIDATION |
+| `GET` | `/api/challenge/{id}` | Returns full challenge — quiz list or generated passage |
+| `POST` | `/api/challenge/{id}/result` | Submit answer — updates word familiarity (CONSOLIDATION) or calls LLM judge (MATURITY) |
 | `POST` | `/api/challenge/{id}/complete` | Mark challenge done, store final score |
 
 **GET /api/challenge/pending response:**
@@ -1613,19 +1709,37 @@ def generate_challenge(req: https_fn.Request) -> https_fn.Response:
 
 Returns `{ "challenge": null }` when nothing pending.
 
-**POST /api/challenge/{id}/result:**
+**POST /api/challenge/{id}/result — CONSOLIDATION:**
 
 ```json
 { "quizId": "uuid", "correct": true }
 ```
 
-- CONSOLIDATION + wrong → `UserWords.familiarity - 1`, `nextReview = tomorrow`, recompute `UserKanji.familiarity`
-- CONSOLIDATION + correct → `UserWords.nextReview` refreshed, no familiarity change, recompute `UserKanji.familiarity`
-- MATURITY → no familiarity effect either direction
+- Wrong → `UserWords.familiarity - 1`, `nextReview = tomorrow`, recompute `UserKanji.familiarity`
+- Correct → `UserWords.nextReview` refreshed, no familiarity change, recompute `UserKanji.familiarity`
+
+**POST /api/challenge/{id}/result — MATURITY:**
+
+```json
+{ "userAnswer": "I was waiting for the express and the train stopped." }
+```
+
+Ktor calls `check_challenge_answer` synchronously. Returns:
+
+```json
+{
+  "correct": true,
+  "feedback": "Good — you captured the main idea. The train stopping was the key detail.",
+  "referenceAnswer": "I was waiting for the express at the station and the train stopped.",
+  "explanation": "急行 (express) + 電車 (train) — both appear naturally in a station scenario"
+}
+```
+
+No familiarity effect for MATURITY either direction.
 
 ---
 
-## 6.7 React UI
+## 6.8 React UI
 
 **Home screen badge** — shown when a pending challenge exists. Priority order determines which badge shows if multiple are pending.
 
@@ -1646,14 +1760,21 @@ For maturity:
 └─────────────────────────────────────┘
 ```
 
-**Challenge screen** — separate from quiz slot UI, same card components:
+**Challenge screen — CONSOLIDATION:**
+- Standard quiz cards (`meaning_recall` + `reading_recognition`) in pre-computed `quizOrder`
+- Progress bar, no timer, exit allowed at any time
+- Summary: score breakdown per word, which ones were knocked back
 
-- CONSOLIDATION: standard quiz cards (`meaning_recall` + `reading_recognition`) in pre-computed `quizOrder`
-- MATURITY: sentence card only — full Japanese sentence, user types English meaning
-- Both: progress bar, no timer, exit allowed at any time
-- Summary on completion: score breakdown per word, which ones were knocked back (CONSOLIDATION)
+**Challenge screen — MATURITY:**
+- Full passage displayed in large readable text
+- Free-text input below: "Type the English meaning..."
+- Submit button → spinner while LLM judge runs (~1–3s)
+- Reveal: correct/incorrect banner + judge feedback + reference answer + explanation
+- Single question, single submit — no progress bar needed
 
-**Exit and resume** — `quizOrder` stores the full pre-computed sequence. Progress tracked by counting `ChallengeQuizServe` rows for this session. Resuming picks up from `questionIndex = completedCount`.
+**Exit and resume (CONSOLIDATION):** `quizOrder` stores full sequence. Progress tracked by `ChallengeQuizServe` count. Resuming picks up from `questionIndex = completedCount`.
+
+**Exit and resume (MATURITY):** Single passage — if already answered, show result on resume. If not yet answered, show passage again.
 
 ---
 
@@ -1661,19 +1782,24 @@ For maturity:
 
 - [ ] `ChallengeType`, `ConsolidationTier` enums added to schema
 - [ ] `ChallengeSession` added with `wordIds`, `kanjiIds`, `tier`, `quizOrder`, `generatedQuestions`, `affectsFamiliarity`
-- [ ] `ChallengeQuizServe` table added to schema
-- [ ] `checkConsolidationTrigger` fires at **word** familiarity 2 and 4 crossings
-- [ ] `checkMaturityTrigger` fires when **derived kanji** familiarity reaches 5 for every 10th kanji
+- [ ] `ChallengeQuizServe` added with `userAnswer`, `feedback` fields
+- [ ] `checkConsolidationTrigger` fires at word familiarity 2 and 4 crossings
+- [ ] `checkMaturityTrigger` fires when derived kanji familiarity reaches 5 for every 10th kanji
+- [ ] Maturity trigger passes `justMatureKanji`, `unlockedWords`, `knownKanji` to function
 - [ ] Consolidation uses words' `WordMaster` to find shared `QuizBank` rows
 - [ ] Consolidation quiz order: all `meaning_recall` then all `reading_recognition`, each round independently shuffled
 - [ ] Consolidation wrong answer → `UserWords.familiarity - 1`, recomputes `UserKanji.familiarity`
 - [ ] Consolidation correct answer → `UserWords.nextReview` refreshed only
-- [ ] Maturity questions generated by `generate_challenge` Firebase Function (fire-and-forget)
-- [ ] Maturity questions stored in `ChallengeSession.generatedQuestions` before user opens challenge
+- [ ] `generate_challenge` Firebase Function generates single passage object, stores in `generatedQuestions`
+- [ ] `check_challenge_answer` Firebase Function judges free-text answer via Gemini
+- [ ] `POST /api/challenge/{id}/result` accepts `userAnswer` for MATURITY, calls judge synchronously
+- [ ] Judge result returned immediately: `correct`, `feedback`, `referenceAnswer`, `explanation`
+- [ ] `ChallengeQuizServe` stores `userAnswer` and `feedback` for MATURITY answers
 - [ ] Maturity has no familiarity effect either direction
 - [ ] `GET /api/challenge/pending` returns correct priority ordering
 - [ ] Challenge UI separate from daily slot — does not consume slot allowance
-- [ ] Exit and resume works — `questionIndex` tracked via `ChallengeQuizServe` count
+- [ ] CONSOLIDATION exit/resume works via `ChallengeQuizServe` count
+- [ ] MATURITY shows passage + free-text input; spinner during judge; reveal on result
 - [ ] Home screen badge shows correct type and tone (checkpoint vs celebration)
-- [ ] Summary screen shows per-word breakdown on completion
+- [ ] Summary screen shows per-word breakdown for CONSOLIDATION
 - [ ] Score stored in `ChallengeSession.score`

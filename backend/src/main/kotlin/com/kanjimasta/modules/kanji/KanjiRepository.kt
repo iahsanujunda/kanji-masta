@@ -200,8 +200,8 @@ class KanjiRepository(private val dc: DataConnectClient) {
         val query = """
             query {
                 kanjiMasters(
-                    where: { jlpt: { isNull: false } },
-                    orderBy: [{ jlpt: ASC }, { frequency: ASC }],
+                    where: { jlpt: { in: [5, 4] } },
+                    orderBy: [{ frequency: ASC }],
                     limit: $fetchLimit
                 ) { id character onyomi kunyomi meanings jlpt frequency }
             }

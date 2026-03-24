@@ -46,6 +46,7 @@ export default function Onboarding() {
   const [hasMore, setHasMore] = useState(true);
   const [animating, setAnimating] = useState(false);
   const [slideIn, setSlideIn] = useState(true);
+  const [allSeenKanji, setAllSeenKanji] = useState<Map<string, OnboardingKanji>>(new Map());
 
   const loadBatch = useCallback(async (newOffset: number) => {
     setView("loading");
@@ -55,6 +56,11 @@ export default function Onboarding() {
       );
       setKanji(data.kanji);
       setHasMore(data.hasMore);
+      setAllSeenKanji((prev) => {
+        const next = new Map(prev);
+        for (const k of data.kanji) next.set(k.kanjiMasterId, k);
+        return next;
+      });
       setCurrentIndex(0);
       setSlideIn(true);
       setView(data.kanji.length > 0 ? "deck" : "finished");
@@ -117,23 +123,99 @@ export default function Onboarding() {
     );
   }
 
+  const handleRemoveSelection = useCallback((kanjiMasterId: string) => {
+    setSelections((prev) => prev.filter((s) => s.kanjiMasterId !== kanjiMasterId));
+  }, []);
+
   // --- Batch done — ask to continue or finish ---
   if (view === "batch-done") {
-    return (
-      <Box sx={{ minHeight: "100vh", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", p: 3, textAlign: "center" }}>
-        <Box sx={{ width: 64, height: 64, bgcolor: "rgba(67, 56, 202, 0.15)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", mb: 3 }}>
-          <SpaIcon sx={{ fontSize: 32, color: "#818cf8" }} />
-        </Box>
-        <Typography variant="h5" fontWeight="bold" sx={{ mb: 1 }}>
-          {learningCount + familiarCount} kanji reviewed
-        </Typography>
-        <Typography color="text.secondary" sx={{ mb: 1 }}>
-          {learningCount > 0 && <><strong>{learningCount}</strong> to learn</>}
-          {learningCount > 0 && familiarCount > 0 && " · "}
-          {familiarCount > 0 && <><strong>{familiarCount}</strong> already known</>}
-        </Typography>
+    // Build display list from selections + kanji data we've seen
+    const learningSelections = selections.filter((s) => s.status === "learning");
+    const familiarSelections = selections.filter((s) => s.status === "familiar");
 
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, width: "100%", maxWidth: 300, mt: 3 }}>
+    return (
+      <Box sx={{ minHeight: "100vh", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", p: 3 }}>
+        {/* Header stats */}
+        <Box sx={{ textAlign: "center", pt: 4, mb: 3 }}>
+          <Box sx={{ width: 64, height: 64, bgcolor: "rgba(67, 56, 202, 0.15)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", mx: "auto", mb: 2 }}>
+            <SpaIcon sx={{ fontSize: 32, color: "#818cf8" }} />
+          </Box>
+          <Typography variant="h5" fontWeight="bold" sx={{ mb: 0.5 }}>
+            {selections.length} kanji reviewed
+          </Typography>
+          <Typography color="text.secondary">
+            {learningCount > 0 && <><strong>{learningCount}</strong> to learn</>}
+            {learningCount > 0 && familiarCount > 0 && " · "}
+            {familiarCount > 0 && <><strong>{familiarCount}</strong> already known</>}
+          </Typography>
+        </Box>
+
+        {/* Selection list */}
+        <Box sx={{ flex: 1, overflow: "auto", mb: 2 }}>
+          {learningSelections.length > 0 && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="caption" sx={{ color: "#818cf8", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, px: 1 }}>
+                Want to Learn ({learningSelections.length})
+              </Typography>
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mt: 1 }}>
+                {learningSelections.map((s) => {
+                  const k = allSeenKanji.get(s.kanjiMasterId);
+                  return (
+                    <Box
+                      key={s.kanjiMasterId}
+                      onClick={() => handleRemoveSelection(s.kanjiMasterId)}
+                      sx={{
+                        bgcolor: "rgba(67, 56, 202, 0.15)",
+                        border: "1px solid rgba(99, 102, 241, 0.3)",
+                        borderRadius: 2,
+                        px: 1.5, py: 0.75,
+                        display: "flex", alignItems: "center", gap: 0.75,
+                        cursor: "pointer",
+                        "&:hover": { bgcolor: "rgba(67, 56, 202, 0.25)" },
+                      }}
+                    >
+                      <Typography sx={{ fontSize: "1.1rem" }}>{k?.character || "?"}</Typography>
+                      <Typography variant="caption" sx={{ color: "grey.400" }}>✕</Typography>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Box>
+          )}
+          {familiarSelections.length > 0 && (
+            <Box>
+              <Typography variant="caption" sx={{ color: "#34d399", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, px: 1 }}>
+                Already Know ({familiarSelections.length})
+              </Typography>
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mt: 1 }}>
+                {familiarSelections.map((s) => {
+                  const k = allSeenKanji.get(s.kanjiMasterId);
+                  return (
+                    <Box
+                      key={s.kanjiMasterId}
+                      onClick={() => handleRemoveSelection(s.kanjiMasterId)}
+                      sx={{
+                        bgcolor: "rgba(16, 185, 129, 0.1)",
+                        border: "1px solid rgba(16, 185, 129, 0.2)",
+                        borderRadius: 2,
+                        px: 1.5, py: 0.75,
+                        display: "flex", alignItems: "center", gap: 0.75,
+                        cursor: "pointer",
+                        "&:hover": { bgcolor: "rgba(16, 185, 129, 0.2)" },
+                      }}
+                    >
+                      <Typography sx={{ fontSize: "1.1rem" }}>{k?.character || "?"}</Typography>
+                      <Typography variant="caption" sx={{ color: "grey.400" }}>✕</Typography>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Box>
+          )}
+        </Box>
+
+        {/* Action buttons */}
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, pb: 2 }}>
           {hasMore && (
             <Button
               fullWidth
@@ -248,24 +330,27 @@ export default function Onboarding() {
         </Paper>
 
         {/* Meaning */}
-        <Typography variant="h5" fontWeight="bold" sx={{ mb: 1, textTransform: "capitalize" }}>
+        <Typography variant="h5" fontWeight="bold" sx={{ mb: 2, textTransform: "capitalize" }}>
           {current.meanings[0] || ""}
         </Typography>
 
-        {/* Readings */}
-        <Box sx={{ display: "flex", gap: 1.5, mb: 3 }}>
+        {/* Readings — ON / KUN rows */}
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, mb: 3 }}>
           {current.onyomi.length > 0 && (
-            <Typography variant="body2" sx={{ color: "#818cf8", fontFamily: "monospace" }}>
-              {current.onyomi.join("、")}
-            </Typography>
-          )}
-          {current.onyomi.length > 0 && current.kunyomi.length > 0 && (
-            <Typography variant="body2" color="text.disabled">|</Typography>
+            <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
+              <Typography variant="caption" sx={{ color: "grey.500", width: 28, flexShrink: 0, mt: 0.25 }}>ON</Typography>
+              <Typography variant="body2" sx={{ color: "#818cf8", fontFamily: "monospace", fontWeight: 500 }}>
+                {current.onyomi.join("、")}
+              </Typography>
+            </Box>
           )}
           {current.kunyomi.length > 0 && (
-            <Typography variant="body2" sx={{ color: "#34d399", fontFamily: "monospace" }}>
-              {current.kunyomi.join("、")}
-            </Typography>
+            <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
+              <Typography variant="caption" sx={{ color: "grey.500", width: 28, flexShrink: 0, mt: 0.25 }}>KUN</Typography>
+              <Typography variant="body2" sx={{ color: "#34d399", fontFamily: "monospace", fontWeight: 500 }}>
+                {current.kunyomi.join("、")}
+              </Typography>
+            </Box>
           )}
         </Box>
 
@@ -296,8 +381,8 @@ export default function Onboarding() {
           right: 0,
           display: "flex",
           justifyContent: "center",
-          pb: 4,
-          pt: 3,
+          pb: 5,
+          pt: 4,
           background: (theme) => `linear-gradient(transparent, ${theme.palette.background.default} 30%)`,
         }}
       >
@@ -306,37 +391,50 @@ export default function Onboarding() {
             fullWidth
             onClick={() => handleDecision("familiar")}
             disabled={animating}
-            startIcon={<ParkIcon />}
             sx={{
               py: 2,
               borderRadius: 3,
-              fontWeight: "bold",
-              fontSize: "0.9rem",
-              bgcolor: "rgba(16, 185, 129, 0.12)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 0.5,
+              bgcolor: "grey.900",
               color: "#34d399",
               border: "2px solid rgba(16, 185, 129, 0.3)",
-              "&:hover": { bgcolor: "rgba(16, 185, 129, 0.2)" },
+              "&:hover": { bgcolor: "rgba(16, 185, 129, 0.1)", borderColor: "rgba(16, 185, 129, 0.5)" },
+              textTransform: "none",
             }}
           >
-            Already Know
+            <ParkIcon sx={{ fontSize: 22, mb: 0.25 }} />
+            <Typography variant="body2" fontWeight="bold">Already Know</Typography>
+            <Typography variant="caption" sx={{ color: "grey.500", fontSize: "0.6rem" }}>
+              Not sure? Risk it.
+            </Typography>
           </Button>
           <Button
             fullWidth
             onClick={() => handleDecision("learning")}
             disabled={animating}
-            startIcon={<SpaIcon />}
             sx={{
               py: 2,
               borderRadius: 3,
-              fontWeight: "bold",
-              fontSize: "0.9rem",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 0.5,
               bgcolor: "#4338ca",
               color: "white",
               border: "2px solid #6366f1",
+              boxShadow: "0 0 20px rgba(79,70,229,0.3)",
               "&:hover": { bgcolor: "#3730a3" },
+              textTransform: "none",
             }}
           >
-            Want to Learn
+            <SpaIcon sx={{ fontSize: 22, mb: 0.25 }} />
+            <Typography variant="body2" fontWeight="bold">Want to Learn</Typography>
+            <Typography variant="caption" sx={{ color: "rgba(199,210,254,0.7)", fontSize: "0.6rem" }}>
+              Start from Level 0
+            </Typography>
           </Button>
         </Box>
       </Box>

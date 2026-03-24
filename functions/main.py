@@ -164,7 +164,7 @@ def _calculate_cost_microdollars(usage) -> int:
     return int((input_cost + output_cost) * 1_000_000)
 
 
-@https_fn.on_request(timeout_sec=300)
+@https_fn.on_request(timeout_sec=300, region="asia-east1")
 def analyze_photo(req: https_fn.Request) -> https_fn.Response:
     ctx = TraceContext.from_request(req)
     start = time.time()
@@ -617,7 +617,7 @@ def _run_quiz_generation(ctx: TraceContext | None = None):
             _update_job_status(job_id, "FAILED", increment_attempts=True)
 
 
-@https_fn.on_request(timeout_sec=540)
+@https_fn.on_request(timeout_sec=540, region="asia-east1")
 def generate_quizzes_http(req: https_fn.Request) -> https_fn.Response:
     """HTTP trigger for immediate quiz generation (called by Ktor after kanji selection)."""
     ctx = TraceContext.from_request(req)
@@ -628,7 +628,7 @@ def generate_quizzes_http(req: https_fn.Request) -> https_fn.Response:
     return https_fn.Response(json.dumps({"status": "ok"}), content_type="application/json")
 
 
-@scheduler_fn.on_schedule(schedule="every 2 minutes")
+@scheduler_fn.on_schedule(schedule="every 2 minutes", region="asia-east1")
 def generate_quizzes(event: scheduler_fn.ScheduledEvent) -> None:
     """Scheduled fallback for retrying failed jobs and processing any stragglers."""
     _run_quiz_generation()
@@ -636,7 +636,7 @@ def generate_quizzes(event: scheduler_fn.ScheduledEvent) -> None:
 
 # --- Daily Regen Cron ---
 
-@scheduler_fn.on_schedule(schedule="every 24 hours")
+@scheduler_fn.on_schedule(schedule="every 24 hours", region="asia-east1")
 def check_regen_triggers(event: scheduler_fn.ScheduledEvent) -> None:
     """Check for quizzes that need distractor regeneration."""
     # Find all quizzes with servedCount > 0 that have no unserved distractor set
@@ -701,7 +701,7 @@ Return ONLY a valid JSON array — no markdown, no preamble:
 ]"""
 
 
-@https_fn.on_request()
+@https_fn.on_request(region="asia-east1")
 def discover_words(req: https_fn.Request) -> https_fn.Response:
     """Discover fresh words for a kanji when most example words are already familiar."""
     body = req.get_json(silent=True)

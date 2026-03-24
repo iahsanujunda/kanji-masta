@@ -31,6 +31,7 @@ fun Application.module() {
     val projectId = environment.config.property("firebase.projectId").getString()
     val dcHost = environment.config.property("firebase.dataConnectHost").getString()
     val functionsHost = environment.config.property("firebase.functionsHost").getString()
+    val functionsRegion = environment.config.property("firebase.functionsRegion").getString()
 
     val dcUrl = "http://$dcHost/v1alpha/projects/$projectId/locations/asia-east1/services/kanji-masta:executeGraphql"
     val functionsBaseUrl = "http://$functionsHost"
@@ -44,10 +45,10 @@ fun Application.module() {
     val dcClient = DataConnectClient(httpClient, dcUrl)
 
     val photoRepository = PhotoRepository(dcClient)
-    val photoService = PhotoService(photoRepository, httpClient, functionsBaseUrl, projectId)
+    val photoService = PhotoService(photoRepository, httpClient, functionsBaseUrl, projectId, functionsRegion)
 
     val kanjiRepository = KanjiRepository(dcClient)
-    val kanjiService = KanjiService(kanjiRepository, photoRepository, httpClient, functionsBaseUrl, projectId)
+    val kanjiService = KanjiService(kanjiRepository, photoRepository, httpClient, functionsBaseUrl, projectId, functionsRegion)
 
     val quizRepository = QuizRepository(dcClient)
     val quizService = QuizService(quizRepository)

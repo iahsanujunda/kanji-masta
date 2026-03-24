@@ -163,7 +163,8 @@ For Cloud Run, just set the env vars:
 gcloud run deploy kanji-masta-backend \
   --set-env-vars \
     FIREBASE_PROJECT_ID=kanji-masta,\
-    FIREBASE_FUNCTIONS_HOST=us-central1-kanji-masta.cloudfunctions.net,\
+    FIREBASE_FUNCTIONS_HOST=asia-east1-kanji-masta.cloudfunctions.net,\
+    FIREBASE_FUNCTIONS_REGION=asia-east1,\
     LOG_LEVEL=INFO
 ```
 

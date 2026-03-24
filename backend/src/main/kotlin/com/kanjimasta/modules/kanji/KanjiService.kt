@@ -18,6 +18,7 @@ class KanjiService(
     private val httpClient: HttpClient,
     private val functionsBaseUrl: String,
     private val firebaseProjectId: String,
+    private val functionsRegion: String = "us-central1",
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
 
@@ -154,7 +155,7 @@ class KanjiService(
     }
 
     private fun triggerQuizGeneration() {
-        val functionUrl = "$functionsBaseUrl/$firebaseProjectId/us-central1/generate_quizzes_http"
+        val functionUrl = "$functionsBaseUrl/$firebaseProjectId/$functionsRegion/generate_quizzes_http"
         logger.info("Triggering quiz generation: {}", functionUrl)
         scope.launch {
             try {

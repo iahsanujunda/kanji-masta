@@ -31,8 +31,8 @@ fun Application.testModule() {
     }
     val httpClient = HttpClient(CIO)
     val dcClient = DataConnectClient(httpClient, "http://localhost:9399/unused")
-    val photoService = PhotoService(PhotoRepository(dcClient), httpClient, "http://localhost:5001", "test")
-    val kanjiService = KanjiService(KanjiRepository(dcClient), PhotoRepository(dcClient), httpClient, "http://localhost:5001", "test")
+    val photoService = PhotoService(PhotoRepository(dcClient), httpClient, "http://localhost:5001", "test", "us-central1")
+    val kanjiService = KanjiService(KanjiRepository(dcClient), PhotoRepository(dcClient), httpClient, "http://localhost:5001", "test", "us-central1")
     val quizRepository = com.kanjimasta.modules.quiz.QuizRepository(dcClient)
     val quizService = com.kanjimasta.modules.quiz.QuizService(quizRepository)
     val settingsRepository = com.kanjimasta.modules.settings.SettingsRepository(dcClient)

@@ -10,6 +10,7 @@ firebase:
   authEmulatorHost: "$FIREBASE_AUTH_EMULATOR_HOST:"
   dataConnectHost: "$FIREBASE_DATACONNECT_HOST:127.0.0.1:9399"
   functionsHost: "$FIREBASE_FUNCTIONS_HOST:127.0.0.1:5001"
+  functionsRegion: "$FIREBASE_FUNCTIONS_REGION:us-central1"
 
 claude:
   apiKey: "$CLAUDE_API_KEY:"

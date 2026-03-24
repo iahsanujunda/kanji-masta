@@ -17,6 +17,7 @@ class PhotoService(
     private val httpClient: HttpClient,
     private val functionsBaseUrl: String,
     private val firebaseProjectId: String,
+    private val functionsRegion: String = "us-central1",
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
 
@@ -25,7 +26,7 @@ class PhotoService(
         val sessionId = photoRepository.createSession(userId, imageUrl)
         logger.info("Created photo session={}, calling function", sessionId)
 
-        val functionUrl = "$functionsBaseUrl/$firebaseProjectId/us-central1/analyze_photo"
+        val functionUrl = "$functionsBaseUrl/$firebaseProjectId/$functionsRegion/analyze_photo"
         logger.debug("Function URL: {}", functionUrl)
 
         // Fire-and-forget: call Firebase Function async

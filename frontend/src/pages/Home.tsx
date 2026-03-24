@@ -76,6 +76,7 @@ export default function Home() {
   const slotEndDate = slotEndsAt ? new Date(slotEndsAt) : null;
   const hasActiveSlot = slotEndDate != null && slotEndDate > new Date();
   const slotTimeLeft = slotEndDate ? formatTimeLeft(slotEndDate) : "";
+  const hasKanji = kanjiLearning + kanjiFamiliar > 0;
 
   return (
     <Box
@@ -152,7 +153,7 @@ export default function Home() {
         {/* Quiz slot card */}
         {loading ? (
           <Skeleton variant="rounded" height={160} sx={{ borderRadius: 4 }} />
-        ) : wordCount === 0 ? (
+        ) : !hasKanji ? (
           /* No kanji yet — onboarding prompt */
           <Paper elevation={4} sx={{ bgcolor: "#4338ca", color: "white", borderRadius: 4, p: 3, textAlign: "center" }}>
             <SpaIcon sx={{ fontSize: 40, opacity: 0.7, mb: 1.5 }} />
@@ -167,6 +168,23 @@ export default function Home() {
               sx={{ bgcolor: "white", color: "#4338ca", fontWeight: "bold", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "grey.100" } }}
             >
               Start Learning
+            </Button>
+          </Paper>
+        ) : wordCount === 0 ? (
+          /* Kanji selected but quizzes still generating */
+          <Paper elevation={4} sx={{ bgcolor: "#4338ca", color: "white", borderRadius: 4, p: 3, textAlign: "center" }}>
+            <SpaIcon sx={{ fontSize: 40, opacity: 0.7, mb: 1.5 }} />
+            <Typography fontWeight="bold" sx={{ mb: 0.5 }}>Preparing Your Quizzes</Typography>
+            <Typography variant="body2" sx={{ opacity: 0.7, mb: 2 }}>
+              We're setting up quizzes for your {kanjiLearning + kanjiFamiliar} kanji. This usually takes a moment.
+            </Typography>
+            <Button
+              fullWidth
+              variant="contained"
+              onClick={() => navigate("/onboarding")}
+              sx={{ bgcolor: "rgba(255,255,255,0.2)", color: "white", fontWeight: "bold", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "rgba(255,255,255,0.3)" } }}
+            >
+              Add More Kanji
             </Button>
           </Paper>
         ) : hasActiveSlot && slotRemaining > 0 ? (

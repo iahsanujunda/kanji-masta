@@ -111,6 +111,10 @@ export default function Onboarding() {
     setView("finished");
   }, [selections]);
 
+  const handleRemoveSelection = useCallback((kanjiMasterId: string) => {
+    setSelections((prev) => prev.filter((s) => s.kanjiMasterId !== kanjiMasterId));
+  }, []);
+
   const learningCount = selections.filter((s) => s.status === "learning").length;
   const familiarCount = selections.filter((s) => s.status === "familiar").length;
 
@@ -122,10 +126,6 @@ export default function Onboarding() {
       </Box>
     );
   }
-
-  const handleRemoveSelection = useCallback((kanjiMasterId: string) => {
-    setSelections((prev) => prev.filter((s) => s.kanjiMasterId !== kanjiMasterId));
-  }, []);
 
   // --- Batch done — ask to continue or finish ---
   if (view === "batch-done") {

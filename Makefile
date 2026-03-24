@@ -90,6 +90,11 @@ db: ## Show key table counts
 		-H "Content-Type: application/json" \
 		-d '{"query": "query { quizGenerationJobs { id status kanji { character } } }"}' | python3 -c "import sys,json; d=json.load(sys.stdin); rows=d['data']['quizGenerationJobs']; print(f'  {len(rows)} rows'); [print(f'    {r[\"kanji\"][\"character\"]} — {r[\"status\"]}') for r in rows]"
 
+reset-all: ## Reset ALL user data (back to zero state, keeps KanjiMaster)
+	@psql -h 127.0.0.1 -p 5432 -U postgres -c "\
+		TRUNCATE quiz_serve, quiz_distractor, quiz_bank, quiz_generation_job, quiz_slot, user_kanji, user_words, photo_session CASCADE; \
+		SELECT 'All user data cleared' as status;"
+
 reset-quiz: ## Reset quiz progress (keep generated quizzes, reset familiarity/slots/serves)
 	@psql -h 127.0.0.1 -p 5432 -U postgres -c "\
 		TRUNCATE quiz_serve, quiz_slot CASCADE; \

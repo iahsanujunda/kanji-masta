@@ -119,10 +119,18 @@ class KanjiService(
         // Process words + quizzes in background (same as photo session flow)
         if (learningIds.isNotEmpty()) {
             scope.launch {
+                var jobsEnqueued = false
                 for (kanjiMasterId in learningIds) {
-                    // Find system words for this kanji and clone them
                     val systemWords = findSystemWordsForKanji(kanjiMasterId)
-                    var jobsEnqueued = false
+
+                    if (systemWords.isEmpty()) {
+                        // No system words — enqueue job without word (function will generate from scratch)
+                        logger.info("No system words for kanji={}, enqueueing generation job", kanjiMasterId)
+                        kanjiRepository.insertQuizGenerationJob(userId, kanjiMasterId)
+                        jobsEnqueued = true
+                        continue
+                    }
+
                     for (sw in systemWords) {
                         var wordId = kanjiRepository.findUserWordByWord(userId, sw.word)
                         if (wordId == null) {
@@ -138,8 +146,8 @@ class KanjiService(
                             jobsEnqueued = true
                         }
                     }
-                    if (jobsEnqueued) triggerQuizGeneration()
                 }
+                if (jobsEnqueued) triggerQuizGeneration()
                 logger.info("Onboarding quiz processing complete for {} learning kanji", learningIds.size)
             }
         }

@@ -22,12 +22,15 @@ class KanjiRepository(private val dc: DataConnectClient) {
 
     suspend fun insertUserKanji(userId: String, kanjiMasterId: String, status: String, sourcePhotoId: String?) {
         val photoIdField = if (sourcePhotoId != null) """sourcePhotoId: "$sourcePhotoId",""" else ""
+        val isFamiliar = status.uppercase() == "FAMILIAR"
+        val familiarityField = if (isFamiliar) "familiarity: 5, currentTier: FILL_IN_THE_BLANK," else ""
         val query = """
             mutation {
                 userKanji_insert(data: {
                     userId: "${userId.escape()}",
                     kanjiId: "$kanjiMasterId",
                     status: ${status.uppercase()},
+                    $familiarityField
                     $photoIdField
                 })
             }

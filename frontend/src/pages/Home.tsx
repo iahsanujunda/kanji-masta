@@ -166,7 +166,7 @@ export default function Home() {
         {/* Quiz slot card */}
         {loading ? (
           <Skeleton variant="rounded" height={160} sx={{ borderRadius: 4 }} />
-        ) : kanjiLearning === 0 && wordCount === 0 ? (
+        ) : wordCount === 0 ? (
           /* No kanji yet — onboarding prompt */
           <Paper elevation={4} sx={{ bgcolor: "#4338ca", color: "white", borderRadius: 4, p: 3, textAlign: "center" }}>
             <SpaIcon sx={{ fontSize: 40, opacity: 0.7, mb: 1.5 }} />

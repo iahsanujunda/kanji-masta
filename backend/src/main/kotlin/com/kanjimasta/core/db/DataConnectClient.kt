@@ -6,12 +6,15 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.json.*
+import org.slf4j.LoggerFactory
 
 class DataConnectClient(
     private val httpClient: HttpClient,
     private val baseUrl: String,
     private val useAuth: Boolean = false,
 ) {
+    private val log = LoggerFactory.getLogger(DataConnectClient::class.java)
+
     private val credentials: GoogleCredentials? = if (useAuth) {
         GoogleCredentials.getApplicationDefault()
             .createScoped("https://www.googleapis.com/auth/firebase.dataconnect")
@@ -32,6 +35,15 @@ class DataConnectClient(
             setBody(body.toString())
         }
 
-        return Json.parseToJsonElement(response.bodyAsText()).jsonObject
+        val text = response.bodyAsText()
+        val json = Json.parseToJsonElement(text).jsonObject
+        if (!response.status.isSuccess()) {
+            log.error("DataConnect HTTP {}: {}", response.status.value, text)
+            throw RuntimeException("DataConnect request failed with HTTP ${response.status.value}")
+        }
+        if (json.containsKey("errors")) {
+            log.error("DataConnect GraphQL errors: {}", json["errors"])
+        }
+        return json
     }
 }

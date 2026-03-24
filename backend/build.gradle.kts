@@ -32,6 +32,7 @@ dependencies {
     implementation(libs.ktor.server.config.yaml)
     implementation(libs.ktor.server.call.id)
     implementation(libs.ktor.server.call.logging)
+    implementation(libs.ktor.server.status.pages)
     implementation(libs.ktor.serialization.kotlinx.json)
 
     // Koog AI agents (Anthropic + Google providers)

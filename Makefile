@@ -149,16 +149,8 @@ test-frontend: ## Run frontend unit tests
 test-frontend-watch: ## Run frontend tests in watch mode
 	cd frontend && npx vitest
 
-sync-from-prod: ## Sync production data to local emulator (requires gcloud sql proxy on port 5433)
-	@echo "Dumping from production (port 5433) ..."
-	@pg_dump -h 127.0.0.1 -p 5433 -U postgres -d postgres \
-		--data-only --no-owner --no-privileges \
-		-t kanji_master -t word_master -t quiz_bank -t quiz_distractor \
-		> /tmp/prod_seed_data.sql
-	@echo "Restoring to local emulator (port 5432) ..."
-	@psql -h 127.0.0.1 -p 5432 -U postgres -c "TRUNCATE quiz_distractor, quiz_bank, word_master CASCADE;"
-	@psql -h 127.0.0.1 -p 5432 -U postgres < /tmp/prod_seed_data.sql
-	@echo "Done. Synced kanji_master, word_master, quiz_bank, quiz_distractor."
+sync-from-prod: ## Sync WordMaster + global quizzes from production to local emulator
+	cd scripts && python sync_from_prod.py
 
 clean: ## Clean build artifacts
 	cd backend && ./gradlew clean

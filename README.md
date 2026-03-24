@@ -55,13 +55,17 @@ make db             # Show key table counts
 - `firebase` and `gcloud` CLIs installed and authenticated
 - `gcloud config set project kanji-masta`
 
+### Check what needs deploying
+
+```bash
+make check-deploy     # Shows what changed since last deploy
+make deploy-status    # Shows last deployed commit per component
+```
+
 ### Deploy Frontend (when frontend code changes)
 
 ```bash
-cd frontend
-npm run build         # Uses .env.prod for production config
-cd ..
-firebase deploy --only hosting
+make deploy-frontend  # Builds + deploys + records commit
 ```
 
 Frontend is a static SPA on Firebase Hosting. The `.env.prod` file (gitignored) contains:
@@ -77,34 +81,16 @@ VITE_FIREBASE_STORAGE_BUCKET=kanji-masta.firebasestorage.app
 ### Deploy Backend (when backend code changes)
 
 ```bash
-cd backend && ./gradlew build && cd ..
-docker build -t asia-east1-docker.pkg.dev/kanji-masta/kanji-masta-backend/backend ./backend
-docker push asia-east1-docker.pkg.dev/kanji-masta/kanji-masta-backend/backend
-
-gcloud run deploy kanji-masta-backend \
-  --image asia-east1-docker.pkg.dev/kanji-masta/kanji-masta-backend/backend \
-  --region asia-east1 \
-  --set-env-vars "FIREBASE_PROJECT_ID=kanji-masta,FIREBASE_FUNCTIONS_HOST=asia-east1-kanji-masta.cloudfunctions.net,FIREBASE_FUNCTIONS_REGION=asia-east1,LOG_LEVEL=INFO" \
-  --allow-unauthenticated
-```
-
-Or use Cloud Build (no local Docker needed):
-
-```bash
-gcloud run deploy kanji-masta-backend \
-  --source ./backend \
-  --region asia-east1 \
-  --set-env-vars "FIREBASE_PROJECT_ID=kanji-masta,FIREBASE_FUNCTIONS_HOST=asia-east1-kanji-masta.cloudfunctions.net,FIREBASE_FUNCTIONS_REGION=asia-east1,LOG_LEVEL=INFO" \
-  --allow-unauthenticated
+make deploy-backend   # Builds + pushes Docker + deploys to Cloud Run + records commit
 ```
 
 ### Deploy Functions (when functions/main.py changes)
 
 ```bash
-firebase deploy --only functions
+make deploy-functions   # Deploys + records commit
 ```
 
-Functions run in **asia-east1**. Secrets are set separately:
+Secrets are set separately (one-time):
 
 ```bash
 firebase functions:secrets:set GEMINI_API_KEY
@@ -113,28 +99,21 @@ firebase functions:secrets:set GEMINI_API_KEY
 ### Deploy Schema (when dataconnect/schema/schema.gql changes)
 
 ```bash
-firebase deploy --only dataconnect
+make deploy-dataconnect
 ```
 
-### Deploy Storage Rules (when storage.rules changes)
+### Deploy Storage Rules + CORS
 
 ```bash
-firebase deploy --only storage
+make deploy-storage
 ```
 
-### Deploy Storage CORS (when storage-cors.json changes)
+### Deploy Everything (except backend)
 
 ```bash
-make deploy-cors
+make deploy-all       # functions + dataconnect + storage + hosting + CORS
+make deploy-backend   # backend separately (Cloud Run)
 ```
-
-### Deploy Everything
-
-```bash
-make deploy-all    # functions + dataconnect + storage + hosting + CORS
-```
-
-Backend must be deployed separately via `gcloud run deploy`.
 
 ### Seed Data (first-time or after schema changes)
 
@@ -156,15 +135,15 @@ python migrate_phase2.py --prod
 
 ## What to Deploy When
 
-| Changed | Deploy |
-|---------|--------|
-| `frontend/src/**` | `npm run build` → `firebase deploy --only hosting` |
-| `backend/src/**` | `./gradlew build` → `gcloud run deploy` |
-| `functions/main.py` | `firebase deploy --only functions` |
-| `dataconnect/schema/schema.gql` | `firebase deploy --only dataconnect` |
-| `storage.rules` | `firebase deploy --only storage` |
-| `storage-cors.json` | `make deploy-cors` |
+| Changed | Command |
+|---------|---------|
+| `frontend/src/**` | `make deploy-frontend` |
+| `backend/src/**` | `make deploy-backend` |
+| `functions/main.py` | `make deploy-functions` |
+| `dataconnect/schema/**` | `make deploy-dataconnect` |
+| `storage.rules` / `storage-cors.json` | `make deploy-storage` |
 | `scripts/seed*.py` | Re-run seed commands with `--prod` |
+| Not sure what changed? | `make check-deploy` |
 
 ---
 

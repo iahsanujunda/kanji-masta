@@ -80,7 +80,7 @@ class QuizRepository(private val dc: DataConnectClient) {
                     where: { userId: { eq: "${userId.escape()}" }, nextReview: { lt: "${java.time.Instant.now()}" } },
                     orderBy: { nextReview: ASC },
                     limit: $limit
-                ) { id word reading meaning familiarity currentTier kanjiIds }
+                ) { id familiarity currentTier kanjiIds wordMasterId wordMaster { word reading meanings } }
             }
         """.trimIndent()
         val result = dc.executeGraphql(query)
@@ -93,7 +93,7 @@ class QuizRepository(private val dc: DataConnectClient) {
                 userWordss(
                     where: { userId: { eq: "${userId.escape()}" }, familiarity: { eq: 0 } },
                     limit: $limit
-                ) { id word reading meaning familiarity currentTier kanjiIds }
+                ) { id familiarity currentTier kanjiIds wordMasterId wordMaster { word reading meanings } }
             }
         """.trimIndent()
         val result = dc.executeGraphql(query)
@@ -106,7 +106,7 @@ class QuizRepository(private val dc: DataConnectClient) {
                 userWordss(
                     where: { userId: { eq: "${userId.escape()}" } },
                     limit: $limit
-                ) { id word reading meaning familiarity currentTier kanjiIds }
+                ) { id familiarity currentTier kanjiIds wordMasterId wordMaster { word reading meanings }
             }
         """.trimIndent()
         val result = dc.executeGraphql(query)
@@ -115,11 +115,12 @@ class QuizRepository(private val dc: DataConnectClient) {
 
     // --- Quiz Lookup ---
 
-    suspend fun getQuizForWord(userId: String, wordId: String, quizType: String): JsonObject? {
+    suspend fun getQuizForWordMaster(wordMasterId: String, quizType: String): JsonObject? {
+        // Try global quiz first (userId IS NULL), then any
         val query = """
             query {
                 quizBanks(
-                    where: { userId: { eq: "${userId.escape()}" }, wordId: { eq: "$wordId" }, quizType: { eq: $quizType } },
+                    where: { wordId: { eq: "$wordMasterId" }, quizType: { eq: $quizType } },
                     limit: 1
                 ) { id quizType prompt target furigana answer explanation servedCount wordId kanjiId }
             }
@@ -128,11 +129,11 @@ class QuizRepository(private val dc: DataConnectClient) {
         return result.dataOrNull()?.get("quizBanks")?.jsonArray?.firstOrNull()?.jsonObject
     }
 
-    suspend fun getAnyQuizForWord(userId: String, wordId: String): JsonObject? {
+    suspend fun getAnyQuizForWordMaster(wordMasterId: String): JsonObject? {
         val query = """
             query {
                 quizBanks(
-                    where: { userId: { eq: "${userId.escape()}" }, wordId: { eq: "$wordId" } },
+                    where: { wordId: { eq: "$wordMasterId" } },
                     limit: 1
                 ) { id quizType prompt target furigana answer explanation servedCount wordId kanjiId }
             }
@@ -243,12 +244,25 @@ class QuizRepository(private val dc: DataConnectClient) {
         return result.dataOrNull()?.get("quizBank")?.jsonObject
     }
 
-    suspend fun getWordById(wordId: String): JsonObject? {
+    suspend fun getUserWordByWordMaster(userId: String, wordMasterId: String): JsonObject? {
         val query = """
-            query { userWords(id: "$wordId") { id word familiarity currentTier kanjiIds } }
+            query {
+                userWordss(where: { userId: { eq: "${userId.escape()}" }, wordMasterId: { eq: "$wordMasterId" } }, limit: 1) {
+                    id familiarity currentTier kanjiIds wordMasterId
+                }
+            }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        return result.dataOrNull()?.get("userWords")?.jsonObject
+        return result.dataOrNull()?.get("userWordss")?.jsonArray?.firstOrNull()?.jsonObject
+    }
+
+    suspend fun getUserWordById(wordId: String): JsonObject? {
+        val query = """
+            query { userWords(id: "$wordId") { id familiarity currentTier kanjiIds wordMasterId wordMaster { word reading meanings kanjiIds } } }
+        """.trimIndent()
+        val result = dc.executeGraphql(query)
+        val el = result.dataOrNull()?.get("userWords")
+        return if (el is JsonObject) el else null
     }
 
     suspend fun incrementServedCount(quizId: String) {

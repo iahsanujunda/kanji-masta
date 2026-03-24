@@ -59,13 +59,13 @@ python seed.py --file data/kanjidic2.xml --freq-limit 1500 --persist --prod
 
 This inserts ~1500 kanji with readings, meanings, JLPT levels, and frequency ranks.
 
-### Optional: Seed system quizzes
+### Optional: Seed global quizzes (WordMaster + QuizBank)
 ```bash
 python seed_quizzes.py --file data/kanjidic2.xml --jlpt 5 --persist --prod --resume
 python seed_quizzes.py --file data/kanjidic2.xml --jlpt 4 --persist --prod --resume
 ```
 
-This pre-generates quizzes for N5/N4 kanji via Gemini (~$2-5 per JLPT level).
+This creates WordMaster entries + global quizzes (userId=null) for N5/N4 kanji via Gemini (~$2-5 per JLPT level). Quizzes are shared across all users.
 
 ---
 
@@ -145,26 +145,29 @@ gcloud run deploy kanji-masta-backend \
 docker compose -f docker-compose.yml up -d backend
 ```
 
-### 6.4 Production Data Connect + Functions URLs
+### 6.4 Production Configuration
 
-When emulator hosts are not set, the backend defaults to production Firebase:
-- Data Connect: `https://firebasedataconnect.googleapis.com/...`
-- Functions: Called via their deployed URLs (update `application.yaml` or set env vars)
+All config is via environment variables — **no manual editing of `application.yaml` needed**. The YAML reads from env vars with local defaults:
 
-For production, update `application.yaml`:
 ```yaml
+# application.yaml already does this:
 firebase:
-  projectId: kanji-masta
-  # Leave emulator hosts empty — backend auto-uses production URLs
-  authEmulatorHost: ""
-  dataConnectHost: ""
-  functionsHost: ""
+  projectId: "$FIREBASE_PROJECT_ID:kanji-masta"
+  authEmulatorHost: "$FIREBASE_AUTH_EMULATOR_HOST:"   # empty = production
+  dataConnectHost: "$FIREBASE_DATACONNECT_HOST:"      # empty = production
+  functionsHost: "$FIREBASE_FUNCTIONS_HOST:"          # empty = production
 ```
 
-The Functions host needs to point to the deployed region URL:
+For Cloud Run, just set the env vars:
+```bash
+gcloud run deploy kanji-masta-backend \
+  --set-env-vars \
+    FIREBASE_PROJECT_ID=kanji-masta,\
+    FIREBASE_FUNCTIONS_HOST=us-central1-kanji-masta.cloudfunctions.net,\
+    LOG_LEVEL=INFO
 ```
-FIREBASE_FUNCTIONS_HOST=us-central1-kanji-masta.cloudfunctions.net
-```
+
+When `FIREBASE_AUTH_EMULATOR_HOST` is empty, the Firebase Admin SDK uses real credentials (auto-detected on GCP). When `FIREBASE_DATACONNECT_HOST` is empty, the backend uses the production Data Connect endpoint.
 
 ---
 

@@ -6,19 +6,9 @@ import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger("com.kanjimasta.modules.kanji.KanjiRepository")
 
-data class SystemQuiz(
-    val quizType: String,
-    val prompt: String,
-    val furigana: String?,
-    val target: String,
-    val answer: String,
-    val explanation: String?,
-    val kanjiId: String,
-    val wordId: String,
-    val distractors: List<String>,
-)
+class KanjiRepository(val dc: DataConnectClient) {
 
-class KanjiRepository(private val dc: DataConnectClient) {
+    // --- UserKanji ---
 
     suspend fun insertUserKanji(userId: String, kanjiMasterId: String, status: String, sourcePhotoId: String?) {
         val photoIdField = if (sourcePhotoId != null) """sourcePhotoId: "$sourcePhotoId",""" else ""
@@ -38,21 +28,76 @@ class KanjiRepository(private val dc: DataConnectClient) {
         dc.executeGraphql(query)
     }
 
-    suspend fun insertUserWord(
-        userId: String,
-        word: String,
-        reading: String,
-        meaning: String,
-        kanjiMasterId: String,
-        source: String = "PHOTO",
-    ): String? {
+    // --- WordMaster ---
+
+    suspend fun findWordMasterByWord(word: String): String? {
+        val query = """
+            query {
+                wordMasters(where: { word: { eq: "${word.escape()}" } }, limit: 1) { id }
+            }
+        """.trimIndent()
+        val result = dc.executeGraphql(query)
+        return result["data"]?.jsonObject?.get("wordMasters")?.jsonArray?.firstOrNull()
+            ?.jsonObject?.get("id")?.jsonPrimitive?.content
+    }
+
+    suspend fun findOrCreateWordMaster(word: String, reading: String, meaning: String, kanjiMasterId: String): String {
+        val existing = findWordMasterByWord(word)
+        if (existing != null) return existing
+
+        val meaningsJson = buildJsonArray { add(meaning) }
+        val query = """
+            mutation {
+                wordMaster_insert(data: {
+                    word: "${word.escape()}",
+                    reading: "${reading.escape()}",
+                    meanings: $meaningsJson,
+                    kanjiIds: ["$kanjiMasterId"]
+                })
+            }
+        """.trimIndent()
+        val result = dc.executeGraphql(query)
+        return result["data"]?.jsonObject?.get("wordMaster_insert")?.jsonObject?.get("id")?.jsonPrimitive?.content
+            ?: throw RuntimeException("Failed to create WordMaster for '$word'")
+    }
+
+    suspend fun getWordMasterById(id: String): JsonObject? {
+        val query = """
+            query { wordMaster(id: "$id") { id word reading meanings kanjiIds } }
+        """.trimIndent()
+        val result = dc.executeGraphql(query)
+        val el = result["data"]?.jsonObject?.get("wordMaster")
+        return if (el is JsonObject) el else null
+    }
+
+    suspend fun getWordMastersForKanji(kanjiMasterId: String): List<WordMasterItem> {
+        // WordMaster stores kanjiIds as array — fetch all and filter client-side
+        val query = """
+            query { wordMasters(limit: 200) { id word reading meanings kanjiIds } }
+        """.trimIndent()
+        val result = dc.executeGraphql(query)
+        val all = result["data"]?.jsonObject?.get("wordMasters")?.jsonArray ?: return emptyList()
+        return all.mapNotNull { row ->
+            val obj = row.jsonObject
+            val ids = obj["kanjiIds"]?.jsonArray?.map { it.jsonPrimitive.content } ?: return@mapNotNull null
+            if (kanjiMasterId !in ids) return@mapNotNull null
+            WordMasterItem(
+                id = obj["id"]?.jsonPrimitive?.content ?: return@mapNotNull null,
+                word = obj["word"]?.jsonPrimitive?.content ?: "",
+                reading = obj["reading"]?.jsonPrimitive?.content ?: "",
+                meaning = obj["meanings"]?.jsonArray?.firstOrNull()?.jsonPrimitive?.content ?: "",
+            )
+        }
+    }
+
+    // --- UserWords ---
+
+    suspend fun insertUserWord(userId: String, wordMasterId: String, kanjiMasterId: String, source: String = "PHOTO"): String? {
         val query = """
             mutation {
                 userWords_insert(data: {
                     userId: "${userId.escape()}",
-                    word: "${word.escape()}",
-                    reading: "${reading.escape()}",
-                    meaning: "${meaning.escape()}",
+                    wordMasterId: "$wordMasterId",
                     kanjiIds: ["$kanjiMasterId"],
                     source: $source,
                     unlocked: true
@@ -61,121 +106,46 @@ class KanjiRepository(private val dc: DataConnectClient) {
         """.trimIndent()
         val result = dc.executeGraphql(query)
         if (result["errors"]?.jsonArray?.isNotEmpty() == true) {
-            logger.debug("Word insert issue for '{}': {}", word, result["errors"])
+            logger.debug("UserWord insert issue: {}", result["errors"])
             return null
         }
         return result["data"]?.jsonObject?.get("userWords_insert")?.jsonObject?.get("id")?.jsonPrimitive?.content
     }
 
-    suspend fun findUserWordByWord(userId: String, word: String): String? {
+    suspend fun findUserWordByWordMaster(userId: String, wordMasterId: String): String? {
         val query = """
             query {
-                userWordss(where: { userId: { eq: "${userId.escape()}" }, word: { eq: "${word.escape()}" } }) { id }
+                userWordss(where: { userId: { eq: "${userId.escape()}" }, wordMasterId: { eq: "$wordMasterId" } }, limit: 1) { id }
             }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        val rows = result["data"]?.jsonObject?.get("userWordss")?.jsonArray ?: return null
-        return rows.firstOrNull()?.jsonObject?.get("id")?.jsonPrimitive?.content
+        return result["data"]?.jsonObject?.get("userWordss")?.jsonArray?.firstOrNull()
+            ?.jsonObject?.get("id")?.jsonPrimitive?.content
     }
 
-    suspend fun getSystemQuizzesByWord(wordText: String): List<SystemQuiz> {
+    // --- Global Quiz Check ---
+
+    suspend fun hasGlobalQuizzes(wordMasterId: String): Boolean {
         val query = """
             query {
-                quizBanks(where: { userId: { eq: "system" } }) {
-                    quizType prompt furigana target answer explanation kanjiId wordId
-                    word { word }
-                    quizDistractors_on_quiz { distractors }
-                }
+                quizBanks(where: { wordId: { eq: "$wordMasterId" }, userId: { isNull: true } }, limit: 1) { id }
             }
         """.trimIndent()
-
         val result = dc.executeGraphql(query)
-        val rows = result["data"]?.jsonObject?.get("quizBanks")?.jsonArray ?: return emptyList()
-
-        return rows.mapNotNull { row ->
-            val obj = row.jsonObject
-            val w = obj["word"]?.jsonObject?.get("word")?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-            if (w != wordText) return@mapNotNull null
-
-            val distractorSets = obj["quizDistractors_on_quiz"]?.jsonArray
-            val distractors = distractorSets?.firstOrNull()?.jsonObject
-                ?.get("distractors")?.jsonArray
-                ?.map { it.jsonPrimitive.content }
-                ?: emptyList()
-
-            SystemQuiz(
-                quizType = obj["quizType"]?.jsonPrimitive?.content ?: return@mapNotNull null,
-                prompt = obj["prompt"]?.jsonPrimitive?.content ?: return@mapNotNull null,
-                furigana = obj["furigana"]?.jsonPrimitive?.contentOrNull,
-                target = obj["target"]?.jsonPrimitive?.content ?: return@mapNotNull null,
-                answer = obj["answer"]?.jsonPrimitive?.content ?: return@mapNotNull null,
-                explanation = obj["explanation"]?.jsonPrimitive?.contentOrNull,
-                kanjiId = obj["kanjiId"]?.jsonPrimitive?.content ?: return@mapNotNull null,
-                wordId = obj["wordId"]?.jsonPrimitive?.content ?: return@mapNotNull null,
-                distractors = distractors,
-            )
-        }
+        val rows = result["data"]?.jsonObject?.get("quizBanks")?.jsonArray
+        return rows != null && rows.isNotEmpty()
     }
 
-    suspend fun cloneQuizzesToUser(userId: String, kanjiMasterId: String, userWordId: String, systemQuizzes: List<SystemQuiz>) {
-        for (quiz in systemQuizzes) {
-            val furiganaField = if (quiz.furigana != null) """furigana: "${quiz.furigana.escape()}",""" else ""
-            val explanationField = if (quiz.explanation != null) """explanation: "${quiz.explanation.escape()}",""" else ""
+    // --- QuizGenerationJob ---
 
-            val insertQuery = """
-                mutation {
-                    quizBank_insert(data: {
-                        userId: "${userId.escape()}",
-                        kanjiId: "$kanjiMasterId",
-                        wordId: "$userWordId",
-                        quizType: ${quiz.quizType},
-                        prompt: "${quiz.prompt.escape()}",
-                        target: "${quiz.target.escape()}",
-                        answer: "${quiz.answer.escape()}",
-                        $furiganaField
-                        $explanationField
-                    })
-                }
-            """.trimIndent()
-
-            val insertResult = dc.executeGraphql(insertQuery)
-            val quizId = insertResult["data"]?.jsonObject
-                ?.get("quizBank_insert")?.jsonObject
-                ?.get("id")?.jsonPrimitive?.content
-
-            if (quizId == null) {
-                logger.error("Failed to clone quiz: {}", insertResult)
-                continue
-            }
-
-            if (quiz.distractors.isNotEmpty()) {
-                val distJson = buildJsonArray { quiz.distractors.forEach { add(it) } }
-                val distQuery = """
-                    mutation {
-                        quizDistractor_insert(data: {
-                            quizId: "$quizId",
-                            userId: "${userId.escape()}",
-                            distractors: $distJson,
-                            generation: 1,
-                            trigger: INITIAL,
-                            familiarityAtGeneration: 0
-                        })
-                    }
-                """.trimIndent()
-                dc.executeGraphql(distQuery)
-            }
-        }
-        logger.info("Cloned {} quizzes for user={} word={}", systemQuizzes.size, userId, userWordId)
-    }
-
-    suspend fun insertQuizGenerationJob(userId: String, kanjiMasterId: String, wordId: String? = null) {
-        val wordField = if (wordId != null) """wordId: "$wordId",""" else ""
+    suspend fun insertQuizGenerationJob(userId: String, kanjiMasterId: String, wordMasterId: String? = null) {
+        val wmField = if (wordMasterId != null) """wordMasterId: "$wordMasterId",""" else ""
         val query = """
             mutation {
                 quizGenerationJob_insert(data: {
                     userId: "${userId.escape()}",
                     kanjiId: "$kanjiMasterId",
-                    $wordField
+                    $wmField
                 })
             }
         """.trimIndent()
@@ -198,8 +168,7 @@ class KanjiRepository(private val dc: DataConnectClient) {
     // --- Onboarding ---
 
     suspend fun getOnboardingKanji(userId: String, offset: Int, limit: Int): Pair<List<OnboardingKanjiItem>, Boolean> {
-        // Get all KanjiMaster with JLPT, sorted by jlpt ASC then frequency ASC
-        val fetchLimit = offset + limit + 1 // +1 to check hasMore
+        val fetchLimit = offset + limit + 1
         val query = """
             query {
                 kanjiMasters(
@@ -212,7 +181,6 @@ class KanjiRepository(private val dc: DataConnectClient) {
         val result = dc.executeGraphql(query)
         val allKanji = result["data"]?.jsonObject?.get("kanjiMasters")?.jsonArray ?: return emptyList<OnboardingKanjiItem>() to false
 
-        // Get user's existing kanji IDs to filter out
         val userKanjiQuery = """
             query {
                 userKanjis(where: { userId: { eq: "${userId.escape()}" } }, limit: 1000) { kanjiId }
@@ -223,7 +191,6 @@ class KanjiRepository(private val dc: DataConnectClient) {
             ?.mapNotNull { it.jsonObject["kanjiId"]?.jsonPrimitive?.contentOrNull }
             ?.toSet() ?: emptySet()
 
-        // Filter out already-added kanji
         val available = allKanji.filter { row ->
             val id = row.jsonObject["id"]?.jsonPrimitive?.content ?: ""
             id !in existingIds
@@ -235,6 +202,7 @@ class KanjiRepository(private val dc: DataConnectClient) {
         val items = paged.map { row ->
             val obj = row.jsonObject
             val kmId = obj["id"]?.jsonPrimitive?.content ?: ""
+            val wm = getWordMastersForKanji(kmId).firstOrNull()
             OnboardingKanjiItem(
                 kanjiMasterId = kmId,
                 character = obj["character"]?.jsonPrimitive?.content ?: "",
@@ -243,60 +211,11 @@ class KanjiRepository(private val dc: DataConnectClient) {
                 meanings = obj["meanings"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
                 jlpt = obj["jlpt"]?.jsonPrimitive?.intOrNull,
                 frequency = obj["frequency"]?.jsonPrimitive?.intOrNull,
-                seenAs = getSystemWordForKanji(kmId),
+                seenAs = wm?.let { SeenAs(word = it.word, reading = it.reading, meaning = it.meaning) },
             )
         }
 
         return items to hasMore
-    }
-
-    private suspend fun getSystemWordForKanji(kanjiMasterId: String): SeenAs? {
-        // Look up one system UserWords row whose kanjiIds contains this kanji
-        val query = """
-            query {
-                userWordss(where: { userId: { eq: "system" } }, limit: 50) {
-                    word reading meaning kanjiIds
-                }
-            }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        val words = result["data"]?.jsonObject?.get("userWordss")?.jsonArray ?: return null
-
-        // Find first word that contains this kanjiMasterId
-        for (w in words) {
-            val obj = w.jsonObject
-            val ids = obj["kanjiIds"]?.jsonArray?.map { it.jsonPrimitive.content } ?: continue
-            if (kanjiMasterId in ids) {
-                return SeenAs(
-                    word = obj["word"]?.jsonPrimitive?.content ?: "",
-                    reading = obj["reading"]?.jsonPrimitive?.content ?: "",
-                    meaning = obj["meaning"]?.jsonPrimitive?.content ?: "",
-                )
-            }
-        }
-        return null
-    }
-
-    suspend fun getSystemWordsForKanji(kanjiMasterId: String): List<ExampleWord> {
-        val query = """
-            query {
-                userWordss(where: { userId: { eq: "system" } }, limit: 100) {
-                    word reading meaning kanjiIds
-                }
-            }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        val words = result["data"]?.jsonObject?.get("userWordss")?.jsonArray ?: return emptyList()
-        return words.mapNotNull { w ->
-            val obj = w.jsonObject
-            val ids = obj["kanjiIds"]?.jsonArray?.map { it.jsonPrimitive.content } ?: return@mapNotNull null
-            if (kanjiMasterId !in ids) return@mapNotNull null
-            ExampleWord(
-                word = obj["word"]?.jsonPrimitive?.content ?: "",
-                reading = obj["reading"]?.jsonPrimitive?.content ?: "",
-                meaning = obj["meaning"]?.jsonPrimitive?.content ?: "",
-            )
-        }
     }
 
     // --- List queries ---
@@ -328,11 +247,13 @@ class KanjiRepository(private val dc: DataConnectClient) {
         }
     }
 
-    suspend fun getUserWords(userId: String, query: String?, offset: Int, limit: Int): WordListResponse {
+    suspend fun getUserWords(userId: String, searchQuery: String?, offset: Int, limit: Int): WordListResponse {
+        // Fetch UserWords joined with WordMaster
         val gql = """
             query {
                 userWordss(where: { userId: { eq: "${userId.escape()}" } }, limit: 500) {
-                    id word reading meaning familiarity nextReview
+                    id familiarity nextReview
+                    wordMaster { word reading meanings }
                 }
             }
         """.trimIndent()
@@ -341,19 +262,19 @@ class KanjiRepository(private val dc: DataConnectClient) {
 
         var items = rows.mapNotNull { row ->
             val obj = row.jsonObject
+            val wm = obj["wordMaster"]?.jsonObject ?: return@mapNotNull null
             WordListItem(
                 id = obj["id"]?.jsonPrimitive?.content ?: return@mapNotNull null,
-                word = obj["word"]?.jsonPrimitive?.content ?: "",
-                reading = obj["reading"]?.jsonPrimitive?.content ?: "",
-                meaning = obj["meaning"]?.jsonPrimitive?.content ?: "",
+                word = wm["word"]?.jsonPrimitive?.content ?: "",
+                reading = wm["reading"]?.jsonPrimitive?.content ?: "",
+                meaning = wm["meanings"]?.jsonArray?.firstOrNull()?.jsonPrimitive?.content ?: "",
                 familiarity = obj["familiarity"]?.jsonPrimitive?.int ?: 0,
                 nextReview = obj["nextReview"]?.jsonPrimitive?.contentOrNull,
             )
         }.sortedBy { it.reading }
 
-        // Filter by query if present (word, reading, or romaji match)
-        if (!query.isNullOrBlank()) {
-            val q = query.lowercase()
+        if (!searchQuery.isNullOrBlank()) {
+            val q = searchQuery.lowercase()
             items = items.filter { item ->
                 item.word.contains(q) ||
                 item.reading.contains(q) ||
@@ -369,6 +290,10 @@ class KanjiRepository(private val dc: DataConnectClient) {
 
     private fun String.escape() = replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
 }
+
+data class WordMasterItem(val id: String, val word: String, val reading: String, val meaning: String)
+
+data class ExampleWord(val word: String, val reading: String, val meaning: String)
 
 // Simple hiragana → romaji conversion
 private val KANA_ROMAJI = mapOf(
@@ -398,39 +323,26 @@ private val KANA_ROMAJI = mapOf(
     "じゃ" to "ja", "じゅ" to "ju", "じょ" to "jo",
     "びゃ" to "bya", "びゅ" to "byu", "びょ" to "byo",
     "ぴゃ" to "pya", "ぴゅ" to "pyu", "ぴょ" to "pyo",
-    "っ" to "", // doubled consonant handled by context
-    "ー" to "",
+    "っ" to "", "ー" to "",
 )
 
 private fun toRomaji(hiragana: String): String {
     val sb = StringBuilder()
     var i = 0
     while (i < hiragana.length) {
-        // Try two-char combinations first (for きゃ etc.)
         if (i + 1 < hiragana.length) {
             val two = hiragana.substring(i, i + 2)
             val r = KANA_ROMAJI[two]
-            if (r != null) {
-                sb.append(r)
-                i += 2
-                continue
-            }
+            if (r != null) { sb.append(r); i += 2; continue }
         }
         val one = hiragana[i].toString()
         val r = KANA_ROMAJI[one]
         if (r != null) {
-            // Handle っ (double next consonant)
             if (one == "っ" && i + 1 < hiragana.length) {
                 val next = KANA_ROMAJI[hiragana[i + 1].toString()]
-                if (next != null && next.isNotEmpty()) {
-                    sb.append(next[0])
-                }
-            } else {
-                sb.append(r)
-            }
-        } else {
-            sb.append(one) // pass through unknown chars
-        }
+                if (next != null && next.isNotEmpty()) sb.append(next[0])
+            } else sb.append(r)
+        } else sb.append(one)
         i++
     }
     return sb.toString()

@@ -24,7 +24,6 @@ class KanjiService(
     suspend fun saveSession(userId: String, request: SaveSessionRequest) {
         val learningKanjiIds = mutableListOf<String>()
 
-        // Fast path: insert UserKanji rows only (< 1s total)
         for (selection in request.selections) {
             kanjiRepository.insertUserKanji(
                 userId = userId,
@@ -37,52 +36,79 @@ class KanjiService(
             }
         }
 
-        // Heavy work in background: create words + clone/generate quizzes
         if (learningKanjiIds.isNotEmpty()) {
             val sessionId = request.sessionId
             scope.launch {
-                processWordsAndQuizzes(userId, sessionId, learningKanjiIds)
+                processWordsForKanji(userId, sessionId, learningKanjiIds)
             }
         }
     }
 
-    private suspend fun processWordsAndQuizzes(userId: String, sessionId: String, kanjiIds: List<String>) {
-        val exampleWordsByKanji = loadExampleWords(sessionId)
+    /**
+     * Word encounter flow (WordMaster-based):
+     * 1. Find or create WordMaster for each word
+     * 2. Check if global quizzes exist for that WordMaster
+     * 3. If not → enqueue generation job
+     * 4. Create personal UserWords linking to WordMaster
+     */
+    private suspend fun processWordsForKanji(userId: String, sessionId: String?, kanjiIds: List<String>) {
+        val exampleWordsByKanji = if (sessionId != null) loadExampleWords(sessionId) else emptyMap()
         var jobsEnqueued = false
 
         for (kanjiMasterId in kanjiIds) {
-            val exampleWords = exampleWordsByKanji[kanjiMasterId] ?: emptyList()
+            val exampleWords = exampleWordsByKanji[kanjiMasterId]
+                ?: kanjiRepository.getWordMastersForKanji(kanjiMasterId).map {
+                    ExampleWord(it.word, it.reading, it.meaning)
+                }
+
+            if (exampleWords.isEmpty()) {
+                logger.info("No words for kanji={}, enqueueing generation job", kanjiMasterId)
+                kanjiRepository.insertQuizGenerationJob(userId, kanjiMasterId)
+                jobsEnqueued = true
+                continue
+            }
 
             for (ew in exampleWords) {
-                var wordId = kanjiRepository.findUserWordByWord(userId, ew.word)
-                if (wordId == null) {
-                    wordId = kanjiRepository.insertUserWord(
-                        userId = userId,
-                        word = ew.word,
-                        reading = ew.reading,
-                        meaning = ew.meaning,
-                        kanjiMasterId = kanjiMasterId,
-                    )
-                }
-                if (wordId == null) continue
+                // 1. Find or create WordMaster
+                val wmId = kanjiRepository.findOrCreateWordMaster(ew.word, ew.reading, ew.meaning, kanjiMasterId)
 
-                val systemQuizzes = kanjiRepository.getSystemQuizzesByWord(ew.word)
-                if (systemQuizzes.isNotEmpty()) {
-                    logger.info("Cloning {} system quizzes for word '{}'", systemQuizzes.size, ew.word)
-                    kanjiRepository.cloneQuizzesToUser(userId, kanjiMasterId, wordId, systemQuizzes)
-                } else {
-                    logger.info("No system quizzes for word '{}', enqueueing job", ew.word)
-                    kanjiRepository.insertQuizGenerationJob(userId, kanjiMasterId, wordId)
+                // 2. Check for global quizzes
+                if (!kanjiRepository.hasGlobalQuizzes(wmId)) {
+                    logger.info("No global quizzes for word '{}', enqueueing job", ew.word)
+                    kanjiRepository.insertQuizGenerationJob(userId, kanjiMasterId, wmId)
                     jobsEnqueued = true
+                }
+
+                // 3. Create personal UserWords (if not exists)
+                if (kanjiRepository.findUserWordByWordMaster(userId, wmId) == null) {
+                    kanjiRepository.insertUserWord(userId, wmId, kanjiMasterId)
                 }
             }
         }
 
-        if (jobsEnqueued) {
-            triggerQuizGeneration()
+        if (jobsEnqueued) triggerQuizGeneration()
+        logger.info("Word processing complete for {} kanji", kanjiIds.size)
+    }
+
+    suspend fun saveOnboardingSelections(userId: String, selections: List<KanjiSelection>) {
+        val learningIds = mutableListOf<String>()
+        for (selection in selections) {
+            kanjiRepository.insertUserKanji(
+                userId = userId,
+                kanjiMasterId = selection.kanjiMasterId,
+                status = selection.status,
+                sourcePhotoId = null,
+            )
+            if (selection.status == "learning") {
+                learningIds.add(selection.kanjiMasterId)
+            }
         }
 
-        logger.info("Background word+quiz processing complete for {} kanji", kanjiIds.size)
+        if (learningIds.isNotEmpty()) {
+            scope.launch {
+                processWordsForKanji(userId, null, learningIds)
+            }
+        }
     }
 
     suspend fun getPendingJobCount(userId: String): Int {
@@ -100,61 +126,6 @@ class KanjiService(
     suspend fun getOnboardingKanji(userId: String, offset: Int, limit: Int): OnboardingResponse {
         val (items, hasMore) = kanjiRepository.getOnboardingKanji(userId, offset, limit)
         return OnboardingResponse(kanji = items, hasMore = hasMore)
-    }
-
-    suspend fun saveOnboardingSelections(userId: String, selections: List<KanjiSelection>) {
-        val learningIds = mutableListOf<String>()
-        for (selection in selections) {
-            kanjiRepository.insertUserKanji(
-                userId = userId,
-                kanjiMasterId = selection.kanjiMasterId,
-                status = selection.status,
-                sourcePhotoId = null,
-            )
-            if (selection.status == "learning") {
-                learningIds.add(selection.kanjiMasterId)
-            }
-        }
-
-        // Process words + quizzes in background (same as photo session flow)
-        if (learningIds.isNotEmpty()) {
-            scope.launch {
-                var jobsEnqueued = false
-                for (kanjiMasterId in learningIds) {
-                    val systemWords = findSystemWordsForKanji(kanjiMasterId)
-
-                    if (systemWords.isEmpty()) {
-                        // No system words — enqueue job without word (function will generate from scratch)
-                        logger.info("No system words for kanji={}, enqueueing generation job", kanjiMasterId)
-                        kanjiRepository.insertQuizGenerationJob(userId, kanjiMasterId)
-                        jobsEnqueued = true
-                        continue
-                    }
-
-                    for (sw in systemWords) {
-                        var wordId = kanjiRepository.findUserWordByWord(userId, sw.word)
-                        if (wordId == null) {
-                            wordId = kanjiRepository.insertUserWord(userId, sw.word, sw.reading, sw.meaning, kanjiMasterId)
-                        }
-                        if (wordId == null) continue
-
-                        val systemQuizzes = kanjiRepository.getSystemQuizzesByWord(sw.word)
-                        if (systemQuizzes.isNotEmpty()) {
-                            kanjiRepository.cloneQuizzesToUser(userId, kanjiMasterId, wordId, systemQuizzes)
-                        } else {
-                            kanjiRepository.insertQuizGenerationJob(userId, kanjiMasterId, wordId)
-                            jobsEnqueued = true
-                        }
-                    }
-                }
-                if (jobsEnqueued) triggerQuizGeneration()
-                logger.info("Onboarding quiz processing complete for {} learning kanji", learningIds.size)
-            }
-        }
-    }
-
-    private suspend fun findSystemWordsForKanji(kanjiMasterId: String): List<ExampleWord> {
-        return kanjiRepository.getSystemWordsForKanji(kanjiMasterId)
     }
 
     private suspend fun loadExampleWords(sessionId: String): Map<String, List<ExampleWord>> {
@@ -198,5 +169,3 @@ class KanjiService(
         }
     }
 }
-
-data class ExampleWord(val word: String, val reading: String, val meaning: String)

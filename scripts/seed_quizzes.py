@@ -27,7 +27,7 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-SYSTEM_USER_ID = "system"
+# Global quizzes use userId=null (not "system" anymore)
 CHECKPOINT_FILE = "scripts/.quiz_seed_checkpoint.json"
 
 JLPT_MAP = {5: 4, 4: 3, 3: 2, 2: 1, 1: 1}
@@ -246,42 +246,41 @@ def _lookup_kanji_master_id(url: str, headers: dict, character: str) -> str | No
     return rows[0]["id"] if rows else None
 
 
-def _find_system_word(url: str, headers: dict, word: str) -> str | None:
-    """Check if a system UserWords row already exists for this word."""
+def _find_word_master(url: str, headers: dict, word: str) -> str | None:
+    """Check if a WordMaster row already exists for this word."""
     query = f"""
         query {{
-            userWordss(where: {{ userId: {{ eq: "system" }}, word: {{ eq: "{_escape(word)}" }} }}) {{ id }}
+            wordMasters(where: {{ word: {{ eq: "{_escape(word)}" }} }}, limit: 1) {{ id }}
         }}
     """
     result = _execute_graphql(url, headers, query)
-    rows = result.get("data", {}).get("userWordss", [])
+    rows = result.get("data", {}).get("wordMasters", [])
     return rows[0]["id"] if rows else None
 
 
-def _insert_system_word(url: str, headers: dict, word: dict, kanji_master_id: str) -> str | None:
-    """Insert a system UserWords row. Returns the ID."""
+def _insert_word_master(url: str, headers: dict, word: dict, kanji_master_id: str) -> str | None:
+    """Insert a WordMaster row. Returns the ID."""
+    meanings_json = json.dumps([word["meaning"]], ensure_ascii=False)
     kanji_ids_json = json.dumps([kanji_master_id])
     query = f"""
         mutation {{
-            userWords_insert(data: {{
-                userId: "{SYSTEM_USER_ID}",
+            wordMaster_insert(data: {{
                 word: "{_escape(word['word'])}",
                 reading: "{_escape(word['reading'])}",
-                meaning: "{_escape(word['meaning'])}",
-                kanjiIds: {kanji_ids_json},
-                source: QUIZ,
-                unlocked: true
+                meanings: {meanings_json},
+                kanjiIds: {kanji_ids_json}
             }})
         }}
     """
     result = _execute_graphql(url, headers, query)
     if result.get("errors"):
-        print(f"    Word insert error: {result['errors'][0].get('message', '')[:100]}")
+        print(f"    WordMaster insert error: {result['errors'][0].get('message', '')[:100]}")
         return None
-    return result.get("data", {}).get("userWords_insert", {}).get("id")
+    return result.get("data", {}).get("wordMaster_insert", {}).get("id")
 
 
-def _insert_quiz(url: str, headers: dict, kanji_master_id: str, word_id: str, quiz: dict) -> str | None:
+def _insert_quiz(url: str, headers: dict, kanji_master_id: str, word_master_id: str, quiz: dict) -> str | None:
+    """Insert a global quiz (userId=null)."""
     qt = QUIZ_TYPE_MAP.get(quiz.get("quiz_type", ""), quiz.get("quiz_type", ""))
     furigana = quiz.get("furigana")
     explanation = quiz.get("explanation", "")
@@ -291,9 +290,8 @@ def _insert_quiz(url: str, headers: dict, kanji_master_id: str, word_id: str, qu
     query = f"""
         mutation {{
             quizBank_insert(data: {{
-                userId: "{SYSTEM_USER_ID}",
                 kanjiId: "{kanji_master_id}",
-                wordId: "{word_id}",
+                wordId: "{word_master_id}",
                 quizType: {qt},
                 prompt: "{_escape(quiz.get('prompt', ''))}",
                 target: "{_escape(quiz.get('target', ''))}",
@@ -311,12 +309,12 @@ def _insert_quiz(url: str, headers: dict, kanji_master_id: str, word_id: str, qu
 
 
 def _insert_distractor(url: str, headers: dict, quiz_id: str, distractors: list[str]):
+    """Insert a global distractor set (userId=null)."""
     dist_json = json.dumps(distractors, ensure_ascii=False)
     query = f"""
         mutation {{
             quizDistractor_insert(data: {{
                 quizId: "{quiz_id}",
-                userId: "{SYSTEM_USER_ID}",
                 distractors: {dist_json},
                 generation: 1,
                 trigger: INITIAL,
@@ -332,7 +330,7 @@ def _insert_distractor(url: str, headers: dict, quiz_id: str, distractors: list[
 def _get_existing_quiz_characters(url: str, headers: dict) -> set[str]:
     query = """
         query {
-            quizBanks(where: { userId: { eq: "system" } }, limit: 10000) {
+            quizBanks(where: { userId: { isNull: true } }, limit: 10000) {
                 kanji { character }
             }
         }
@@ -343,13 +341,17 @@ def _get_existing_quiz_characters(url: str, headers: dict) -> set[str]:
 
 
 def clear_system_quizzes(url: str, headers: dict):
-    """Delete system user quizzes: distractors → quiz bank → user words."""
-    print("\nClearing system quizzes ...")
+    """Delete global quizzes + word masters: distractors → quiz bank → word masters."""
+    print("\nClearing global quizzes + word masters ...")
 
-    for table, label in [("quizDistractors", "distractor"), ("quizBanks", "quiz bank"), ("userWordss", "user words")]:
+    for table, label, where in [
+        ("quizDistractors", "distractor", '{ userId: { isNull: true } }'),
+        ("quizBanks", "quiz bank", '{ userId: { isNull: true } }'),
+        ("wordMasters", "word master", '{}'),
+    ]:
         total = 0
         while True:
-            query = f'query {{ {table}(where: {{ userId: {{ eq: "system" }} }}, limit: 1000) {{ id }} }}'
+            query = f'query {{ {table}(where: {where}, limit: 1000) {{ id }} }}'
             result = _execute_graphql(url, headers, query)
             rows = result.get("data", {}).get(table, [])
             if not rows:
@@ -466,10 +468,10 @@ def main():
 
         word_errors = 0
         for w in words:
-            # Deduplicate: check if this word already exists as system word
-            word_id = _find_system_word(url, headers, w["word"])
+            # Deduplicate: check if this word already exists in WordMaster
+            word_id = _find_word_master(url, headers, w["word"])
             if not word_id:
-                word_id = _insert_system_word(url, headers, w, km_id)
+                word_id = _insert_word_master(url, headers, w, km_id)
             if not word_id:
                 word_errors += 1
                 continue

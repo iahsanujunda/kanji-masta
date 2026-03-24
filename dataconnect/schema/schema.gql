@@ -36,6 +36,12 @@ enum WordSource {
   DISCOVERY
 }
 
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+}
+
 # Seeded once from kanjidic2, read-only at runtime
 type KanjiMaster @table {
   id: UUID! @default(expr: "uuidV4()")
@@ -45,6 +51,17 @@ type KanjiMaster @table {
   meanings: [String!]!
   frequency: Int
   jlpt: Int
+}
+
+# Shared canonical word list — grows as users encounter new words
+type WordMaster @table {
+  id: UUID! @default(expr: "uuidV4()")
+  word: String! @unique
+  reading: String!
+  meanings: [String!]!
+  kanjiIds: [UUID!]!
+  frequency: Int
+  createdAt: Timestamp! @default(expr: "request.time")
 }
 
 # One row per kanji the user has interacted with
@@ -76,7 +93,7 @@ type QuizGenerationJob @table {
   id: UUID! @default(expr: "uuidV4()")
   userId: String!
   kanji: KanjiMaster!
-  word: UserWords
+  wordMaster: WordMaster
   quiz: QuizBank
   jobType: JobType! @default(value: "INITIAL")
   trigger: String
@@ -86,12 +103,12 @@ type QuizGenerationJob @table {
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
-# Stable quiz question content — one quiz per word per type
+# Stable quiz question content — global (userId=null) or personal
 type QuizBank @table {
   id: UUID! @default(expr: "uuidV4()")
-  userId: String!
+  userId: String
   kanji: KanjiMaster!
-  word: UserWords!
+  word: WordMaster!
   quizType: QuizType!
   prompt: String!
   furigana: String
@@ -103,11 +120,11 @@ type QuizBank @table {
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
-# Versioned distractor sets — accumulate, never deleted
+# Versioned distractor sets — global (userId=null) or personal
 type QuizDistractor @table {
   id: UUID! @default(expr: "uuidV4()")
   quiz: QuizBank!
-  userId: String!
+  userId: String
   distractors: [String!]!
   generation: Int!
   trigger: DistractorTrigger!
@@ -116,7 +133,7 @@ type QuizDistractor @table {
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
-# Full answer history per quiz attempt
+# Full answer history per quiz attempt — always personal
 type QuizServe @table {
   id: UUID! @default(expr: "uuidV4()")
   quiz: QuizBank!
@@ -140,14 +157,12 @@ type QuizSlot @table {
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
-# Compound words — primary unit for quiz tracking
+# Per-user word tracking — references shared WordMaster
 # familiarity tracked per word, kanji familiarity derived from words
 type UserWords @table {
   id: UUID! @default(expr: "uuidV4()")
   userId: String!
-  word: String!
-  reading: String!
-  meaning: String!
+  wordMaster: WordMaster!
   kanjiIds: [UUID!]!
   source: WordSource! @default(value: "PHOTO")
   familiarity: Int! @default(value: 0)
@@ -175,4 +190,14 @@ type UserSettings @table(key: "userId") {
   slotDurationHours: Int! @default(value: 6)
   timezone: String! @default(value: "Asia/Tokyo")
   updatedAt: Timestamp! @default(expr: "request.time")
+}
+
+# Invite-only access management
+type UserInvite @table {
+  id: UUID! @default(expr: "uuidV4()")
+  email: String! @unique
+  invitedBy: String!
+  status: InviteStatus! @default(value: "PENDING")
+  createdAt: Timestamp! @default(expr: "request.time")
+  acceptedAt: Timestamp
 }

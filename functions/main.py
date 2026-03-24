@@ -352,9 +352,9 @@ def _get_pending_jobs(limit: int = 10) -> list[dict]:
                 where: {{ status: {{ eq: PENDING }} }},
                 limit: {limit}
             ) {{
-                id userId kanjiId wordId jobType trigger quizId
+                id userId kanjiId wordMasterId jobType trigger quizId
                 kanji {{ character onyomi kunyomi meanings }}
-                word {{ word reading meaning }}
+                wordMaster {{ word reading meanings }}
             }}
         }}
     """
@@ -392,7 +392,8 @@ def _update_job_status(job_id: str, status: str, cost: int = 0, increment_attemp
     _execute_graphql(query)
 
 
-def _insert_quiz_and_distractor(user_id: str, kanji_id: str, word_id: str, quiz: dict) -> bool:
+def _insert_quiz_and_distractor(kanji_id: str, word_master_id: str, quiz: dict) -> bool:
+    """Insert a global quiz (userId=null) and its distractor set."""
     qt = QUIZ_TYPE_MAP.get(quiz.get("quiz_type", ""), quiz.get("quiz_type", ""))
     furigana = quiz.get("furigana")
     explanation = quiz.get("explanation", "")
@@ -402,9 +403,8 @@ def _insert_quiz_and_distractor(user_id: str, kanji_id: str, word_id: str, quiz:
     insert_query = f"""
         mutation {{
             quizBank_insert(data: {{
-                userId: "{_escape(user_id)}",
                 kanjiId: "{kanji_id}",
-                wordId: "{word_id}",
+                wordId: "{word_master_id}",
                 quizType: {qt},
                 prompt: "{_escape(quiz.get('prompt', ''))}",
                 target: "{_escape(quiz.get('target', ''))}",
@@ -415,7 +415,7 @@ def _insert_quiz_and_distractor(user_id: str, kanji_id: str, word_id: str, quiz:
         }}
     """
     result = _execute_graphql(insert_query)
-    quiz_id = result.get("data", {}).get("quizBank_insert", {}).get("id")
+    quiz_id = (result or {}).get("data", {}).get("quizBank_insert", {}).get("id")
     if not quiz_id:
         return False
 
@@ -426,7 +426,6 @@ def _insert_quiz_and_distractor(user_id: str, kanji_id: str, word_id: str, quiz:
             mutation {{
                 quizDistractor_insert(data: {{
                     quizId: "{quiz_id}",
-                    userId: "{_escape(user_id)}",
                     distractors: {dist_json},
                     generation: 1,
                     trigger: INITIAL,
@@ -483,16 +482,15 @@ def _get_user_familiarity(user_id: str, kanji_id: str) -> int:
 
 
 def _process_initial_job(client: genai.Client, job: dict) -> tuple[int, int]:
-    """Process an INITIAL job. Returns (cost, error_count)."""
-    user_id = job["userId"]
+    """Process an INITIAL job — generates global quizzes (userId=null)."""
     kanji_id = job["kanjiId"]
-    word_id = job.get("wordId", "")
-    word_data = job.get("word") or {}
+    word_master_id = job.get("wordMasterId", "")
+    word_data = job.get("wordMaster") or {}
 
     prompt = QUIZ_PROMPT.format(
         word=word_data.get("word", "?"),
         reading=word_data.get("reading", "?"),
-        meaning=word_data.get("meaning", "?"),
+        meaning=(word_data.get("meanings") or ["?"])[0] if isinstance(word_data.get("meanings"), list) else word_data.get("meaning", "?"),
     )
 
     response = client.models.generate_content(
@@ -509,7 +507,7 @@ def _process_initial_job(client: genai.Client, job: dict) -> tuple[int, int]:
 
     errors = 0
     for q in quizzes:
-        if not _insert_quiz_and_distractor(user_id, kanji_id, word_id, q):
+        if not _insert_quiz_and_distractor(kanji_id, word_master_id, q):
             errors += 1
 
     return cost, errors
@@ -660,8 +658,8 @@ def check_regen_triggers(event: scheduler_fn.ScheduledEvent) -> None:
 
     enqueued = 0
     for quiz in quizzes:
-        # Skip system quizzes
-        if quiz["userId"] == "system":
+        # Skip global quizzes (userId is null)
+        if not quiz.get("userId"):
             continue
 
         # Skip if latest distractor set is unserved (still fresh)
@@ -750,24 +748,44 @@ def discover_words(req: https_fn.Request) -> https_fn.Response:
         if not word_text:
             continue
 
-        # Check if word already exists for this user
-        check = _execute_graphql(f"""
+        # Find or create WordMaster
+        wm_check = _execute_graphql(f"""
+            query {{ wordMasters(where: {{ word: {{ eq: "{_escape(word_text)}" }} }}, limit: 1) {{ id }} }}
+        """)
+        wm_rows = (wm_check or {}).get("data", {}).get("wordMasters", [])
+        if wm_rows:
+            wm_id = wm_rows[0]["id"]
+        else:
+            meanings_json = json.dumps([meaning], ensure_ascii=False)
+            wm_result = _execute_graphql(f"""
+                mutation {{
+                    wordMaster_insert(data: {{
+                        word: "{_escape(word_text)}",
+                        reading: "{_escape(reading)}",
+                        meanings: {meanings_json},
+                        kanjiIds: ["{kanji_id}"]
+                    }})
+                }}
+            """)
+            wm_id = (wm_result or {}).get("data", {}).get("wordMaster_insert", {}).get("id")
+            if not wm_id:
+                continue
+
+        # Check if UserWord already exists for this user + WordMaster
+        uw_check = _execute_graphql(f"""
             query {{
-                userWordss(where: {{ userId: {{ eq: "{_escape(user_id)}" }}, word: {{ eq: "{_escape(word_text)}" }} }}) {{ id }}
+                userWordss(where: {{ userId: {{ eq: "{_escape(user_id)}" }}, wordMasterId: {{ eq: "{wm_id}" }} }}, limit: 1) {{ id }}
             }}
         """)
-        existing = check.get("data", {}).get("userWordss", [])
-        if existing:
+        if (uw_check or {}).get("data", {}).get("userWordss", []):
             continue
 
-        # Insert UserWord
-        insert_result = _execute_graphql(f"""
+        # Insert UserWord referencing WordMaster
+        _execute_graphql(f"""
             mutation {{
                 userWords_insert(data: {{
                     userId: "{_escape(user_id)}",
-                    word: "{_escape(word_text)}",
-                    reading: "{_escape(reading)}",
-                    meaning: "{_escape(meaning)}",
+                    wordMasterId: "{wm_id}",
                     kanjiIds: ["{kanji_id}"],
                     source: DISCOVERY,
                     discoveredViaKanjiId: "{kanji_id}",
@@ -775,20 +793,21 @@ def discover_words(req: https_fn.Request) -> https_fn.Response:
                 }})
             }}
         """)
-        word_id = insert_result.get("data", {}).get("userWords_insert", {}).get("id")
-        if not word_id:
-            continue
 
-        # Enqueue quiz generation for this word
-        _execute_graphql(f"""
-            mutation {{
-                quizGenerationJob_insert(data: {{
-                    userId: "{_escape(user_id)}",
-                    kanjiId: "{kanji_id}",
-                    wordId: "{word_id}"
-                }})
-            }}
+        # Enqueue quiz generation if no global quizzes exist
+        quiz_check = _execute_graphql(f"""
+            query {{ quizBanks(where: {{ wordId: {{ eq: "{wm_id}" }}, userId: {{ isNull: true }} }}, limit: 1) {{ id }} }}
         """)
+        if not (quiz_check or {}).get("data", {}).get("quizBanks", []):
+            _execute_graphql(f"""
+                mutation {{
+                    quizGenerationJob_insert(data: {{
+                        userId: "{_escape(user_id)}",
+                        kanjiId: "{kanji_id}",
+                        wordMasterId: "{wm_id}"
+                    }})
+                }}
+            """)
         inserted += 1
 
     print(f"Word discovery for {character}: inserted {inserted} new words for user {user_id}")

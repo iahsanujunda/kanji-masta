@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { Box, Button, Typography } from "@mui/material";
 import PageHeader from "@/components/PageHeader";
 import { apiFetch } from "@/lib/api";
@@ -199,11 +200,12 @@ function ZoneBadge({
 export default function Collection() {
   const navigate = useNavigate();
   const [hoveredZone, setHoveredZone] = useState<Zone>(null);
-  const [kanjiList, setKanjiList] = useState<KanjiItem[]>([]);
 
-  useEffect(() => {
-    apiFetch<KanjiItem[]>("/api/kanji/list").then(setKanjiList).catch(() => {});
-  }, []);
+  const { data: kanjiList = [] } = useQuery({
+    queryKey: ["kanji-list"],
+    queryFn: () => apiFetch<KanjiItem[]>("/api/kanji/list"),
+    staleTime: 60_000,
+  });
 
   const collection = {
     total: kanjiList.length,

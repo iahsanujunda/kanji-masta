@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { Box, Paper, Skeleton, Typography } from "@mui/material";
 import PageHeader from "@/components/PageHeader";
 import FamiliarityDots from "@/components/FamiliarityDots";
@@ -25,16 +25,13 @@ export default function KanjiList() {
   const zone = (searchParams.get("zone") || "roots") as Zone;
   const config = ZONE_CONFIG[zone] || ZONE_CONFIG.roots;
 
-  const [kanji, setKanji] = useState<KanjiListItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: allKanji = [], isLoading: loading } = useQuery({
+    queryKey: ["kanji-list"],
+    queryFn: () => apiFetch<KanjiListItem[]>("/api/kanji/list"),
+    staleTime: 60_000,
+  });
 
-  useEffect(() => {
-    apiFetch<KanjiListItem[]>("/api/kanji/list")
-      .then((data) => {
-        setKanji(data.filter((k) => k.familiarity >= config.min && k.familiarity <= config.max));
-      })
-      .finally(() => setLoading(false));
-  }, [config.min, config.max]);
+  const kanji = allKanji.filter((k) => k.familiarity >= config.min && k.familiarity <= config.max);
 
   const bgTransform = {
     canopy: "scale(1.8) translate(30%, 10%)",

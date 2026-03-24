@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   Box,
   Button,
@@ -43,24 +44,14 @@ interface UserSummary {
 export default function Home() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [summary, setSummary] = useState<UserSummary | null>(null);
-  const [loading, setLoading] = useState(true);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [quizBanner, setQuizBanner] = useState(false);
 
-  const loadSummary = useCallback(async () => {
-    try {
-      const data = await apiFetch<UserSummary>("/api/user/summary");
-      setSummary(data);
-    } catch {
-      // Fail silently — show defaults
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Re-fetch every time user navigates to Home (location.key changes on each navigation)
-  useEffect(() => { loadSummary(); }, [loadSummary, location.key]);
+  const { data: summary, isLoading: loading } = useQuery({
+    queryKey: ["user-summary"],
+    queryFn: () => apiFetch<UserSummary>("/api/user/summary"),
+    staleTime: 30_000, // consider fresh for 30s
+  });
 
   // Handle navigation state from Capture page
   useEffect(() => {

@@ -21,15 +21,7 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import PageHeader from "@/components/PageHeader";
 import { apiFetch } from "@/lib/api";
-
-function formatTimeLeft(endDate: Date): string {
-  const diffMs = endDate.getTime() - Date.now();
-  if (diffMs <= 0) return "expired";
-  const hours = Math.floor(diffMs / (1000 * 60 * 60));
-  const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-  if (hours > 0) return `${hours}h ${mins}m left`;
-  return `${mins}m left`;
-}
+import { formatTimeLeft } from "@/lib/format";
 
 interface UserSummary {
   kanjiLearning: number;

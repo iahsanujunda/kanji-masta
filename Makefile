@@ -143,6 +143,12 @@ trigger-quizzes: ## Trigger quiz generation function manually
 psql: ## Connect to Data Connect emulator PostgreSQL
 	psql -h 127.0.0.1 -p 5432 -U postgres
 
+test-frontend: ## Run frontend unit tests
+	cd frontend && npx vitest run
+
+test-frontend-watch: ## Run frontend tests in watch mode
+	cd frontend && npx vitest
+
 clean: ## Clean build artifacts
 	cd backend && ./gradlew clean
 	cd frontend && rm -rf dist node_modules/.vite

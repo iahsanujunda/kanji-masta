@@ -5,6 +5,7 @@ import ClearIcon from "@mui/icons-material/Clear";
 import PageHeader from "@/components/PageHeader";
 import FamiliarityDots from "@/components/FamiliarityDots";
 import { apiFetch } from "@/lib/api";
+import { formatNextReview } from "@/lib/format";
 
 interface WordListItem {
   id: string;
@@ -22,18 +23,6 @@ interface WordListResponse {
 }
 
 const PAGE_SIZE = 30;
-
-function formatNextReview(dateStr: string | null): string {
-  if (!dateStr) return "";
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = date.getTime() - now.getTime();
-  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-  if (diffDays < 0) return "overdue";
-  if (diffDays === 0) return "today";
-  if (diffDays === 1) return "tomorrow";
-  return `in ${diffDays} days`;
-}
 
 export default function Dictionary() {
   const [words, setWords] = useState<WordListItem[]>([]);

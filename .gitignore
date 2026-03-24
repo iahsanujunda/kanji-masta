@@ -10,4 +10,5 @@ dataconnect/.dataconnect/
 *-debug.log
 functions/venv/
 __pycache__/
+.firebase/
 scripts/.quiz_seed_checkpoint.json

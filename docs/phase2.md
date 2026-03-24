@@ -17,7 +17,8 @@ Phase 2 opens the app to a small trusted group of users. The core learning loop 
 | 2.1 | Schema Migration — WordMaster + Shared QuizBank | Foundation — shared quiz reuse depends on this |
 | 2.2 | Invite System | Gates new user access until infrastructure is ready |
 | 2.3 | Per-User Onboarding Flow | First experience for invited users |
-| 2.4 | Settings — Quiz Allowance Slider | Small UX improvement, natural fit with multi-user launch |
+| 2.4 | Settings — Quiz Allowance Slider + Timezone | Small UX improvement, natural fit with multi-user launch |
+| 2.5 | Admin Panel | Cost visibility + job monitoring + invite management in one place |
 
 ---
 
@@ -482,6 +483,198 @@ Account
 
 ---
 
+---
+
+# Iteration 2.5 — Admin Panel
+
+A single `/admin` route within the existing React app. Protected by admin `userId` check in Ktor middleware. Built with existing MUI components — no separate frontend, no separate deployment.
+
+Firebase Console already covers table inspection, function logs, and Auth management. The admin panel covers what Console doesn't: aggregated cost, job retry, invite management, and quiz quality control.
+
+### 2.5.1 Admin Guard (Ktor)
+
+```kotlin
+// core/auth/AdminGuard.kt
+fun ApplicationCall.requireAdmin() {
+    val userId = principal<UserPrincipal>()?.uid
+    if (userId != AppConfig.adminUserId) {
+        respond(HttpStatusCode.Forbidden, "Admin only")
+        finish()
+    }
+}
+```
+
+`AppConfig.adminUserId` is your Firebase UID, set as an environment variable. No role table needed at this scale.
+
+### 2.5.2 Schema — Add costMicrodollars to Job Tables
+
+`PhotoSession` already has `costMicrodollars`. Add to the remaining AI-call tables:
+
+```graphql
+type QuizGenerationJob @table {
+  # ... existing fields
+  costMicrodollars: Int64    # NEW — populated by Firebase Function on completion
+}
+
+type ChallengeSession @table {
+  # ... existing fields
+  costMicrodollars: Int64    # NEW — populated by generate_challenge Function
+}
+```
+
+Firebase Functions already call `extract_cost(response.usage_metadata)` — just write the value back to the job/session row on completion.
+
+### 2.5.3 Admin Endpoints
+
+```
+GET  /api/admin/cost              → aggregated spend by user + by day + total
+GET  /api/admin/jobs              → QuizGenerationJob rows filtered by status
+POST /api/admin/jobs/{id}/retry   → reset status to PENDING, attempts to 0
+GET  /api/admin/quizzes           → QuizBank rows, filterable by kanji/word
+DELETE /api/admin/quizzes/{id}    → delete a bad quiz row + its distractors
+GET  /api/admin/invites           → all UserInvite rows with status
+POST /api/admin/invite            → create invite, send email
+PUT  /api/admin/invite/{id}/revoke → set status REVOKED
+```
+
+**GET /api/admin/cost response:**
+
+```json
+{
+  "totalMicrodollars": 12450000,
+  "totalDollars": "12.45",
+  "byUser": [
+    {
+      "userId": "abc123",
+      "displayName": "Wife",
+      "totalMicrodollars": 4200000,
+      "breakdown": {
+        "photoMicrodollars": 1200000,
+        "quizGenMicrodollars": 2400000,
+        "challengeMicrodollars": 600000
+      }
+    }
+  ],
+  "byDay": [
+    { "date": "2026-03-24", "totalMicrodollars": 1200000 }
+  ]
+}
+```
+
+**GET /api/admin/jobs response:**
+
+```json
+{
+  "jobs": [
+    {
+      "id": "uuid",
+      "status": "FAILED",
+      "attempts": 3,
+      "kanji": "電",
+      "word": "電車",
+      "userId": "abc123",
+      "createdAt": "2026-03-24T..."
+    }
+  ],
+  "counts": {
+    "PENDING": 2,
+    "PROCESSING": 0,
+    "DONE": 284,
+    "FAILED": 3
+  }
+}
+```
+
+### 2.5.4 React UI — /admin Route
+
+Four tabs within a single `/admin` page. Access via direct URL — no nav link shown to regular users.
+
+**Cost tab:**
+
+```
+Total spend: $12.45
+
+By user:
+  Wife          $4.20   [photo: $1.20 | quizgen: $2.40 | challenge: $0.60]
+  Friend 1      $3.80
+  Friend 2      $2.10
+  You           $2.35
+
+Daily spend (last 14 days):
+  [simple bar chart using MUI]
+```
+
+**Jobs tab:**
+
+```
+Status counts:  PENDING: 2  |  FAILED: 3  |  DONE: 284
+
+Failed jobs:
+  電 / 電車    Friend 1    3 attempts    [Retry]
+  話 / 会話    Wife        3 attempts    [Retry]
+  急 / 急行    You         3 attempts    [Retry]
+
+[ Retry all failed ]
+```
+
+**Quizzes tab:**
+
+```
+Search: [kanji or word input]
+
+Results:
+  電車  meaning_recall   "train"    [Preview] [Delete]
+  電車  reading_recog    "でんしゃ" [Preview] [Delete]
+  ...
+```
+
+Preview opens a modal showing the full quiz card as the user would see it — useful for spotting bad Gemini outputs.
+
+**Invites tab:**
+
+```
+[ + New Invite ]
+
+Email                  Status    Invited by    Actions
+friend@email.com       ACCEPTED  You           —
+new@email.com          PENDING   You           [Revoke]
+old@email.com          REVOKED   You           —
+```
+
+### 2.5.5 Data Connect @transaction — Job Retry
+
+Resetting a failed job is a two-step write — reset status AND reset attempts:
+
+```graphql
+mutation RetryJob($jobId: UUID!) @transaction {
+  quizGenerationJob_update(id: $jobId, data: {
+    status: PENDING
+    attempts: 0
+  })
+}
+```
+
+Single mutation, naturally atomic — no `@transaction` strictly needed here but consistent with the pattern.
+
+### Definition of Done
+
+- [ ] `costMicrodollars` added to `QuizGenerationJob` and `ChallengeSession` schema
+- [ ] Firebase Functions write cost to job/session row on completion
+- [ ] `/admin` route protected by `requireAdmin()` middleware
+- [ ] `GET /api/admin/cost` returns total + per-user + per-day breakdown
+- [ ] `GET /api/admin/jobs` returns job list with status counts
+- [ ] `POST /api/admin/jobs/{id}/retry` resets failed job to PENDING
+- [ ] `GET /api/admin/quizzes` returns quiz rows, searchable by kanji/word
+- [ ] `DELETE /api/admin/quizzes/{id}` removes quiz + associated distractors
+- [ ] Invite CRUD works via admin endpoints
+- [ ] Cost tab shows per-user breakdown with source split (photo/quizgen/challenge)
+- [ ] Jobs tab shows failed jobs with retry button + bulk retry
+- [ ] Quizzes tab shows preview modal of quiz as user would see it
+- [ ] Invites tab shows all invites with revoke action
+- [ ] Admin page not linked from main nav — access via direct URL only
+
+---
+
 # Appendix — Phase 2 Architecture Notes
 
 ### What changed from Phase 1
@@ -500,12 +693,17 @@ Account
 - `GET /api/admin/invites`
 - `PUT /api/admin/invite/{id}/revoke`
 - `POST /api/kanji/bulk-familiar`
+- `GET /api/admin/cost`
+- `GET /api/admin/jobs`
+- `POST /api/admin/jobs/{id}/retry`
+- `GET /api/admin/quizzes`
+- `DELETE /api/admin/quizzes/{id}`
 
 **New Firebase Function:** none — existing `generate_quizzes` updated to write global rows.
 
 ### API Cost Model
 
-Flat $5/user contribution, trust-based. No automated billing or usage enforcement in Phase 2. If API costs become a concern in Phase 3, add `costMicrodollars` tracking per user by summing `PhotoSession.costMicrodollars` and estimating quiz generation cost per job.
+Flat $5/user contribution, trust-based. No automated billing or usage enforcement in Phase 2. Cost is tracked per operation via `costMicrodollars` fields on `PhotoSession`, `QuizGenerationJob`, and `ChallengeSession` — visible in the admin panel. If spend exceeds $5/user/month consistently, revisit in Phase 3.
 
 ### Shared Quiz Reuse — Expected Impact
 

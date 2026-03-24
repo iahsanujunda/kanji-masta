@@ -1,7 +1,22 @@
 {
-  "frontend": { "commit": "", "deployedAt": "" },
-  "backend": { "commit": "", "deployedAt": "" },
-  "functions": { "commit": "", "deployedAt": "" },
-  "dataconnect": { "commit": "", "deployedAt": "" },
-  "storage": { "commit": "", "deployedAt": "" }
+  "frontend": {
+    "commit": "955243e",
+    "deployedAt": "2026-03-24T11:46:16Z"
+  },
+  "backend": {
+    "commit": "2bb6c29",
+    "deployedAt": "2026-03-24T10:13:46Z"
+  },
+  "functions": {
+    "commit": "2bb6c29",
+    "deployedAt": "2026-03-24T10:13:25Z"
+  },
+  "dataconnect": {
+    "commit": "2bb6c29",
+    "deployedAt": "2026-03-24T10:14:09Z"
+  },
+  "storage": {
+    "commit": "2bb6c29",
+    "deployedAt": "2026-03-24T10:15:14Z"
+  }
 }

@@ -134,7 +134,7 @@ export default function Onboarding() {
     const familiarSelections = selections.filter((s) => s.status === "familiar");
 
     return (
-      <Box sx={{ minHeight: "100vh", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", p: 3 }}>
+      <Box sx={{ height: "100vh", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", p: 3, overflow: "hidden" }}>
         {/* Header stats */}
         <Box sx={{ textAlign: "center", pt: 4, mb: 3 }}>
           <Box sx={{ width: 64, height: 64, bgcolor: "rgba(67, 56, 202, 0.15)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", mx: "auto", mb: 2 }}>

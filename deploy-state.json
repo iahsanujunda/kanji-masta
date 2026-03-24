@@ -1,0 +1,7 @@
+{
+  "frontend": { "commit": "", "deployedAt": "" },
+  "backend": { "commit": "", "deployedAt": "" },
+  "functions": { "commit": "", "deployedAt": "" },
+  "dataconnect": { "commit": "", "deployedAt": "" },
+  "storage": { "commit": "", "deployedAt": "" }
+}

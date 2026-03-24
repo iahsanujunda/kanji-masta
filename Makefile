@@ -57,21 +57,51 @@ docker-down: ## Stop Docker services
 
 # --- Deploy ---
 
+DEPLOY_STATE = deploy-state.json
+COMMIT = $(shell git rev-parse --short HEAD)
+TIMESTAMP = $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+_mark-deploy = python3 -c "import json; f=open('$(DEPLOY_STATE)'); d=json.load(f); f.close(); d['$(1)']={'commit':'$(COMMIT)','deployedAt':'$(TIMESTAMP)'}; f=open('$(DEPLOY_STATE)','w'); json.dump(d,f,indent=2); f.close(); print('  Marked $(1) deployed at $(COMMIT)')"
+
+deploy-frontend: ## Build + deploy frontend to Firebase Hosting
+	cd frontend && npm run build
+	firebase deploy --only hosting
+	@$(call _mark-deploy,frontend)
+
+deploy-backend: ## Build + deploy backend to Cloud Run
+	cd backend && ./gradlew build
+	docker build -t asia-east1-docker.pkg.dev/kanji-masta/kanji-masta-backend/backend ./backend
+	docker push asia-east1-docker.pkg.dev/kanji-masta/kanji-masta-backend/backend
+	gcloud run deploy kanji-masta-backend \
+		--image asia-east1-docker.pkg.dev/kanji-masta/kanji-masta-backend/backend \
+		--region asia-east1 \
+		--set-env-vars "FIREBASE_PROJECT_ID=kanji-masta,FIREBASE_FUNCTIONS_HOST=asia-east1-kanji-masta.cloudfunctions.net,FIREBASE_FUNCTIONS_REGION=asia-east1,LOG_LEVEL=INFO" \
+		--allow-unauthenticated
+	@$(call _mark-deploy,backend)
+
 deploy-functions: ## Deploy Firebase Functions
 	firebase deploy --only functions
+	@$(call _mark-deploy,functions)
 
 deploy-dataconnect: ## Deploy Data Connect schema
 	firebase deploy --only dataconnect
+	@$(call _mark-deploy,dataconnect)
 
-deploy-storage: ## Deploy Storage rules
+deploy-storage: ## Deploy Storage rules + CORS
 	firebase deploy --only storage
-
-deploy-cors: ## Apply CORS config to Cloud Storage bucket
 	gcloud storage buckets update gs://$(or $(STORAGE_BUCKET),kanji-masta.firebasestorage.app) --cors-file=storage-cors.json
+	@$(call _mark-deploy,storage)
 
 deploy-all: ## Deploy all Firebase services + CORS
 	firebase deploy --only functions,dataconnect,storage,hosting
-	$(MAKE) deploy-cors
+	gcloud storage buckets update gs://$(or $(STORAGE_BUCKET),kanji-masta.firebasestorage.app) --cors-file=storage-cors.json
+	@$(call _mark-deploy,frontend)
+	@$(call _mark-deploy,functions)
+	@$(call _mark-deploy,dataconnect)
+	@$(call _mark-deploy,storage)
+
+deploy-status: ## Show deployment state for all components
+	@python3 -c "import json; d=json.load(open('deploy-state.json')); print(); [print(f'  {k:<14} {v.get(\"commit\",\"\") or \"never\":>8}  {v.get(\"deployedAt\",\"\") or \"-\"}') for k,v in d.items()]; print()"
 
 # --- Utilities ---
 
@@ -118,24 +148,8 @@ clean: ## Clean build artifacts
 	cd frontend && rm -rf dist node_modules/.vite
 	rm -rf functions/venv
 
-check-deploy: ## Show what needs deploying based on git changes
-	@echo "Checking changes since last deploy tag (or last 5 commits)..."
-	@echo ""
-	@changes=$$(git diff --name-only HEAD~5 2>/dev/null || git diff --name-only HEAD); \
-	fe=$$(echo "$$changes" | grep -c "^frontend/" || true); \
-	be=$$(echo "$$changes" | grep -c "^backend/" || true); \
-	fn=$$(echo "$$changes" | grep -c "^functions/" || true); \
-	dc=$$(echo "$$changes" | grep -c "^dataconnect/" || true); \
-	sr=$$(echo "$$changes" | grep -c "^storage" || true); \
-	sc=$$(echo "$$changes" | grep -c "^scripts/" || true); \
-	if [ "$$fe" -gt 0 ]; then echo "  \033[36mfrontend/\033[0m     → npm run build && firebase deploy --only hosting"; fi; \
-	if [ "$$be" -gt 0 ]; then echo "  \033[36mbackend/\033[0m      → ./gradlew build && gcloud run deploy"; fi; \
-	if [ "$$fn" -gt 0 ]; then echo "  \033[36mfunctions/\033[0m    → firebase deploy --only functions"; fi; \
-	if [ "$$dc" -gt 0 ]; then echo "  \033[36mdataconnect/\033[0m  → firebase deploy --only dataconnect"; fi; \
-	if [ "$$sr" -gt 0 ]; then echo "  \033[36mstorage*\033[0m      → firebase deploy --only storage && make deploy-cors"; fi; \
-	if [ "$$sc" -gt 0 ]; then echo "  \033[36mscripts/\033[0m      → re-run seed commands with --prod"; fi; \
-	if [ "$$fe$$be$$fn$$dc$$sr$$sc" = "000000" ]; then echo "  No deployment-relevant changes detected."; fi; \
-	echo ""
+check-deploy: ## Show what needs deploying based on changes since last deploy
+	@python3 scripts/check_deploy.py
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'

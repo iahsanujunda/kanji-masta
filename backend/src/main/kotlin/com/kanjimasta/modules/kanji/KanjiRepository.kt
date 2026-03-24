@@ -71,16 +71,17 @@ class KanjiRepository(val dc: DataConnectClient) {
     }
 
     suspend fun getWordMastersForKanji(kanjiMasterId: String): List<WordMasterItem> {
-        // WordMaster stores kanjiIds as array — fetch all and filter client-side
         val query = """
-            query { wordMasters(limit: 200) { id word reading meanings kanjiIds } }
+            query {
+                wordMasters(where: { kanjiIds: { contains: "$kanjiMasterId" } }, limit: 50) {
+                    id word reading meanings
+                }
+            }
         """.trimIndent()
         val result = dc.executeGraphql(query)
-        val all = result["data"]?.jsonObject?.get("wordMasters")?.jsonArray ?: return emptyList()
-        return all.mapNotNull { row ->
+        val rows = result["data"]?.jsonObject?.get("wordMasters")?.jsonArray ?: return emptyList()
+        return rows.mapNotNull { row ->
             val obj = row.jsonObject
-            val ids = obj["kanjiIds"]?.jsonArray?.map { it.jsonPrimitive.content } ?: return@mapNotNull null
-            if (kanjiMasterId !in ids) return@mapNotNull null
             WordMasterItem(
                 id = obj["id"]?.jsonPrimitive?.content ?: return@mapNotNull null,
                 word = obj["word"]?.jsonPrimitive?.content ?: "",

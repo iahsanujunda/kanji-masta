@@ -135,7 +135,7 @@ docker push gcr.io/kanji-masta/backend
 # Deploy
 gcloud run deploy kanji-masta-backend \
   --image gcr.io/kanji-masta/backend \
-  --region asia-northeast1 \
+  --region asia-east1 \
   --set-env-vars FIREBASE_PROJECT_ID=kanji-masta,LOG_LEVEL=INFO \
   --allow-unauthenticated
 ```
@@ -215,22 +215,17 @@ To set up a custom domain: Firebase Console → Hosting → Add custom domain.
 ## 8. CORS Configuration
 
 ### Cloud Storage CORS
-Create `cors.json`:
-```json
-[{
-  "origin": ["https://your-frontend-domain.com"],
-  "method": ["GET", "PUT", "POST"],
-  "maxAgeSeconds": 3600
-}]
+CORS config is committed in `storage-cors.json`. Apply it:
+```bash
+make deploy-cors
+# or manually:
+gcloud storage buckets update gs://YOUR_BUCKET_NAME --cors-file=storage-cors.json
 ```
 
-Apply:
-```bash
-gsutil cors set cors.json gs://kanji-masta.appspot.com
-```
+Update origins in `storage-cors.json` if you add a custom domain.
 
 ### Backend CORS
-Update `backend/.../core/plugins/Cors.kt` to restrict `anyHost()` to your frontend domain in production.
+The backend uses `anyHost()` — works for any frontend domain. Optionally restrict via env var in production (not yet implemented).
 
 ---
 

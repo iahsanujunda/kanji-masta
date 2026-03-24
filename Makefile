@@ -66,8 +66,12 @@ deploy-dataconnect: ## Deploy Data Connect schema
 deploy-storage: ## Deploy Storage rules
 	firebase deploy --only storage
 
-deploy-all: ## Deploy all Firebase services
-	firebase deploy --only functions,dataconnect,storage
+deploy-cors: ## Apply CORS config to Cloud Storage bucket
+	gcloud storage buckets update gs://$(or $(STORAGE_BUCKET),kanji-masta.firebasestorage.app) --cors-file=storage-cors.json
+
+deploy-all: ## Deploy all Firebase services + CORS
+	firebase deploy --only functions,dataconnect,storage,hosting
+	$(MAKE) deploy-cors
 
 # --- Utilities ---
 

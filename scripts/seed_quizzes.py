@@ -28,7 +28,7 @@ from google import genai
 from google.genai import types
 
 # Global quizzes use userId=null (not "system" anymore)
-CHECKPOINT_FILE = "scripts/.quiz_seed_checkpoint.json"
+CHECKPOINT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".quiz_seed_checkpoint.json")
 
 JLPT_MAP = {5: 4, 4: 3, 3: 2, 2: 1, 1: 1}
 
@@ -370,8 +370,11 @@ def clear_system_quizzes(url: str, headers: dict):
 
 def load_checkpoint() -> set[str]:
     if Path(CHECKPOINT_FILE).exists():
-        with open(CHECKPOINT_FILE) as f:
-            return set(json.load(f))
+        try:
+            with open(CHECKPOINT_FILE) as f:
+                return set(json.load(f))
+        except (json.JSONDecodeError, ValueError):
+            return set()
     return set()
 
 

@@ -1,5 +1,0 @@
-[{
-  "origin": ["https://kanji-masta.web.app", "https://kanji-masta.firebaseapp.com", "http://localhost:5173"],
-  "method": ["GET", "PUT", "POST"],
-  "maxAgeSeconds": 3600
-}]

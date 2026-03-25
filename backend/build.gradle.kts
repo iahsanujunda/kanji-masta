@@ -43,9 +43,8 @@ dependencies {
     implementation(libs.ktor.client.cio)
     implementation(libs.ktor.client.content.negotiation)
 
-    // Auth (Supabase JWT verification)
+    // Auth (Supabase JWT verification via JWKS)
     implementation(libs.ktor.server.auth.jwt)
-    implementation(libs.java.jwt)
 
     // Database (Ktorm + PostgreSQL)
     implementation(libs.ktorm.core)

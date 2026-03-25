@@ -39,7 +39,7 @@ ai-worker: ## Start AI worker (quiz gen, photo analysis, word discovery)
 backend: ## Start Ktor backend (connects to local Supabase + AI worker)
 	cd backend && \
 	DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
-	SUPABASE_JWT_SECRET=super-secret-jwt-token-with-at-least-32-characters-long \
+	SUPABASE_URL=http://127.0.0.1:54321 \
 	AI_WORKER_URL=http://127.0.0.1:5001 \
 	./gradlew run
 
@@ -106,7 +106,7 @@ deploy-backend: ## Build + deploy backend to Cloud Run
 	gcloud run deploy kanji-masta-backend \
 		--image $(ARTIFACT_REGISTRY)/kanji-masta-backend/backend \
 		--region $(CLOUD_RUN_REGION) \
-		--set-env-vars "DATABASE_URL=$(PROD_SUPABASE_DB_URI),SUPABASE_JWT_SECRET=$(PROD_SUPABASE_KEY),AI_WORKER_URL=$(AI_WORKER_SVC_URL),LOG_LEVEL=INFO" \
+		--set-env-vars "DATABASE_URL=$(PROD_SUPABASE_DB_URI),SUPABASE_URL=$(PROD_SUPABASE_URL),AI_WORKER_URL=$(AI_WORKER_SVC_URL),LOG_LEVEL=INFO" \
 		--allow-unauthenticated
 	@$(call _mark-deploy,backend)
 

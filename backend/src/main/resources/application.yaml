@@ -9,7 +9,7 @@ database:
   url: "$DATABASE_URL:"
 
 supabase:
-  jwtSecret: "$SUPABASE_JWT_SECRET:"
+  url: "$SUPABASE_URL:"
 
 aiWorker:
   baseUrl: "$AI_WORKER_URL:"

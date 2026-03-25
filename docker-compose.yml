@@ -7,7 +7,7 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres
-      SUPABASE_JWT_SECRET: ${SUPABASE_KEY}
+      SUPABASE_URL: http://host.docker.internal:54321
       AI_WORKER_URL: http://ai-worker:8080
     depends_on:
       ai-worker:

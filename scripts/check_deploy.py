@@ -3,17 +3,14 @@
 
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 STATE_FILE = Path(__file__).parent.parent / "deploy-state.json"
 
 MAPPING = {
-    "frontend":    ("frontend/",    "make deploy-frontend"),
-    "backend":     ("backend/",     "make deploy-backend"),
-    "functions":   ("functions/",   "make deploy-functions"),
-    "dataconnect": ("dataconnect/", "make deploy-dataconnect"),
-    "storage":     ("storage",      "make deploy-storage"),
+    "frontend":  ("frontend/",          "make deploy-frontend"),
+    "backend":   ("backend/",           "make deploy-backend"),
+    "ai-worker": ("services/ai-worker/", "make deploy-ai-worker"),
 }
 
 def main():

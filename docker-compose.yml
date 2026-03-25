@@ -1,31 +1,42 @@
 services:
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    build: ./backend
     ports:
       - "8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-kanji-masta}
-      FIREBASE_AUTH_EMULATOR_HOST: ${FIREBASE_AUTH_EMULATOR_HOST:-}
-      FIREBASE_DATACONNECT_HOST: ${FIREBASE_DATACONNECT_HOST:-}
-      FIREBASE_FUNCTIONS_HOST: ${FIREBASE_FUNCTIONS_HOST:-}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      CLAUDE_API_KEY: ${CLAUDE_API_KEY:-}
+      DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres
+      SUPABASE_JWT_SECRET: ${SUPABASE_KEY}
+      AI_WORKER_URL: http://ai-worker:8080
+    depends_on:
+      ai-worker:
+        condition: service_healthy
+
+  ai-worker:
+    build: ./services/ai-worker
+    ports:
+      - "5001:8080"  # exposed for manual cron triggers
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
 
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
-        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-demo-key}
-        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-localhost}
-        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-kanji-masta}
-        VITE_FIREBASE_AUTH_EMULATOR_HOST: ${VITE_FIREBASE_AUTH_EMULATOR_HOST:-host.docker.internal:9099}
-        VITE_FIREBASE_STORAGE_BUCKET: ${VITE_FIREBASE_STORAGE_BUCKET:-kanji-masta.appspot.com}
-        VITE_FIREBASE_STORAGE_EMULATOR_HOST: ${VITE_FIREBASE_STORAGE_EMULATOR_HOST:-host.docker.internal:9199}
+        VITE_API_URL: http://localhost:8080
+        VITE_SUPABASE_URL: ${SUPABASE_URL:-http://localhost:54321}
+        VITE_SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:-}
     ports:
       - "3000:3000"
+    depends_on:
+      - backend

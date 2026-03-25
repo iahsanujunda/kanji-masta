@@ -300,7 +300,7 @@ export default function Collection() {
             "&:hover": { bgcolor: "#3730a3" },
           }}
         >
-          Add Kanji
+          Add Familiar Kanji
         </Button>
       </Box>
     </Box>

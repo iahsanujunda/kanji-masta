@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Box,
   Button,
@@ -36,6 +37,12 @@ interface SlotResponse {
 
 export default function Quiz() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const goHome = () => {
+    queryClient.invalidateQueries({ queryKey: ["user-summary"] });
+    navigate("/");
+  };
   const [quizzes, setQuizzes] = useState<QuizItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
@@ -56,7 +63,7 @@ export default function Quiz() {
         if (data.quizzes.length === 0) setIsFinished(true);
       })
       .catch(() => {
-        navigate("/");
+        goHome();
       });
   }, [navigate]);
 
@@ -130,7 +137,7 @@ export default function Quiz() {
           You finished your {quizzes.length} reviews for this session.
         </Typography>
         <Button
-          onClick={() => navigate("/")}
+          onClick={goHome}
           sx={{ bgcolor: "grey.800", color: "white", fontWeight: "bold", py: 1.5, px: 4, borderRadius: 3, "&:hover": { bgcolor: "grey.700" } }}
         >
           Return to Home
@@ -147,7 +154,7 @@ export default function Quiz() {
       {/* Header */}
       <Box sx={{ px: 3, pt: 5, pb: 2, display: "flex", flexDirection: "column", gap: 2 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <IconButton onClick={() => navigate("/")} sx={{ color: "grey.500" }}>
+          <IconButton onClick={goHome} sx={{ color: "grey.500" }}>
             <CloseIcon />
           </IconButton>
           <Typography variant="caption" sx={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 2, color: "grey.500" }}>

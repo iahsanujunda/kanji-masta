@@ -209,15 +209,30 @@ export default function Home() {
             </Button>
           </Paper>
         ) : hasActiveSlot && slotRemaining === 0 ? (
-          /* Slot complete */
-          <Paper variant="outlined" sx={{ borderRadius: 4, p: 3, borderColor: "success.dark", bgcolor: "rgba(46, 125, 50, 0.08)" }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1 }}>
-              <CheckCircleIcon color="success" />
-              <Typography fontWeight="bold" color="success.main">Session Complete</Typography>
+          /* Slot complete — show countdown to next session */
+          <Paper elevation={4} sx={{ bgcolor: "#4338ca", color: "white", borderRadius: 4, p: 3 }}>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 2 }}>
+              <Box>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
+                  <CheckCircleIcon sx={{ fontSize: 20, color: "#34d399" }} />
+                  <Typography variant="body2" sx={{ color: "#34d399", fontWeight: 600 }}>Session Complete</Typography>
+                </Box>
+                <Typography variant="h4" fontWeight="bold" component="div">
+                  {slotTimeLeft}
+                </Typography>
+                <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                  until next session
+                </Typography>
+              </Box>
             </Box>
-            <Typography variant="body2" color="text.secondary">
-              Great job! Your next session starts whenever you're ready.
-            </Typography>
+            <Button
+              fullWidth variant="contained"
+              onClick={() => navigate("/capture")}
+              startIcon={<CameraAltIcon />}
+              sx={{ bgcolor: "rgba(255,255,255,0.15)", color: "white", fontWeight: "bold", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "rgba(255,255,255,0.25)" } }}
+            >
+              Capture More Kanji
+            </Button>
           </Paper>
         ) : (
           /* No active slot — ready to start */

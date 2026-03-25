@@ -15,24 +15,21 @@ private val logger = LoggerFactory.getLogger("com.kanjimasta.modules.photo.Photo
 class PhotoService(
     private val photoRepository: PhotoRepository,
     private val httpClient: HttpClient,
-    private val functionsBaseUrl: String,
-    private val firebaseProjectId: String,
-    private val functionsRegion: String = "us-central1",
+    private val aiWorkerUrl: String,
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
 
     suspend fun startAnalysis(userId: String, imageUrl: String): AnalyzePhotoResponse {
         logger.debug("Creating photo session for user={}", userId)
         val sessionId = photoRepository.createSession(userId, imageUrl)
-        logger.info("Created photo session={}, calling function", sessionId)
+        logger.info("Created photo session={}, calling ai-worker", sessionId)
 
-        val functionUrl = "$functionsBaseUrl/$firebaseProjectId/$functionsRegion/analyze_photo"
-        logger.debug("Function URL: {}", functionUrl)
+        val url = "$aiWorkerUrl/analyze-photo"
 
-        // Fire-and-forget: call Firebase Function async
+        // Fire-and-forget: call AI worker async
         scope.launch {
             try {
-                val response = httpClient.post(functionUrl) {
+                val response = httpClient.post(url) {
                     contentType(ContentType.Application.Json)
                     header("X-Call-Id", org.slf4j.MDC.get("callId") ?: "no-call")
                     header("X-User-Id", userId)
@@ -42,12 +39,12 @@ class PhotoService(
                         put("sessionId", sessionId)
                     }.toString())
                 }
-                logger.info("Function call completed for session={}, status={}", sessionId, response.status)
+                logger.info("AI worker call completed for session={}, status={}", sessionId, response.status)
                 if (!response.status.isSuccess()) {
-                    logger.error("Function returned error for session={}: {}", sessionId, response.bodyAsText())
+                    logger.error("AI worker returned error for session={}: {}", sessionId, response.bodyAsText())
                 }
             } catch (e: Exception) {
-                logger.error("Function call failed for session={}: {}", sessionId, e.message, e)
+                logger.error("AI worker call failed for session={}: {}", sessionId, e.message, e)
             }
         }
 

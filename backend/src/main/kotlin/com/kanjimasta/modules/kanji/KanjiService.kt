@@ -16,9 +16,7 @@ class KanjiService(
     private val kanjiRepository: KanjiRepository,
     private val photoRepository: PhotoRepository,
     private val httpClient: HttpClient,
-    private val functionsBaseUrl: String,
-    private val firebaseProjectId: String,
-    private val functionsRegion: String = "us-central1",
+    private val aiWorkerUrl: String,
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
 
@@ -155,11 +153,11 @@ class KanjiService(
     }
 
     private fun triggerQuizGeneration() {
-        val functionUrl = "$functionsBaseUrl/$firebaseProjectId/$functionsRegion/generate_quizzes_http"
-        logger.info("Triggering quiz generation: {}", functionUrl)
+        val url = "$aiWorkerUrl/generate-quizzes"
+        logger.info("Triggering quiz generation: {}", url)
         scope.launch {
             try {
-                httpClient.post(functionUrl) {
+                httpClient.post(url) {
                     contentType(ContentType.Application.Json)
                     header("X-Call-Id", org.slf4j.MDC.get("callId") ?: "no-call")
                     setBody("{}")

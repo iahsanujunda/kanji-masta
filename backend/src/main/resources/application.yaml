@@ -11,6 +11,9 @@ database:
 supabase:
   url: "$SUPABASE_URL:"
 
+cors:
+  allowedOrigins: "$CORS_ALLOWED_ORIGINS:"
+
 aiWorker:
   baseUrl: "$AI_WORKER_URL:"
 

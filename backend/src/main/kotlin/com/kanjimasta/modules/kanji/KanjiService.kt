@@ -1,5 +1,6 @@
 package com.kanjimasta.modules.kanji
 
+import com.kanjimasta.core.auth.getIdentityToken
 import com.kanjimasta.modules.photo.PhotoRepository
 import io.ktor.client.*
 import io.ktor.client.request.*
@@ -157,8 +158,10 @@ class KanjiService(
         logger.info("Triggering quiz generation: {}", url)
         scope.launch {
             try {
+                val idToken = getIdentityToken(httpClient, aiWorkerUrl)
                 httpClient.post(url) {
                     contentType(ContentType.Application.Json)
+                    if (idToken != null) header("Authorization", "Bearer $idToken")
                     header("X-Call-Id", org.slf4j.MDC.get("callId") ?: "no-call")
                     setBody("{}")
                 }

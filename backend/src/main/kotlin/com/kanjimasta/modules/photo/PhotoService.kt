@@ -1,5 +1,6 @@
 package com.kanjimasta.modules.photo
 
+import com.kanjimasta.core.auth.getIdentityToken
 import io.ktor.client.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
@@ -29,8 +30,10 @@ class PhotoService(
         // Fire-and-forget: call AI worker async
         scope.launch {
             try {
+                val idToken = getIdentityToken(httpClient, aiWorkerUrl)
                 val response = httpClient.post(url) {
                     contentType(ContentType.Application.Json)
+                    if (idToken != null) header("Authorization", "Bearer $idToken")
                     header("X-Call-Id", org.slf4j.MDC.get("callId") ?: "no-call")
                     header("X-User-Id", userId)
                     setBody(buildJsonObject {

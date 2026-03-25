@@ -5,6 +5,8 @@ import io.ktor.server.application.*
 import io.ktor.server.plugins.cors.routing.*
 
 fun Application.configureCors() {
+    val allowedOrigins = environment.config.propertyOrNull("cors.allowedOrigins")?.getString()
+
     install(CORS) {
         allowMethod(HttpMethod.Get)
         allowMethod(HttpMethod.Post)
@@ -15,6 +17,13 @@ fun Application.configureCors() {
         allowHeader(HttpHeaders.ContentType)
         allowHeader("X-Request-Id")
         allowNonSimpleContentTypes = true
-        anyHost() // TODO: restrict in production
+
+        if (allowedOrigins.isNullOrBlank()) {
+            anyHost()
+        } else {
+            allowedOrigins.split(",").forEach { origin ->
+                allowHost(origin.trim().removePrefix("https://").removePrefix("http://"), schemes = listOf("https", "http"))
+            }
+        }
     }
 }

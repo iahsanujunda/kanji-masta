@@ -106,7 +106,7 @@ deploy-backend: ## Build + deploy backend to Cloud Run
 	gcloud run deploy kanji-masta-backend \
 		--image $(ARTIFACT_REGISTRY)/kanji-masta-backend/backend \
 		--region $(CLOUD_RUN_REGION) \
-		--set-env-vars "DATABASE_URL=$(PROD_SUPABASE_DB_URI),SUPABASE_URL=$(PROD_SUPABASE_URL),AI_WORKER_URL=$(AI_WORKER_SVC_URL),LOG_LEVEL=INFO" \
+		--set-env-vars "DATABASE_URL=$(PROD_SUPABASE_DB_URI),SUPABASE_URL=$(PROD_SUPABASE_URL),AI_WORKER_URL=$(AI_WORKER_SVC_URL),CORS_ALLOWED_ORIGINS=shuukanhq.com,LOG_LEVEL=INFO" \
 		--allow-unauthenticated
 	@$(call _mark-deploy,backend)
 

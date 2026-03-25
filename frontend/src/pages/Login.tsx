@@ -1,7 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { Alert, Box, Button, TextField, Typography } from "@mui/material";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -14,10 +13,9 @@ export default function Login() {
     setError("");
     setLoading(true);
 
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign in failed");
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setError(error.message);
     }
     setLoading(false);
   };

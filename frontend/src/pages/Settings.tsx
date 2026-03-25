@@ -14,8 +14,7 @@ import {
   Typography,
 } from "@mui/material";
 import LogoutIcon from "@mui/icons-material/Logout";
-import { signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase";
 import { apiFetch } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 
@@ -44,7 +43,7 @@ export default function Settings() {
   };
 
   const handleLogout = async () => {
-    await signOut(auth);
+    await supabase.auth.signOut();
   };
 
   return (

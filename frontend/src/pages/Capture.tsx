@@ -12,8 +12,7 @@ import CheckIcon from "@mui/icons-material/Check";
 import StarIcon from "@mui/icons-material/Star";
 import StarOutlineIcon from "@mui/icons-material/StarOutline";
 import CloseIcon from "@mui/icons-material/Close";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { auth, storage } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase";
 import { apiFetch } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 
@@ -72,10 +71,12 @@ export default function Capture() {
     setStatusText("Uploading photo...");
 
     try {
-      const userId = auth.currentUser!.uid;
-      const storageRef = ref(storage, `photos/${userId}/${crypto.randomUUID()}.jpg`);
-      await uploadBytes(storageRef, file);
-      const imageUrl = await getDownloadURL(storageRef);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+      const filePath = `${user.id}/${crypto.randomUUID()}.jpg`;
+      const { error: uploadError } = await supabase.storage.from("photos").upload(filePath, file);
+      if (uploadError) throw uploadError;
+      const { data: { publicUrl: imageUrl } } = supabase.storage.from("photos").getPublicUrl(filePath);
 
       setView("analyzing");
       setStatusText("AI is scanning image...");

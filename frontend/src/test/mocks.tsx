@@ -32,7 +32,10 @@ export function renderWithProviders(
 }
 
 export const mockUser = {
-  uid: "test-user-123",
+  id: "test-user-123",
   email: "test@example.com",
-  displayName: "Test User",
-} as unknown as import("firebase/auth").User;
+  app_metadata: {},
+  user_metadata: { display_name: "Test User" },
+  aud: "authenticated",
+  created_at: "",
+} as unknown as import("@supabase/supabase-js").User;

@@ -43,8 +43,15 @@ dependencies {
     implementation(libs.ktor.client.cio)
     implementation(libs.ktor.client.content.negotiation)
 
-    // Firebase Admin SDK
-    implementation(libs.firebase.admin)
+    // Auth (Supabase JWT verification)
+    implementation(libs.ktor.server.auth.jwt)
+    implementation(libs.java.jwt)
+
+    // Database (Ktorm + PostgreSQL)
+    implementation(libs.ktorm.core)
+    implementation(libs.ktorm.support.postgresql)
+    implementation(libs.postgresql)
+    implementation(libs.hikari)
 
     // Logging
     implementation(libs.logback)
@@ -53,6 +60,7 @@ dependencies {
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.kotlin.test)
     testImplementation(libs.ktor.client.content.negotiation)
+    testImplementation(libs.testcontainers.postgresql)
 }
 
 tasks.withType<Test> {

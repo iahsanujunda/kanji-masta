@@ -1,48 +1,42 @@
 package com.kanjimasta.modules.settings
 
-import com.kanjimasta.core.db.DataConnectClient
-import kotlinx.serialization.json.*
+import com.kanjimasta.core.db.UserSettingsTable
+import org.ktorm.database.Database
+import org.ktorm.dsl.*
+import org.slf4j.LoggerFactory
+import java.time.Instant
 
-class SettingsRepository(private val dc: DataConnectClient) {
+private val logger = LoggerFactory.getLogger("com.kanjimasta.modules.settings.SettingsRepository")
 
-    private fun String.escape() = replace("\\", "\\\\").replace("\"", "\\\"")
+class SettingsRepository(private val db: Database) {
 
-    private fun JsonObject.dataOrNull(): JsonObject? {
-        val d = get("data") ?: return null
-        return if (d is JsonObject) d else null
+    fun getSettings(userId: String): SettingsResponse {
+        val row = db.from(UserSettingsTable)
+            .select()
+            .where { UserSettingsTable.userId eq userId }
+            .map { r ->
+                SettingsResponse(
+                    quizAllowancePerSlot = r[UserSettingsTable.quizAllowancePerSlot] ?: 5,
+                    slotDurationHours = r[UserSettingsTable.slotDurationHours] ?: 6,
+                )
+            }
+            .firstOrNull()
+        return row ?: SettingsResponse(quizAllowancePerSlot = 5, slotDurationHours = 6)
     }
 
-    suspend fun getSettings(userId: String): SettingsResponse {
-        val query = """
-            query {
-                userSettings(key: { userId: "${userId.escape()}" }) {
-                    quizAllowancePerSlot slotDurationHours
-                }
+    fun upsertSettings(userId: String, allowance: Int, duration: Int) {
+        val updated = db.update(UserSettingsTable) {
+            set(it.quizAllowancePerSlot, allowance)
+            set(it.slotDurationHours, duration)
+            set(it.updatedAt, Instant.now())
+            where { it.userId eq userId }
+        }
+        if (updated == 0) {
+            db.insert(UserSettingsTable) {
+                set(it.userId, userId)
+                set(it.quizAllowancePerSlot, allowance)
+                set(it.slotDurationHours, duration)
             }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        val el = result.dataOrNull()?.get("userSettings")
-        val settings = if (el is JsonObject) el else null
-        return SettingsResponse(
-            quizAllowancePerSlot = settings?.get("quizAllowancePerSlot")?.jsonPrimitive?.int ?: 5,
-            slotDurationHours = settings?.get("slotDurationHours")?.jsonPrimitive?.int ?: 6,
-        )
-    }
-
-    suspend fun upsertSettings(userId: String, allowance: Int, duration: Int) {
-        val query = """
-            mutation {
-                userSettings_upsert(data: {
-                    userId: "${userId.escape()}",
-                    quizAllowancePerSlot: $allowance,
-                    slotDurationHours: $duration
-                })
-            }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        val errors = result["errors"]?.jsonArray
-        if (errors != null && errors.isNotEmpty()) {
-            org.slf4j.LoggerFactory.getLogger("settings").error("Settings upsert failed: {}", errors)
         }
     }
 }

@@ -1,48 +1,35 @@
 package com.kanjimasta.modules.photo
 
-import com.kanjimasta.core.db.DataConnectClient
-import kotlinx.serialization.json.*
+import com.kanjimasta.core.db.PhotoSessionTable
+import org.ktorm.database.Database
+import org.ktorm.dsl.*
+import java.util.UUID
 
-class PhotoRepository(private val dc: DataConnectClient) {
+class PhotoRepository(private val db: Database) {
 
-    suspend fun createSession(userId: String, imageUrl: String): String {
-        val query = """
-            mutation {
-                photoSession_insert(data: {
-                    userId: "${userId.escape()}",
-                    imageUrl: "${imageUrl.escape()}"
-                })
-            }
-        """.trimIndent()
-
-        val result = dc.executeGraphql(query)
-        return result["data"]!!.jsonObject["photoSession_insert"]!!.jsonObject["id"]!!.jsonPrimitive.content
+    fun createSession(userId: String, imageUrl: String): String {
+        val id = UUID.randomUUID()
+        db.insert(PhotoSessionTable) {
+            set(it.id, id)
+            set(it.userId, userId)
+            set(it.imageUrl, imageUrl)
+        }
+        return id.toString()
     }
 
-    suspend fun getSession(sessionId: String): PhotoSessionRow? {
-        val query = """
-            query {
-                photoSession(id: "$sessionId") {
-                    id
-                    rawAiResponse
-                    costMicrodollars
-                }
+    fun getSession(sessionId: String): PhotoSessionRow? {
+        return db.from(PhotoSessionTable)
+            .select()
+            .where { PhotoSessionTable.id eq UUID.fromString(sessionId) }
+            .map { row ->
+                PhotoSessionRow(
+                    id = row[PhotoSessionTable.id].toString(),
+                    rawAiResponse = row[PhotoSessionTable.rawAiResponse],
+                    costMicrodollars = row[PhotoSessionTable.costMicrodollars],
+                )
             }
-        """.trimIndent()
-
-        val result = dc.executeGraphql(query)
-        val session = result["data"]?.jsonObject?.get("photoSession") ?: return null
-        if (session is JsonNull) return null
-
-        val obj = session.jsonObject
-        return PhotoSessionRow(
-            id = obj["id"]!!.jsonPrimitive.content,
-            rawAiResponse = obj["rawAiResponse"]?.jsonPrimitive?.contentOrNull,
-            costMicrodollars = obj["costMicrodollars"]?.jsonPrimitive?.longOrNull,
-        )
+            .firstOrNull()
     }
-
-    private fun String.escape() = replace("\\", "\\\\").replace("\"", "\\\"")
 }
 
 data class PhotoSessionRow(

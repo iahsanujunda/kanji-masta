@@ -1,345 +1,341 @@
 package com.kanjimasta.modules.quiz
 
-import com.kanjimasta.core.db.DataConnectClient
-import kotlinx.serialization.json.*
+import com.kanjimasta.core.db.*
+import org.ktorm.database.Database
+import org.ktorm.dsl.*
+import java.time.Instant
+import java.util.UUID
 
-class QuizRepository(private val dc: DataConnectClient) {
+// Data classes for typed results
+data class SlotRow(val id: String, val slotStart: Instant, val slotEnd: Instant, val completed: Int, val allowance: Int)
+data class UserWordRow(
+    val id: String, val familiarity: Int, val currentTier: String,
+    val kanjiIds: List<String>, val wordMasterId: String,
+    val word: String, val reading: String, val meanings: List<String>,
+    val nextReview: Instant? = null,
+)
+data class QuizBankRow(
+    val id: String, val quizType: String, val prompt: String, val target: String,
+    val furigana: String?, val answer: String, val explanation: String?,
+    val servedCount: Int, val wordId: String, val kanjiId: String,
+)
+data class DistractorRow(val id: String, val distractors: List<String>, val generation: Int)
+data class WordFamiliarityRow(val id: String, val familiarity: Int, val nextReview: Instant?)
 
-    private fun String.escape() = replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
-
-    /** Safely get the "data" object from a GraphQL result, handling null/JsonNull. */
-    private fun JsonObject.dataOrNull(): JsonObject? {
-        val d = get("data") ?: return null
-        return if (d is JsonObject) d else null
-    }
+class QuizRepository(private val db: Database) {
 
     // --- Slot ---
 
-    suspend fun getActiveSlot(userId: String): JsonObject? {
-        val query = """
-            query {
-                quizSlots(
-                    where: { userId: { eq: "${userId.escape()}" } },
-                    orderBy: { slotEnd: DESC },
-                    limit: 1
-                ) { id slotStart slotEnd completed allowance }
+    fun getActiveSlot(userId: String): SlotRow? {
+        return db.from(QuizSlotTable)
+            .select()
+            .where { QuizSlotTable.userId eq userId }
+            .orderBy(QuizSlotTable.slotEnd.desc())
+            .limit(1)
+            .map { row ->
+                SlotRow(
+                    id = row[QuizSlotTable.id].toString(),
+                    slotStart = row[QuizSlotTable.slotStart]!!,
+                    slotEnd = row[QuizSlotTable.slotEnd]!!,
+                    completed = row[QuizSlotTable.completed] ?: 0,
+                    allowance = row[QuizSlotTable.allowance] ?: 5,
+                )
             }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        val slots = result.dataOrNull()?.get("quizSlots")?.jsonArray ?: return null
-        return slots.firstOrNull()?.jsonObject
+            .firstOrNull()
     }
 
-    suspend fun createSlot(userId: String, slotStart: String, slotEnd: String, allowance: Int): String? {
-        val query = """
-            mutation {
-                quizSlot_insert(data: {
-                    userId: "${userId.escape()}",
-                    slotStart: "$slotStart",
-                    slotEnd: "$slotEnd",
-                    startedAt: "$slotStart",
-                    allowance: $allowance
-                })
-            }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        return result.dataOrNull()?.get("quizSlot_insert")?.jsonObject?.get("id")?.jsonPrimitive?.content
+    fun createSlot(userId: String, slotStart: String, slotEnd: String, allowance: Int): String? {
+        val id = UUID.randomUUID()
+        db.insert(QuizSlotTable) {
+            set(it.id, id)
+            set(it.userId, userId)
+            set(it.slotStart, Instant.parse(slotStart))
+            set(it.slotEnd, Instant.parse(slotEnd))
+            set(it.startedAt, Instant.parse(slotStart))
+            set(it.allowance, allowance)
+        }
+        return id.toString()
     }
 
-    suspend fun incrementSlotCompleted(slotId: String) {
-        // Read current, then update
-        val read = dc.executeGraphql("""query { quizSlot(id: "$slotId") { completed } }""")
-        val current = read["data"]?.jsonObject?.get("quizSlot")?.jsonObject?.get("completed")?.jsonPrimitive?.int ?: 0
-        dc.executeGraphql("""mutation { quizSlot_update(id: "$slotId", data: { completed: ${current + 1} }) }""")
+    fun incrementSlotCompleted(slotId: String) {
+        db.update(QuizSlotTable) {
+            set(it.completed, it.completed + 1)
+            where { it.id eq UUID.fromString(slotId) }
+        }
     }
 
     // --- Settings ---
 
-    suspend fun getUserSettings(userId: String): Pair<Int, Int> {
-        val query = """
-            query {
-                userSettings(key: { userId: "${userId.escape()}" }) {
-                    quizAllowancePerSlot slotDurationHours
-                }
+    fun getUserSettings(userId: String): Pair<Int, Int> {
+        val row = db.from(UserSettingsTable)
+            .select()
+            .where { UserSettingsTable.userId eq userId }
+            .map { r ->
+                (r[UserSettingsTable.quizAllowancePerSlot] ?: 5) to (r[UserSettingsTable.slotDurationHours] ?: 6)
             }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        val settingsEl = result.dataOrNull()?.get("userSettings")
-        val settings = if (settingsEl is JsonObject) settingsEl else null
-        val allowance = settings?.get("quizAllowancePerSlot")?.jsonPrimitive?.int ?: 5
-        val duration = settings?.get("slotDurationHours")?.jsonPrimitive?.int ?: 6
-        return allowance to duration
+            .firstOrNull()
+        return row ?: (5 to 6)
     }
 
     // --- Word Selection ---
 
-    suspend fun getOverdueWords(userId: String, limit: Int): JsonArray {
-        val query = """
-            query {
-                userWordss(
-                    where: { userId: { eq: "${userId.escape()}" }, nextReview: { lt: "${java.time.Instant.now()}" } },
-                    orderBy: { nextReview: ASC },
-                    limit: $limit
-                ) { id familiarity currentTier kanjiIds wordMasterId wordMaster { word reading meanings } }
-            }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        return result.dataOrNull()?.get("userWordss")?.jsonArray ?: JsonArray(emptyList())
+    private fun mapUserWordRow(row: QueryRowSet): UserWordRow {
+        return UserWordRow(
+            id = row[UserWordsTable.id].toString(),
+            familiarity = row[UserWordsTable.familiarity] ?: 0,
+            currentTier = row[UserWordsTable.currentTier]?.name ?: "MEANING_RECALL",
+            kanjiIds = row[UserWordsTable.kanjiIds] ?: emptyList(),
+            wordMasterId = row[UserWordsTable.wordMasterId].toString(),
+            word = row[WordMasterTable.word] ?: "",
+            reading = row[WordMasterTable.reading] ?: "",
+            meanings = row[WordMasterTable.meanings] ?: emptyList(),
+            nextReview = row[UserWordsTable.nextReview],
+        )
     }
 
-    suspend fun getNewWords(userId: String, limit: Int): JsonArray {
-        val query = """
-            query {
-                userWordss(
-                    where: { userId: { eq: "${userId.escape()}" }, familiarity: { eq: 0 } },
-                    limit: $limit
-                ) { id familiarity currentTier kanjiIds wordMasterId wordMaster { word reading meanings } }
+    fun getOverdueWords(userId: String, limit: Int): List<UserWordRow> {
+        val now = Instant.now()
+        return db.from(UserWordsTable)
+            .innerJoin(WordMasterTable, on = UserWordsTable.wordMasterId eq WordMasterTable.id)
+            .select()
+            .where {
+                (UserWordsTable.userId eq userId) and
+                    (UserWordsTable.nextReview less now)
             }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        return result.dataOrNull()?.get("userWordss")?.jsonArray ?: JsonArray(emptyList())
+            .orderBy(UserWordsTable.nextReview.asc())
+            .limit(limit)
+            .map(::mapUserWordRow)
     }
 
-    suspend fun getLearningWords(userId: String, limit: Int): JsonArray {
-        val query = """
-            query {
-                userWordss(
-                    where: { userId: { eq: "${userId.escape()}" } },
-                    limit: $limit
-                ) { id familiarity currentTier kanjiIds wordMasterId wordMaster { word reading meanings }
+    fun getNewWords(userId: String, limit: Int): List<UserWordRow> {
+        return db.from(UserWordsTable)
+            .innerJoin(WordMasterTable, on = UserWordsTable.wordMasterId eq WordMasterTable.id)
+            .select()
+            .where {
+                (UserWordsTable.userId eq userId) and
+                    (UserWordsTable.familiarity eq 0)
             }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        return result.dataOrNull()?.get("userWordss")?.jsonArray ?: JsonArray(emptyList())
+            .limit(limit)
+            .map(::mapUserWordRow)
+    }
+
+    fun getLearningWords(userId: String, limit: Int): List<UserWordRow> {
+        return db.from(UserWordsTable)
+            .innerJoin(WordMasterTable, on = UserWordsTable.wordMasterId eq WordMasterTable.id)
+            .select()
+            .where { UserWordsTable.userId eq userId }
+            .limit(limit)
+            .map(::mapUserWordRow)
     }
 
     // --- Quiz Lookup ---
 
-    suspend fun getQuizForWordMaster(wordMasterId: String, quizType: String): JsonObject? {
-        // Try global quiz first (userId IS NULL), then any
-        val query = """
-            query {
-                quizBanks(
-                    where: { wordId: { eq: "$wordMasterId" }, quizType: { eq: $quizType } },
-                    limit: 1
-                ) { id quizType prompt target furigana answer explanation servedCount wordId kanjiId }
-            }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        return result.dataOrNull()?.get("quizBanks")?.jsonArray?.firstOrNull()?.jsonObject
+    private fun mapQuizBankRow(row: QueryRowSet): QuizBankRow {
+        return QuizBankRow(
+            id = row[QuizBankTable.id].toString(),
+            quizType = row[QuizBankTable.quizType]?.name ?: "MEANING_RECALL",
+            prompt = row[QuizBankTable.prompt] ?: "",
+            target = row[QuizBankTable.target] ?: "",
+            furigana = row[QuizBankTable.furigana],
+            answer = row[QuizBankTable.answer] ?: "",
+            explanation = row[QuizBankTable.explanation],
+            servedCount = row[QuizBankTable.servedCount] ?: 0,
+            wordId = row[QuizBankTable.wordId].toString(),
+            kanjiId = row[QuizBankTable.kanjiId].toString(),
+        )
     }
 
-    suspend fun getAnyQuizForWordMaster(wordMasterId: String): JsonObject? {
-        val query = """
-            query {
-                quizBanks(
-                    where: { wordId: { eq: "$wordMasterId" } },
-                    limit: 1
-                ) { id quizType prompt target furigana answer explanation servedCount wordId kanjiId }
+    fun getQuizForWordMaster(wordMasterId: String, quizType: String): QuizBankRow? {
+        return db.from(QuizBankTable)
+            .select()
+            .where {
+                (QuizBankTable.wordId eq UUID.fromString(wordMasterId)) and
+                    (QuizBankTable.quizType eq QuizType.valueOf(quizType))
             }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        return result.dataOrNull()?.get("quizBanks")?.jsonArray?.firstOrNull()?.jsonObject
+            .limit(1)
+            .map(::mapQuizBankRow)
+            .firstOrNull()
+    }
+
+    fun getAnyQuizForWordMaster(wordMasterId: String): QuizBankRow? {
+        return db.from(QuizBankTable)
+            .select()
+            .where { QuizBankTable.wordId eq UUID.fromString(wordMasterId) }
+            .limit(1)
+            .map(::mapQuizBankRow)
+            .firstOrNull()
     }
 
     // --- Distractor ---
 
-    suspend fun getUnservedDistractor(quizId: String): JsonObject? {
-        val query = """
-            query {
-                quizDistractors(
-                    where: { quizId: { eq: "$quizId" }, servedAt: { isNull: true } },
-                    orderBy: { generation: DESC },
-                    limit: 1
-                ) { id distractors generation }
-            }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        return result.dataOrNull()?.get("quizDistractors")?.jsonArray?.firstOrNull()?.jsonObject
+    private fun mapDistractorRow(row: QueryRowSet): DistractorRow {
+        return DistractorRow(
+            id = row[QuizDistractorTable.id].toString(),
+            distractors = row[QuizDistractorTable.distractors] ?: emptyList(),
+            generation = row[QuizDistractorTable.generation] ?: 0,
+        )
     }
 
-    suspend fun getLatestDistractor(quizId: String): JsonObject? {
-        val query = """
-            query {
-                quizDistractors(
-                    where: { quizId: { eq: "$quizId" } },
-                    orderBy: { generation: DESC },
-                    limit: 1
-                ) { id distractors generation }
+    fun getUnservedDistractor(quizId: String): DistractorRow? {
+        return db.from(QuizDistractorTable)
+            .select()
+            .where {
+                (QuizDistractorTable.quizId eq UUID.fromString(quizId)) and
+                    (QuizDistractorTable.servedAt.isNull())
             }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        return result.dataOrNull()?.get("quizDistractors")?.jsonArray?.firstOrNull()?.jsonObject
+            .orderBy(QuizDistractorTable.generation.desc())
+            .limit(1)
+            .map(::mapDistractorRow)
+            .firstOrNull()
     }
 
-    suspend fun markDistractorServed(distractorId: String) {
-        dc.executeGraphql("""
-            mutation { quizDistractor_update(id: "$distractorId", data: { servedAt_date: { today: true } }) }
-        """.trimIndent())
+    fun getLatestDistractor(quizId: String): DistractorRow? {
+        return db.from(QuizDistractorTable)
+            .select()
+            .where { QuizDistractorTable.quizId eq UUID.fromString(quizId) }
+            .orderBy(QuizDistractorTable.generation.desc())
+            .limit(1)
+            .map(::mapDistractorRow)
+            .firstOrNull()
+    }
+
+    fun markDistractorServed(distractorId: String) {
+        db.update(QuizDistractorTable) {
+            set(it.servedAt, Instant.now())
+            where { it.id eq UUID.fromString(distractorId) }
+        }
     }
 
     // --- Random candidates for distractor augmentation ---
 
-    suspend fun getRandomMeanings(limit: Int): List<String> {
-        val query = """
-            query { kanjiMasters(limit: $limit) { meanings } }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        return result.dataOrNull()?.get("kanjiMasters")?.jsonArray
-            ?.flatMap { it.jsonObject["meanings"]?.jsonArray?.map { m -> m.jsonPrimitive.content } ?: emptyList() }
-            ?.shuffled()
-            ?.take(limit * 2)
-            ?: emptyList()
+    fun getRandomMeanings(limit: Int): List<String> {
+        return db.from(KanjiMasterTable)
+            .select(KanjiMasterTable.meanings)
+            .limit(limit)
+            .flatMap { it[KanjiMasterTable.meanings] ?: emptyList() }
+            .shuffled()
+            .take(limit * 2)
     }
 
-    suspend fun getRandomReadings(limit: Int): List<String> {
-        val query = """
-            query { kanjiMasters(limit: $limit) { onyomi kunyomi } }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        return result.dataOrNull()?.get("kanjiMasters")?.jsonArray
-            ?.flatMap {
-                val obj = it.jsonObject
-                (obj["onyomi"]?.jsonArray?.map { r -> r.jsonPrimitive.content } ?: emptyList()) +
-                (obj["kunyomi"]?.jsonArray?.map { r -> r.jsonPrimitive.content } ?: emptyList())
+    fun getRandomReadings(limit: Int): List<String> {
+        return db.from(KanjiMasterTable)
+            .select(KanjiMasterTable.onyomi, KanjiMasterTable.kunyomi)
+            .limit(limit)
+            .flatMap {
+                (it[KanjiMasterTable.onyomi] ?: emptyList()) +
+                    (it[KanjiMasterTable.kunyomi] ?: emptyList())
             }
-            ?.shuffled()
-            ?.take(limit * 2)
-            ?: emptyList()
+            .shuffled()
+            .take(limit * 2)
     }
 
-    suspend fun getRandomCharacters(limit: Int): List<String> {
-        val query = """
-            query { kanjiMasters(limit: ${limit * 3}) { character } }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        return result.dataOrNull()?.get("kanjiMasters")?.jsonArray
-            ?.map { it.jsonObject["character"]!!.jsonPrimitive.content }
-            ?.shuffled()
-            ?.take(limit * 2)
-            ?: emptyList()
+    fun getRandomCharacters(limit: Int): List<String> {
+        return db.from(KanjiMasterTable)
+            .select(KanjiMasterTable.character)
+            .limit(limit * 3)
+            .mapNotNull { it[KanjiMasterTable.character] }
+            .shuffled()
+            .take(limit * 2)
     }
 
-    suspend fun getRandomUserWords(userId: String, limit: Int): List<String> {
-        val query = """
-            query {
-                userWordss(where: { userId: { eq: "${userId.escape()}" } }, limit: ${limit * 3}) { word }
-            }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        return result.dataOrNull()?.get("userWordss")?.jsonArray
-            ?.map { it.jsonObject["word"]!!.jsonPrimitive.content }
-            ?.shuffled()
-            ?.take(limit * 2)
-            ?: emptyList()
+    fun getRandomUserWords(userId: String, limit: Int): List<String> {
+        return db.from(UserWordsTable)
+            .innerJoin(WordMasterTable, on = UserWordsTable.wordMasterId eq WordMasterTable.id)
+            .select(WordMasterTable.word)
+            .where { UserWordsTable.userId eq userId }
+            .limit(limit * 3)
+            .mapNotNull { it[WordMasterTable.word] }
+            .shuffled()
+            .take(limit * 2)
     }
 
     // --- Result submission ---
 
-    suspend fun getQuizById(quizId: String): JsonObject? {
-        val query = """
-            query { quizBank(id: "$quizId") { id quizType prompt target answer wordId kanjiId servedCount } }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        return result.dataOrNull()?.get("quizBank")?.jsonObject
+    fun getQuizById(quizId: String): QuizBankRow? {
+        return db.from(QuizBankTable)
+            .select()
+            .where { QuizBankTable.id eq UUID.fromString(quizId) }
+            .map(::mapQuizBankRow)
+            .firstOrNull()
     }
 
-    suspend fun getUserWordByWordMaster(userId: String, wordMasterId: String): JsonObject? {
-        val query = """
-            query {
-                userWordss(where: { userId: { eq: "${userId.escape()}" }, wordMasterId: { eq: "$wordMasterId" } }, limit: 1) {
-                    id familiarity currentTier kanjiIds wordMasterId
-                }
+    fun getUserWordByWordMaster(userId: String, wordMasterId: String): UserWordRow? {
+        return db.from(UserWordsTable)
+            .innerJoin(WordMasterTable, on = UserWordsTable.wordMasterId eq WordMasterTable.id)
+            .select()
+            .where {
+                (UserWordsTable.userId eq userId) and
+                    (UserWordsTable.wordMasterId eq UUID.fromString(wordMasterId))
             }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        return result.dataOrNull()?.get("userWordss")?.jsonArray?.firstOrNull()?.jsonObject
+            .limit(1)
+            .map(::mapUserWordRow)
+            .firstOrNull()
     }
 
-    suspend fun getUserWordById(wordId: String): JsonObject? {
-        val query = """
-            query { userWords(id: "$wordId") { id familiarity currentTier kanjiIds wordMasterId wordMaster { word reading meanings kanjiIds } } }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        val el = result.dataOrNull()?.get("userWords")
-        return if (el is JsonObject) el else null
+    fun getUserWordById(wordId: String): UserWordRow? {
+        return db.from(UserWordsTable)
+            .innerJoin(WordMasterTable, on = UserWordsTable.wordMasterId eq WordMasterTable.id)
+            .select()
+            .where { UserWordsTable.id eq UUID.fromString(wordId) }
+            .map(::mapUserWordRow)
+            .firstOrNull()
     }
 
-    suspend fun incrementServedCount(quizId: String) {
-        val read = dc.executeGraphql("""query { quizBank(id: "$quizId") { servedCount } }""")
-        val current = read["data"]?.jsonObject?.get("quizBank")?.jsonObject?.get("servedCount")?.jsonPrimitive?.int ?: 0
-        dc.executeGraphql("""mutation { quizBank_update(id: "$quizId", data: { servedCount: ${current + 1} }) }""")
+    fun incrementServedCount(quizId: String) {
+        db.update(QuizBankTable) {
+            set(it.servedCount, it.servedCount + 1)
+            where { it.id eq UUID.fromString(quizId) }
+        }
     }
 
-    suspend fun insertQuizServe(
+    fun insertQuizServe(
         quizId: String, distractorSetId: String, slotId: String,
         userId: String, wordFamiliarityAtServe: Int, correct: Boolean,
     ) {
-        val query = """
-            mutation {
-                quizServe_insert(data: {
-                    quizId: "$quizId",
-                    distractorSetId: "$distractorSetId",
-                    slotId: "$slotId",
-                    userId: "${userId.escape()}",
-                    wordFamiliarityAtServe: $wordFamiliarityAtServe,
-                    correct: $correct
-                })
-            }
-        """.trimIndent()
-        dc.executeGraphql(query)
-    }
-
-    suspend fun updateWordFamiliarity(wordId: String, familiarity: Int, currentTier: String, nextReview: String) {
-        val query = """
-            mutation {
-                userWords_update(id: "$wordId", data: {
-                    familiarity: $familiarity,
-                    currentTier: $currentTier,
-                    nextReview: "$nextReview"
-                })
-            }
-        """.trimIndent()
-        dc.executeGraphql(query)
-    }
-
-    suspend fun getWordsForKanji(userId: String, kanjiId: String): JsonArray {
-        // Find all words that contain this kanji ID in their kanjiIds array
-        val query = """
-            query {
-                userWordss(where: { userId: { eq: "${userId.escape()}" } }, limit: 100) {
-                    id familiarity nextReview kanjiIds
-                }
-            }
-        """.trimIndent()
-        val result = dc.executeGraphql(query)
-        val allWords = result.dataOrNull()?.get("userWordss")?.jsonArray ?: return JsonArray(emptyList())
-        // Filter client-side for words containing this kanjiId
-        val filtered = allWords.filter { word ->
-            word.jsonObject["kanjiIds"]?.jsonArray?.any { it.jsonPrimitive.content == kanjiId } == true
+        db.insert(QuizServeTable) {
+            set(it.quizId, UUID.fromString(quizId))
+            set(it.distractorSetId, UUID.fromString(distractorSetId))
+            set(it.slotId, UUID.fromString(slotId))
+            set(it.userId, userId)
+            set(it.wordFamiliarityAtServe, wordFamiliarityAtServe)
+            set(it.correct, correct)
         }
-        return JsonArray(filtered)
     }
 
-    suspend fun updateKanjiFamiliarity(userId: String, kanjiId: String, familiarity: Int, currentTier: String, nextReview: String?) {
-        val nextReviewField = if (nextReview != null) """nextReview: "$nextReview",""" else ""
-        // Find the UserKanji row for this user+kanji
-        val find = dc.executeGraphql("""
-            query {
-                userKanjis(where: { userId: { eq: "${userId.escape()}" }, kanjiId: { eq: "$kanjiId" } }, limit: 1) { id }
-            }
-        """.trimIndent())
-        val ukId = find["data"]?.jsonObject?.get("userKanjis")?.jsonArray?.firstOrNull()
-            ?.jsonObject?.get("id")?.jsonPrimitive?.content ?: return
+    fun updateWordFamiliarity(wordId: String, familiarity: Int, currentTier: String, nextReview: String) {
+        db.update(UserWordsTable) {
+            set(it.familiarity, familiarity)
+            set(it.currentTier, QuizType.valueOf(currentTier))
+            set(it.nextReview, Instant.parse(nextReview))
+            where { it.id eq UUID.fromString(wordId) }
+        }
+    }
 
-        dc.executeGraphql("""
-            mutation {
-                userKanji_update(id: "$ukId", data: {
-                    familiarity: $familiarity,
-                    currentTier: $currentTier,
-                    $nextReviewField
-                })
+    fun getWordsForKanji(userId: String, kanjiId: String): List<WordFamiliarityRow> {
+        // Fetch user words and filter by kanjiIds array containing this kanjiId
+        return db.from(UserWordsTable)
+            .select(UserWordsTable.id, UserWordsTable.familiarity, UserWordsTable.nextReview, UserWordsTable.kanjiIds)
+            .where { UserWordsTable.userId eq userId }
+            .limit(100)
+            .mapNotNull { row ->
+                val kanjiIds = row[UserWordsTable.kanjiIds] ?: emptyList()
+                if (kanjiId !in kanjiIds) return@mapNotNull null
+                WordFamiliarityRow(
+                    id = row[UserWordsTable.id].toString(),
+                    familiarity = row[UserWordsTable.familiarity] ?: 0,
+                    nextReview = row[UserWordsTable.nextReview],
+                )
             }
-        """.trimIndent())
+    }
+
+    fun updateKanjiFamiliarity(userId: String, kanjiId: String, familiarity: Int, currentTier: String, nextReview: String?) {
+        db.update(UserKanjiTable) {
+            set(it.familiarity, familiarity)
+            set(it.currentTier, QuizType.valueOf(currentTier))
+            if (nextReview != null) set(it.nextReview, Instant.parse(nextReview))
+            where {
+                (it.userId eq userId) and (it.kanjiId eq UUID.fromString(kanjiId))
+            }
+        }
     }
 }

@@ -2,8 +2,12 @@
 kotlin = "2.3.0"
 ktor = "3.1.1"
 koog = "0.7.1"
-firebase-admin = "9.4.3"
+java-jwt = "4.4.0"
 logback = "1.5.16"
+ktorm = "4.1.1"
+postgresql = "42.7.4"
+hikari = "6.2.1"
+testcontainers = "1.21.3"
 
 [libraries]
 koog-agents = { module = "ai.koog:koog-agents", version.ref = "koog" }
@@ -22,7 +26,13 @@ ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
 ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
 ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref = "ktor" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
-firebase-admin = { module = "com.google.firebase:firebase-admin", version.ref = "firebase-admin" }
+ktor-server-auth-jwt = { module = "io.ktor:ktor-server-auth-jwt", version.ref = "ktor" }
+java-jwt = { module = "com.auth0:java-jwt", version.ref = "java-jwt" }
+ktorm-core = { module = "org.ktorm:ktorm-core", version.ref = "ktorm" }
+ktorm-support-postgresql = { module = "org.ktorm:ktorm-support-postgresql", version.ref = "ktorm" }
+postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
+hikari = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
+testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
 logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 
 [plugins]

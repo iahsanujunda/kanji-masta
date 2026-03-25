@@ -1,6 +1,5 @@
 package com.kanjimasta.modules.quiz
 
-import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -32,30 +31,23 @@ private val QUIZ_TYPES = listOf(
 
 class QuizService(private val quizRepository: QuizRepository) {
 
-    suspend fun getSlot(userId: String): SlotResponse {
+    fun getSlot(userId: String): SlotResponse {
         val (allowance, _) = quizRepository.getUserSettings(userId)
         val now = Instant.now()
 
-        // Check for active slot
         val activeSlot = quizRepository.getActiveSlot(userId)
         var slotEndsAt: String? = null
         var remaining = allowance
 
-        if (activeSlot != null) {
-            val slotEnd = activeSlot["slotEnd"]?.jsonPrimitive?.content ?: ""
-            val endInstant = try { Instant.parse(slotEnd) } catch (_: Exception) { Instant.MIN }
-            if (endInstant.isAfter(now)) {
-                val completed = activeSlot["completed"]?.jsonPrimitive?.int ?: 0
-                remaining = (allowance - completed).coerceAtLeast(0)
-                slotEndsAt = slotEnd
-            }
+        if (activeSlot != null && activeSlot.slotEnd.isAfter(now)) {
+            remaining = (allowance - activeSlot.completed).coerceAtLeast(0)
+            slotEndsAt = activeSlot.slotEnd.toString()
         }
 
         if (remaining == 0) {
             return SlotResponse(quizzes = emptyList(), remaining = 0, slotEndsAt = slotEndsAt)
         }
 
-        // Select words by priority
         val overdueLimit = (allowance * 0.6).toInt().coerceAtLeast(1)
         val newLimit = (allowance * 0.2).toInt().coerceAtLeast(1)
 
@@ -64,15 +56,14 @@ class QuizService(private val quizRepository: QuizRepository) {
         val resurfacedWords = quizRepository.getLearningWords(userId, allowance)
 
         val seenIds = mutableSetOf<String>()
-        val selectedWords = mutableListOf<JsonObject>()
+        val selectedWords = mutableListOf<UserWordRow>()
 
-        fun addWords(words: JsonArray, limit: Int) {
+        fun addWords(words: List<UserWordRow>, limit: Int) {
             for (w in words) {
                 if (selectedWords.size >= remaining) break
-                val id = w.jsonObject["id"]?.jsonPrimitive?.content ?: continue
-                if (id in seenIds) continue
-                seenIds.add(id)
-                selectedWords.add(w.jsonObject)
+                if (w.id in seenIds) continue
+                seenIds.add(w.id)
+                selectedWords.add(w)
                 if (selectedWords.size >= limit) break
             }
         }
@@ -81,61 +72,47 @@ class QuizService(private val quizRepository: QuizRepository) {
         addWords(newWords, newLimit + selectedWords.size)
         addWords(resurfacedWords, remaining)
 
-        // Build quiz items
         val quizzes = mutableListOf<QuizItem>()
         for (word in selectedWords) {
-            val wordId = word["id"]?.jsonPrimitive?.content ?: continue
-            val wm = word["wordMaster"]?.jsonObject
-            val wordText = wm?.get("word")?.jsonPrimitive?.content ?: continue
-            val wordReading = wm["reading"]?.jsonPrimitive?.content ?: ""
-            val wordMasterId = word["wordMasterId"]?.jsonPrimitive?.content ?: continue
-            val familiarity = word["familiarity"]?.jsonPrimitive?.int ?: 0
-            val currentTier = word["currentTier"]?.jsonPrimitive?.content ?: "MEANING_RECALL"
+            val quizType = pickQuizType(word.familiarity)
 
-            val quizType = pickQuizType(familiarity)
-
-            val quiz = quizRepository.getQuizForWordMaster(wordMasterId, quizType)
-                ?: quizRepository.getAnyQuizForWordMaster(wordMasterId)
+            val quiz = quizRepository.getQuizForWordMaster(word.wordMasterId, quizType)
+                ?: quizRepository.getAnyQuizForWordMaster(word.wordMasterId)
             if (quiz == null) {
-                logger.debug("No quiz found for user={} word='{}' type={}", userId, wordText, quizType)
+                logger.debug("No quiz found for user={} word='{}' type={}", userId, word.word, quizType)
                 continue
             }
 
-            val quizId = quiz["id"]?.jsonPrimitive?.content ?: continue
-            val actualType = quiz["quizType"]?.jsonPrimitive?.content ?: quizType
+            val actualType = quiz.quizType
             if (actualType != quizType) {
-                logger.warn("Wanted {} but got {} for word='{}' (fallback)", quizType, actualType, wordText)
+                logger.warn("Wanted {} but got {} for word='{}' (fallback)", quizType, actualType, word.word)
             }
-            val answer = quiz["answer"]?.jsonPrimitive?.content ?: ""
 
-            // Resolve distractors
-            val distractor = quizRepository.getUnservedDistractor(quizId)
-                ?: quizRepository.getLatestDistractor(quizId)
-            val storedDistractors = distractor?.get("distractors")?.jsonArray
-                ?.map { it.jsonPrimitive.content } ?: emptyList()
+            val distractor = quizRepository.getUnservedDistractor(quiz.id)
+                ?: quizRepository.getLatestDistractor(quiz.id)
+            val storedDistractors = distractor?.distractors ?: emptyList()
 
-            // Augment
-            val randomCandidates = getRandomCandidates(quizType, answer, userId)
+            val randomCandidates = getRandomCandidates(quizType, quiz.answer, userId)
             val pool = (storedDistractors + randomCandidates)
-                .filter { it != answer }
+                .filter { it != quiz.answer }
                 .distinct()
                 .shuffled()
                 .take(3)
-            val options = (pool + answer).shuffled()
+            val options = (pool + quiz.answer).shuffled()
 
             quizzes.add(QuizItem(
-                id = quizId,
-                quizType = quiz["quizType"]?.jsonPrimitive?.content ?: quizType,
-                word = wordText,
-                wordReading = wordReading,
-                prompt = quiz["prompt"]?.jsonPrimitive?.content ?: "",
-                target = quiz["target"]?.jsonPrimitive?.content ?: "",
-                furigana = quiz["furigana"]?.jsonPrimitive?.contentOrNull,
-                answer = answer,
-                options = if (familiarity >= 5) emptyList() else options,
-                explanation = quiz["explanation"]?.jsonPrimitive?.contentOrNull,
-                wordFamiliarity = familiarity,
-                currentTier = currentTier,
+                id = quiz.id,
+                quizType = quiz.quizType,
+                word = word.word,
+                wordReading = word.reading,
+                prompt = quiz.prompt,
+                target = quiz.target,
+                furigana = quiz.furigana,
+                answer = quiz.answer,
+                options = if (word.familiarity >= 5) emptyList() else options,
+                explanation = quiz.explanation,
+                wordFamiliarity = word.familiarity,
+                currentTier = word.currentTier,
             ))
         }
 
@@ -143,15 +120,13 @@ class QuizService(private val quizRepository: QuizRepository) {
         return SlotResponse(quizzes = quizzes, remaining = quizzes.size, slotEndsAt = slotEndsAt)
     }
 
-    suspend fun submitResult(userId: String, request: SubmitResultRequest): ResultResponse {
+    fun submitResult(userId: String, request: SubmitResultRequest): ResultResponse {
         val quiz = quizRepository.getQuizById(request.quizId)
             ?: return ResultResponse(remaining = 0, correct = request.correct, newFamiliarity = 0)
 
-        val wordMasterId = quiz["wordId"]?.jsonPrimitive?.content ?: ""
-        // Find user's personal word entry for this WordMaster
-        val userWord = quizRepository.getUserWordByWordMaster(userId, wordMasterId)
-        val userWordId = userWord?.get("id")?.jsonPrimitive?.content ?: ""
-        val oldFamiliarity = userWord?.get("familiarity")?.jsonPrimitive?.int ?: 0
+        val userWord = quizRepository.getUserWordByWordMaster(userId, quiz.wordId)
+        val userWordId = userWord?.id ?: ""
+        val oldFamiliarity = userWord?.familiarity ?: 0
 
         val newFamiliarity = if (request.correct) {
             (oldFamiliarity + 1).coerceAtMost(5)
@@ -165,26 +140,20 @@ class QuizService(private val quizRepository: QuizRepository) {
             quizRepository.updateWordFamiliarity(userWordId, newFamiliarity, newTier, nextReview)
         }
 
-        // Recompute kanji familiarity — get kanjiIds from UserWords or WordMaster
-        val kanjiIds = userWord?.get("kanjiIds")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList()
+        val kanjiIds = userWord?.kanjiIds ?: emptyList()
         for (kid in kanjiIds) {
             recomputeKanjiFamiliarity(userId, kid)
         }
 
-        // Find or create slot
         val now = Instant.now()
         val (allowance, durationHours) = quizRepository.getUserSettings(userId)
         val activeSlot = quizRepository.getActiveSlot(userId)
         var slotId: String? = null
         var completed = 0
 
-        if (activeSlot != null) {
-            val slotEnd = activeSlot["slotEnd"]?.jsonPrimitive?.content ?: ""
-            val endInstant = try { Instant.parse(slotEnd) } catch (_: Exception) { Instant.MIN }
-            if (endInstant.isAfter(now)) {
-                slotId = activeSlot["id"]?.jsonPrimitive?.content
-                completed = activeSlot["completed"]?.jsonPrimitive?.int ?: 0
-            }
+        if (activeSlot != null && activeSlot.slotEnd.isAfter(now)) {
+            slotId = activeSlot.id
+            completed = activeSlot.completed
         }
 
         if (slotId == null) {
@@ -197,8 +166,7 @@ class QuizService(private val quizRepository: QuizRepository) {
             quizRepository.incrementSlotCompleted(slotId)
             completed++
 
-            val distractorId = quizRepository.getLatestDistractor(request.quizId)
-                ?.get("id")?.jsonPrimitive?.content ?: ""
+            val distractorId = quizRepository.getLatestDistractor(request.quizId)?.id ?: ""
 
             quizRepository.insertQuizServe(
                 quizId = request.quizId,
@@ -230,7 +198,6 @@ class QuizService(private val quizRepository: QuizRepository) {
 
     private fun pickQuizType(familiarity: Int): String {
         val baseWeights = RESURFACING_WEIGHTS[familiarity.coerceIn(0, 5)] ?: RESURFACING_WEIGHTS[0]!!
-        // Zero out types above the current tier — can't resurface what hasn't been unlocked
         val maxTypeIndex = familiarity.coerceIn(0, QUIZ_TYPES.size - 1)
         val weights = baseWeights.mapIndexed { i, w -> if (i <= maxTypeIndex) w else 0 }
         val total = weights.sum()
@@ -243,7 +210,7 @@ class QuizService(private val quizRepository: QuizRepository) {
         return QUIZ_TYPES[0]
     }
 
-    private suspend fun getRandomCandidates(quizType: String, answer: String, userId: String): List<String> {
+    private fun getRandomCandidates(quizType: String, answer: String, userId: String): List<String> {
         return when (quizType) {
             "MEANING_RECALL", "BOLD_WORD_MEANING" -> quizRepository.getRandomMeanings(10)
             "READING_RECOGNITION" -> quizRepository.getRandomReadings(10)
@@ -253,11 +220,11 @@ class QuizService(private val quizRepository: QuizRepository) {
         }.filter { it != answer }.take(5)
     }
 
-    private suspend fun recomputeKanjiFamiliarity(userId: String, kanjiId: String) {
+    private fun recomputeKanjiFamiliarity(userId: String, kanjiId: String) {
         val words = quizRepository.getWordsForKanji(userId, kanjiId)
         if (words.isEmpty()) return
 
-        val familiarities = words.map { it.jsonObject["familiarity"]?.jsonPrimitive?.int ?: 0 }
+        val familiarities = words.map { it.familiarity }
         val computed = if (familiarities.size < 3) {
             familiarities.min()
         } else {
@@ -265,8 +232,7 @@ class QuizService(private val quizRepository: QuizRepository) {
         }
 
         val tier = TIER_FOR_FAMILIARITY[computed] ?: "MEANING_RECALL"
-        val earliestReview = words.mapNotNull { it.jsonObject["nextReview"]?.jsonPrimitive?.contentOrNull }
-            .minOrNull()
+        val earliestReview = words.mapNotNull { it.nextReview?.toString() }.minOrNull()
 
         quizRepository.updateKanjiFamiliarity(userId, kanjiId, computed, tier, earliestReview)
     }

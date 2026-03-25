@@ -2,15 +2,13 @@
 Generate word-centric quizzes for JLPT kanji using Gemini 3.1 Pro.
 
 For each kanji, Gemini returns 3 compound words with 5 quizzes each.
-Creates system UserWords + QuizBank + QuizDistractor rows.
+Creates WordMaster + QuizBank + QuizDistractor rows (global, user_id=NULL).
 
 Usage:
     python seed_quizzes.py --file data/kanjidic2.xml --jlpt 5 --dry-run
     python seed_quizzes.py --file data/kanjidic2.xml --jlpt 5 --persist
-    python seed_quizzes.py --file data/kanjidic2.xml --jlpt 4 --persist          # N5 + N4
-    python seed_quizzes.py --file data/kanjidic2.xml --jlpt 5 --persist --prod
-    python seed_quizzes.py --file data/kanjidic2.xml --jlpt 5 --clear-and-persist
     python seed_quizzes.py --file data/kanjidic2.xml --jlpt 5 --persist --resume
+    python seed_quizzes.py --file data/kanjidic2.xml --jlpt 5 --persist --prod
 """
 
 import argparse
@@ -22,12 +20,12 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-import requests
+import psycopg2
+import psycopg2.extras
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-# Global quizzes use userId=null (not "system" anymore)
 CHECKPOINT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".quiz_seed_checkpoint.json")
 
 JLPT_MAP = {5: 4, 4: 3, 3: 2, 2: 1, 1: 1}
@@ -114,47 +112,119 @@ QUIZ_TYPE_MAP = {
 }
 
 
-# --- Data Connect helpers ---
+# --- Database helpers ---
 
-def _build_endpoint(prod: bool) -> tuple[str, dict]:
+def get_connection(prod: bool) -> psycopg2.extensions.connection:
     load_dotenv()
-    project_id = os.environ.get("FIREBASE_PROJECT_ID", "kanji-masta")
-
     if prod:
-        import google.auth
-        import google.auth.transport.requests
-        credentials, _ = google.auth.default(
-            scopes=["https://www.googleapis.com/auth/firebase.dataconnect"]
-        )
-        credentials.refresh(google.auth.transport.requests.Request())
-        url = (
-            f"https://firebasedataconnect.googleapis.com"
-            f"/v1alpha/projects/{project_id}"
-            f"/locations/asia-east1/services/kanji-masta:executeGraphql"
-        )
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {credentials.token}",
-        }
+        url = os.environ.get("PROD_SUPABASE_DB_URI", "")
+        # Strip jdbc: prefix if present
+        url = url.removeprefix("jdbc:")
     else:
-        emulator_host = os.environ.get("FIREBASE_DATACONNECT_EMULATOR_HOST", "127.0.0.1:9399")
-        url = (
-            f"http://{emulator_host}"
-            f"/v1alpha/projects/{project_id}"
-            f"/locations/asia-east1/services/kanji-masta:executeGraphql"
-        )
-        headers = {"Content-Type": "application/json"}
-
-    return url, headers
+        url = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@127.0.0.1:54322/postgres")
+    if not url:
+        print("Error: DATABASE_URL or PROD_SUPABASE_DB_URI not set.")
+        sys.exit(1)
+    return psycopg2.connect(url)
 
 
-def _execute_graphql(url: str, headers: dict, query: str) -> dict:
-    resp = requests.post(url, json={"query": query}, headers=headers)
-    return resp.json()
+def lookup_kanji_master_id(conn, character: str) -> str | None:
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM kanji_master WHERE character = %s", (character,))
+        row = cur.fetchone()
+        return str(row[0]) if row else None
 
 
-def _escape(s: str) -> str:
-    return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+def find_word_master(conn, word: str) -> str | None:
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM word_master WHERE word = %s", (word,))
+        row = cur.fetchone()
+        return str(row[0]) if row else None
+
+
+def insert_word_master(conn, word: dict, kanji_master_id: str) -> str | None:
+    with conn.cursor() as cur:
+        try:
+            cur.execute(
+                """
+                INSERT INTO word_master (word, reading, meanings, kanji_ids)
+                VALUES (%s, %s, %s, %s::uuid[])
+                RETURNING id
+                """,
+                (word["word"], word["reading"], [word["meaning"]], [kanji_master_id]),
+            )
+            conn.commit()
+            row = cur.fetchone()
+            return str(row[0]) if row else None
+        except psycopg2.Error as e:
+            conn.rollback()
+            print(f"    WordMaster insert error: {e.pgerror or e}")
+            return None
+
+
+def insert_quiz(conn, kanji_master_id: str, word_master_id: str, quiz: dict) -> str | None:
+    qt = QUIZ_TYPE_MAP.get(quiz.get("quiz_type", ""), quiz.get("quiz_type", ""))
+    with conn.cursor() as cur:
+        try:
+            cur.execute(
+                """
+                INSERT INTO quiz_bank (kanji_id, word_id, quiz_type, prompt, target, answer, furigana, explanation)
+                VALUES (%s, %s, %s::quiz_type, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    kanji_master_id, word_master_id, qt,
+                    quiz.get("prompt", ""), quiz.get("target", ""),
+                    quiz.get("answer", ""), quiz.get("furigana"),
+                    quiz.get("explanation"),
+                ),
+            )
+            conn.commit()
+            row = cur.fetchone()
+            return str(row[0]) if row else None
+        except psycopg2.Error as e:
+            conn.rollback()
+            print(f"    Quiz insert error: {e.pgerror or e}")
+            return None
+
+
+def insert_distractor(conn, quiz_id: str, distractors: list[str]):
+    with conn.cursor() as cur:
+        try:
+            cur.execute(
+                """
+                INSERT INTO quiz_distractor (quiz_id, distractors, generation, trigger, familiarity_at_generation)
+                VALUES (%s, %s, 1, 'INITIAL'::distractor_trigger, 0)
+                """,
+                (quiz_id, distractors),
+            )
+            conn.commit()
+        except psycopg2.Error as e:
+            conn.rollback()
+            print(f"    Distractor insert error: {e.pgerror or e}")
+
+
+def get_existing_quiz_characters(conn) -> set[str]:
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT DISTINCT km.character
+            FROM quiz_bank qb
+            JOIN kanji_master km ON qb.kanji_id = km.id
+            WHERE qb.user_id IS NULL
+        """)
+        return {row[0] for row in cur.fetchall()}
+
+
+def clear_global_quizzes(conn):
+    print("\nClearing global quizzes + word masters ...")
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM quiz_distractor WHERE user_id IS NULL")
+        print(f"  Deleted {cur.rowcount} distractor rows.")
+        cur.execute("DELETE FROM quiz_bank WHERE user_id IS NULL")
+        print(f"  Deleted {cur.rowcount} quiz bank rows.")
+        cur.execute("DELETE FROM word_master")
+        print(f"  Deleted {cur.rowcount} word master rows.")
+    conn.commit()
 
 
 # --- XML parsing ---
@@ -176,45 +246,31 @@ def parse_jlpt_kanji(filepath: str, jlpt_level: int, freq_limit: int | None = No
         for _, elem in context:
             if elem.tag != "character":
                 continue
-
             literal = elem.findtext("literal")
             if not literal:
                 elem.clear()
                 continue
-
             jlpt_el = elem.find("misc/jlpt")
             if jlpt_el is None or int(jlpt_el.text) not in valid_old_levels:
                 elem.clear()
                 continue
-
             freq_el = elem.find("misc/freq")
             frequency = int(freq_el.text) if freq_el is not None else None
-
             if freq_limit is not None and (frequency is None or frequency > freq_limit):
                 elem.clear()
                 continue
-
-            kanji_list.append({
-                "character": literal,
-                "frequency": frequency,
-            })
+            kanji_list.append({"character": literal, "frequency": frequency})
             elem.clear()
 
     kanji_list.sort(key=lambda k: k.get("frequency") or 99999)
-
-    label = f"JLPT N{jlpt_level}+"
-    if freq_limit:
-        label += f", freq <= {freq_limit}"
-    print(f"Found {len(kanji_list)} kanji ({label})")
+    print(f"Found {len(kanji_list)} kanji (JLPT N{jlpt_level}+{f', freq <= {freq_limit}' if freq_limit else ''})")
     return kanji_list
 
 
 # --- Gemini ---
 
 def generate_words_and_quizzes(client: genai.Client, kanji: dict) -> tuple[list[dict], int]:
-    """Call Gemini to get 3 words + 5 quizzes each for a kanji. Returns (word_quiz_list, cost_microdollars)."""
     prompt = WORD_QUIZ_PROMPT.format(character=kanji["character"])
-
     response = client.models.generate_content(
         model="gemini-3.1-pro-preview",
         contents=[types.Part(text=prompt)],
@@ -223,147 +279,12 @@ def generate_words_and_quizzes(client: genai.Client, kanji: dict) -> tuple[list[
             response_mime_type="application/json",
         ),
     )
-
     usage = response.usage_metadata
     input_tokens = getattr(usage, "prompt_token_count", 0) or 0
     output_tokens = getattr(usage, "candidates_token_count", 0) or 0
     cost = int((input_tokens * 2.50 / 1_000_000 + output_tokens * 15.00 / 1_000_000) * 1_000_000)
-
     words = json.loads(response.text)
     return words, cost
-
-
-# --- Data Connect persistence ---
-
-def _lookup_kanji_master_id(url: str, headers: dict, character: str) -> str | None:
-    query = f"""
-        query {{
-            kanjiMasters(where: {{ character: {{ eq: "{_escape(character)}" }} }}) {{ id }}
-        }}
-    """
-    result = _execute_graphql(url, headers, query)
-    rows = result.get("data", {}).get("kanjiMasters", [])
-    return rows[0]["id"] if rows else None
-
-
-def _find_word_master(url: str, headers: dict, word: str) -> str | None:
-    """Check if a WordMaster row already exists for this word."""
-    query = f"""
-        query {{
-            wordMasters(where: {{ word: {{ eq: "{_escape(word)}" }} }}, limit: 1) {{ id }}
-        }}
-    """
-    result = _execute_graphql(url, headers, query)
-    rows = result.get("data", {}).get("wordMasters", [])
-    return rows[0]["id"] if rows else None
-
-
-def _insert_word_master(url: str, headers: dict, word: dict, kanji_master_id: str) -> str | None:
-    """Insert a WordMaster row. Returns the ID."""
-    meanings_json = json.dumps([word["meaning"]], ensure_ascii=False)
-    kanji_ids_json = json.dumps([kanji_master_id])
-    query = f"""
-        mutation {{
-            wordMaster_insert(data: {{
-                word: "{_escape(word['word'])}",
-                reading: "{_escape(word['reading'])}",
-                meanings: {meanings_json},
-                kanjiIds: {kanji_ids_json}
-            }})
-        }}
-    """
-    result = _execute_graphql(url, headers, query)
-    if result.get("errors"):
-        print(f"    WordMaster insert error: {result['errors'][0].get('message', '')[:100]}")
-        return None
-    return result.get("data", {}).get("wordMaster_insert", {}).get("id")
-
-
-def _insert_quiz(url: str, headers: dict, kanji_master_id: str, word_master_id: str, quiz: dict) -> str | None:
-    """Insert a global quiz (userId=null)."""
-    qt = QUIZ_TYPE_MAP.get(quiz.get("quiz_type", ""), quiz.get("quiz_type", ""))
-    furigana = quiz.get("furigana")
-    explanation = quiz.get("explanation", "")
-    furigana_field = f'furigana: "{_escape(furigana)}",' if furigana else ""
-    explanation_field = f'explanation: "{_escape(explanation)}",' if explanation else ""
-
-    query = f"""
-        mutation {{
-            quizBank_insert(data: {{
-                kanjiId: "{kanji_master_id}",
-                wordId: "{word_master_id}",
-                quizType: {qt},
-                prompt: "{_escape(quiz.get('prompt', ''))}",
-                target: "{_escape(quiz.get('target', ''))}",
-                answer: "{_escape(quiz.get('answer', ''))}",
-                {furigana_field}
-                {explanation_field}
-            }})
-        }}
-    """
-    result = _execute_graphql(url, headers, query)
-    if result.get("errors"):
-        print(f"    Quiz insert error: {result['errors'][0].get('message', '')[:100]}")
-        return None
-    return result.get("data", {}).get("quizBank_insert", {}).get("id")
-
-
-def _insert_distractor(url: str, headers: dict, quiz_id: str, distractors: list[str]):
-    """Insert a global distractor set (userId=null)."""
-    dist_json = json.dumps(distractors, ensure_ascii=False)
-    query = f"""
-        mutation {{
-            quizDistractor_insert(data: {{
-                quizId: "{quiz_id}",
-                distractors: {dist_json},
-                generation: 1,
-                trigger: INITIAL,
-                familiarityAtGeneration: 0
-            }})
-        }}
-    """
-    result = _execute_graphql(url, headers, query)
-    if result.get("errors"):
-        print(f"    Distractor insert error: {result['errors'][0].get('message', '')[:100]}")
-
-
-def _get_existing_quiz_characters(url: str, headers: dict) -> set[str]:
-    query = """
-        query {
-            quizBanks(where: { userId: { isNull: true } }, limit: 10000) {
-                kanji { character }
-            }
-        }
-    """
-    result = _execute_graphql(url, headers, query)
-    rows = result.get("data", {}).get("quizBanks", [])
-    return {r["kanji"]["character"] for r in rows}
-
-
-def clear_system_quizzes(url: str, headers: dict):
-    """Delete global quizzes + word masters: distractors → quiz bank → word masters."""
-    print("\nClearing global quizzes + word masters ...")
-
-    for table, label, where in [
-        ("quizDistractors", "distractor", '{ userId: { isNull: true } }'),
-        ("quizBanks", "quiz bank", '{ userId: { isNull: true } }'),
-        ("wordMasters", "word master", '{}'),
-    ]:
-        total = 0
-        while True:
-            query = f'query {{ {table}(where: {where}, limit: 1000) {{ id }} }}'
-            result = _execute_graphql(url, headers, query)
-            rows = result.get("data", {}).get(table, [])
-            if not rows:
-                break
-            ids = [r["id"] for r in rows]
-            singular = table.rstrip("s")
-            for i in range(0, len(ids), 100):
-                batch = ids[i:i + 100]
-                id_list = ", ".join(f'"{uid}"' for uid in batch)
-                _execute_graphql(url, headers, f'mutation {{ {singular}_deleteMany(where: {{ id: {{ in: [{id_list}] }} }}) }}')
-            total += len(ids)
-        print(f"  Deleted {total} {label} rows.")
 
 
 # --- Checkpoint ---
@@ -389,7 +310,7 @@ def main():
     parser = argparse.ArgumentParser(description="Generate word-centric quizzes for JLPT kanji via Gemini")
     parser.add_argument("--file", default="kanjidic2.xml", help="Path to kanjidic2.xml or .xml.gz")
     parser.add_argument("--jlpt", type=int, required=True, choices=[1, 2, 3, 4, 5])
-    parser.add_argument("--limit", type=int, default=None, help="Only include kanji with frequency rank <= this value")
+    parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--persist", action="store_true")
     parser.add_argument("--clear-and-persist", action="store_true")
     parser.add_argument("--prod", action="store_true")
@@ -411,16 +332,16 @@ def main():
     gemini_client = genai.Client(api_key=api_key)
 
     should_persist = args.persist or args.clear_and_persist
-    url, headers = None, None
+    conn = None
     if should_persist or args.resume:
-        url, headers = _build_endpoint(args.prod)
+        conn = get_connection(args.prod)
 
     if args.clear_and_persist:
-        clear_system_quizzes(url, headers)
+        clear_global_quizzes(conn)
 
     completed = load_checkpoint() if args.resume else set()
-    if args.resume and url:
-        db_existing = _get_existing_quiz_characters(url, headers)
+    if args.resume and conn:
+        db_existing = get_existing_quiz_characters(conn)
         completed |= db_existing
         print(f"Resuming: {len(completed)} kanji done, {len(kanji_list) - len(completed)} remaining.")
 
@@ -428,7 +349,7 @@ def main():
     total_words = 0
     total_quizzes = 0
     errors = 0
-    env_label = "production" if args.prod else "local emulator"
+    env_label = "production (Supabase)" if args.prod else "local Supabase"
 
     print(f"\nGenerating word-centric quizzes for {len(kanji_list)} kanji ...")
     if should_persist:
@@ -463,27 +384,26 @@ def main():
             completed.add(char)
             continue
 
-        km_id = _lookup_kanji_master_id(url, headers, char)
+        km_id = lookup_kanji_master_id(conn, char)
         if not km_id:
-            print(f"  Kanji '{char}' not in KanjiMaster, skipping.")
+            print(f"  Kanji '{char}' not in kanji_master, skipping.")
             errors += 1
             continue
 
         word_errors = 0
         for w in words:
-            # Deduplicate: check if this word already exists in WordMaster
-            word_id = _find_word_master(url, headers, w["word"])
+            word_id = find_word_master(conn, w["word"])
             if not word_id:
-                word_id = _insert_word_master(url, headers, w, km_id)
+                word_id = insert_word_master(conn, w, km_id)
             if not word_id:
                 word_errors += 1
                 continue
             total_words += 1
 
             for q in w.get("quizzes", []):
-                quiz_id = _insert_quiz(url, headers, km_id, word_id, q)
+                quiz_id = insert_quiz(conn, km_id, word_id, q)
                 if quiz_id:
-                    _insert_distractor(url, headers, quiz_id, q.get("distractors", []))
+                    insert_distractor(conn, quiz_id, q.get("distractors", []))
                     total_quizzes += 1
                 else:
                     word_errors += 1
@@ -497,6 +417,9 @@ def main():
             errors += 1
 
         time.sleep(args.delay)
+
+    if conn:
+        conn.close()
 
     print(f"\n{'=' * 50}")
     print(f"Done. {len(completed)} kanji processed, {errors} errors.")

@@ -1,6 +1,6 @@
 package com.kanjimasta
 
-import com.kanjimasta.core.auth.FirebaseUser
+import com.kanjimasta.core.auth.AuthUser
 import com.kanjimasta.core.plugins.configureRouting
 import com.kanjimasta.core.plugins.configureSerialization
 import com.kanjimasta.modules.kanji.KanjiRepository
@@ -69,9 +69,9 @@ fun Application.testModule(db: Database) {
         }
     }
     install(Authentication) {
-        bearer("firebase") {
+        bearer("supabase") {
             authenticate {
-                FirebaseUser(uid = TEST_USER_ID, email = TEST_USER_EMAIL)
+                AuthUser(uid = TEST_USER_ID, email = TEST_USER_EMAIL)
             }
         }
     }

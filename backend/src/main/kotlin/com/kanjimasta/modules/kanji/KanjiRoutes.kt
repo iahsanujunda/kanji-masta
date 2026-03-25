@@ -1,6 +1,6 @@
 package com.kanjimasta.modules.kanji
 
-import com.kanjimasta.core.auth.FirebaseUser
+import com.kanjimasta.core.auth.AuthUser
 import io.ktor.http.*
 import io.ktor.server.auth.*
 import io.ktor.server.request.*
@@ -10,20 +10,20 @@ import io.ktor.server.routing.*
 fun Route.kanjiRoutes(kanjiService: KanjiService) {
     route("/api/kanji") {
         post("/session") {
-            val user = call.principal<FirebaseUser>()!!
+            val user = call.principal<AuthUser>()!!
             val request = call.receive<SaveSessionRequest>()
             kanjiService.saveSession(user.uid, request)
             call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
         }
 
         get("/jobs/pending") {
-            val user = call.principal<FirebaseUser>()!!
+            val user = call.principal<AuthUser>()!!
             val count = kanjiService.getPendingJobCount(user.uid)
             call.respond(mapOf("pending" to count))
         }
 
         get("/list") {
-            val user = call.principal<FirebaseUser>()!!
+            val user = call.principal<AuthUser>()!!
             val result = kanjiService.getKanjiList(user.uid)
             call.respond(result)
         }
@@ -35,7 +35,7 @@ fun Route.kanjiRoutes(kanjiService: KanjiService) {
 
     route("/api/onboarding") {
         get("/kanji") {
-            val user = call.principal<FirebaseUser>()!!
+            val user = call.principal<AuthUser>()!!
             val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
             val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 10
             val result = kanjiService.getOnboardingKanji(user.uid, offset, limit)
@@ -43,7 +43,7 @@ fun Route.kanjiRoutes(kanjiService: KanjiService) {
         }
 
         post("/select") {
-            val user = call.principal<FirebaseUser>()!!
+            val user = call.principal<AuthUser>()!!
             val request = call.receive<OnboardingSelectRequest>()
             kanjiService.saveOnboardingSelections(user.uid, request.selections)
             call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
@@ -52,7 +52,7 @@ fun Route.kanjiRoutes(kanjiService: KanjiService) {
 
     route("/api/words") {
         get("/list") {
-            val user = call.principal<FirebaseUser>()!!
+            val user = call.principal<AuthUser>()!!
             val query = call.request.queryParameters["q"]
             val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
             val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 30

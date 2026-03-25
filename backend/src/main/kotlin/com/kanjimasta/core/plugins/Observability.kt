@@ -1,6 +1,6 @@
 package com.kanjimasta.core.plugins
 
-import com.kanjimasta.core.auth.FirebaseUser
+import com.kanjimasta.core.auth.AuthUser
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
@@ -32,7 +32,7 @@ fun Application.configureObservability() {
         level = Level.INFO
         callIdMdc("callId")
         mdc("userId") { call ->
-            call.principal<FirebaseUser>()?.uid
+            call.principal<AuthUser>()?.uid
         }
     }
 }

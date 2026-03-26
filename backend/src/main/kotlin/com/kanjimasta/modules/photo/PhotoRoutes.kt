@@ -12,7 +12,7 @@ fun Route.photoRoutes(photoService: PhotoService) {
         post("/analyze") {
             val user = call.principal<AuthUser>()!!
             val request = call.receive<AnalyzePhotoRequest>()
-            val result = photoService.startAnalysis(user.uid, request.imageUrl)
+            val result = photoService.startAnalysis(user.uid, request.imageUrl, request.storagePath)
             call.respond(result)
         }
 
@@ -20,6 +20,12 @@ fun Route.photoRoutes(photoService: PhotoService) {
             val sessionId = call.parameters["id"]
                 ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing session id"))
             val result = photoService.getSessionResult(sessionId)
+            call.respond(result)
+        }
+
+        get("/recent") {
+            val user = call.principal<AuthUser>()!!
+            val result = photoService.getRecentScans(user.uid)
             call.respond(result)
         }
     }

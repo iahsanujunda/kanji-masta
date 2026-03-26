@@ -4,6 +4,8 @@ import com.kanjimasta.core.db.*
 import org.ktorm.database.Database
 import org.ktorm.dsl.*
 import org.slf4j.LoggerFactory
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 private val logger = LoggerFactory.getLogger("com.kanjimasta.modules.internal.InternalService")
@@ -85,6 +87,14 @@ class InternalService(private val db: Database) {
 
             logger.info("Quiz result saved: job={} status={} quizzes={} cost={}",
                 request.jobId, request.status, request.quizzes.size, request.costMicrodollars)
+        }
+    }
+
+    fun cleanupStalePhotoSessions(): Int {
+        val cutoff = Instant.now().minus(1, ChronoUnit.HOURS)
+        return db.update(PhotoSessionTable) {
+            set(it.status, "FAILED")
+            where { (it.status eq "PROCESSING") and (it.updatedAt less cutoff) }
         }
     }
 

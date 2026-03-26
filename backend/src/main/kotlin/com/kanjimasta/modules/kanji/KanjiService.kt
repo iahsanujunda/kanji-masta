@@ -38,6 +38,9 @@ class KanjiService(
             }
         }
 
+        // Mark photo session as ingested so it no longer appears in recent scans
+        photoRepository.updateSessionStatus(request.sessionId, "INGESTED")
+
         if (learningKanjiIds.isNotEmpty()) {
             val sessionId = request.sessionId
             scope.launch {

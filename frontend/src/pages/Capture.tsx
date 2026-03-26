@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Box,
   Button,
@@ -44,6 +44,7 @@ type View = "idle" | "uploading" | "analyzing" | "results";
 
 export default function Capture() {
   const navigate = useNavigate();
+  const location = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<View>("idle");
   const [statusText, setStatusText] = useState("Uploading photo...");
@@ -51,14 +52,19 @@ export default function Capture() {
   const [kanjiResults, setKanjiResults] = useState<EnrichedKanji[]>([]);
   const [selections, setSelections] = useState<Record<string, string | null>>({});
 
-  // Trigger file input on mount
-  useEffect(() => {
-    fileInputRef.current?.click();
-  }, []);
+  // Check for resume session from navigation state
+  const resumeSessionId = (location.state as { sessionId?: string } | null)?.sessionId;
 
-  const handleError = useCallback((message: string) => {
-    navigate("/home", { state: { error: message } });
-  }, [navigate]);
+  useEffect(() => {
+    if (resumeSessionId) {
+      // Resume a previously started session — skip file upload, go straight to polling
+      setSessionId(resumeSessionId);
+      setView("analyzing");
+      setStatusText("Loading results...");
+    } else {
+      fileInputRef.current?.click();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -85,14 +91,14 @@ export default function Capture() {
 
       const result = await apiFetch<{ sessionId: string; status: string }>("/api/photo/analyze", {
         method: "POST",
-        body: JSON.stringify({ imageUrl }),
+        body: JSON.stringify({ imageUrl, storagePath: filePath }),
       });
 
       setSessionId(result.sessionId);
     } catch (err) {
-      handleError(err instanceof Error ? err.message : "Failed to upload photo");
+      navigate("/home", { state: { error: err instanceof Error ? err.message : "Failed to upload photo" } });
     }
-  }, [navigate, handleError]);
+  }, [navigate]);
 
   // Poll for results
   useEffect(() => {
@@ -105,9 +111,10 @@ export default function Capture() {
       // Update status text as we wait
       if (pollCount === 2) setStatusText("Extracting kanji...");
       if (pollCount === 4) setStatusText("Finding daily usage...");
-      if (pollCount > 30) {
+      if (pollCount > 15) {
+        // 15 polls x 2s = 30s — silently go home, scan continues in background
         clearInterval(interval);
-        handleError("Analysis timed out. Please try again.");
+        navigate("/home");
         return;
       }
 
@@ -119,7 +126,7 @@ export default function Capture() {
           clearInterval(interval);
         } else if (result.status === "error") {
           clearInterval(interval);
-          handleError("Analysis failed. Please try again.");
+          navigate("/home", { state: { error: "Analysis failed. Please try again." } });
         }
       } catch {
         // Keep polling on network errors
@@ -127,7 +134,7 @@ export default function Capture() {
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [sessionId, view, handleError]);
+  }, [sessionId, view, navigate]);
 
   const toggleSelection = (character: string, type: string) => {
     setSelections((prev) => ({
@@ -154,7 +161,7 @@ export default function Capture() {
           body: JSON.stringify({ sessionId, selections: selected }),
         });
       } catch (err) {
-        handleError(err instanceof Error ? err.message : "Failed to save selections");
+        navigate("/home", { state: { error: err instanceof Error ? err.message : "Failed to save selections" } });
         return;
       }
     }

@@ -3,7 +3,7 @@ package com.kanjimasta.modules.photo
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class AnalyzePhotoRequest(val imageUrl: String)
+data class AnalyzePhotoRequest(val imageUrl: String, val storagePath: String? = null)
 
 @Serializable
 data class AnalyzePhotoResponse(val sessionId: String, val status: String)
@@ -34,3 +34,15 @@ data class ExampleWord(
     val reading: String,
     val meaning: String,
 )
+
+@Serializable
+data class RecentScanItem(
+    val sessionId: String,
+    val storagePath: String?,
+    val status: String,
+    val createdAt: String,
+    val kanjiCount: Int? = null,
+)
+
+@Serializable
+data class RecentScansResponse(val sessions: List<RecentScanItem>)

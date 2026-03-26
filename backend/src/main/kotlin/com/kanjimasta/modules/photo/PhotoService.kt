@@ -23,9 +23,9 @@ class PhotoService(
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
 
-    suspend fun startAnalysis(userId: String, imageUrl: String): AnalyzePhotoResponse {
+    suspend fun startAnalysis(userId: String, imageUrl: String, storagePath: String? = null): AnalyzePhotoResponse {
         logger.debug("Creating photo session for user={}", userId)
-        val sessionId = photoRepository.createSession(userId, imageUrl)
+        val sessionId = photoRepository.createSession(userId, imageUrl, storagePath)
         logger.info("Created photo session={}, calling ai-worker", sessionId)
 
         val url = "$aiWorkerUrl/analyze-photo"
@@ -73,35 +73,61 @@ class PhotoService(
             ?: return PhotoSessionResult(sessionId = sessionId, status = "processing")
 
         val kanji = try {
-            val parsed = Json.parseToJsonElement(rawResponse).jsonArray
-            parsed.map { element ->
-                val obj = element.jsonObject
-                with(obj) {
-                    EnrichedKanji(
-                        kanjiMasterId = get("kanjiMasterId")?.jsonPrimitive?.contentOrNull,
-                        character = get("character")?.jsonPrimitive?.content ?: "",
-                        recommended = get("recommended")?.jsonPrimitive?.booleanOrNull ?: false,
-                        whyUseful = get("whyUseful")?.jsonPrimitive?.content ?: "",
-                        onyomi = get("onyomi")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
-                        kunyomi = get("kunyomi")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
-                        meanings = get("meanings")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
-                        frequency = get("frequency")?.jsonPrimitive?.intOrNull,
-                        exampleWords = get("exampleWords")?.jsonArray?.map { wordEl ->
-                            val w = wordEl.jsonObject
-                            ExampleWord(
-                                word = w["word"]?.jsonPrimitive?.content ?: "",
-                                reading = w["reading"]?.jsonPrimitive?.content ?: "",
-                                meaning = w["meaning"]?.jsonPrimitive?.content ?: ""
-                            )
-                        } ?: emptyList()
-                    )
-                }
-            }
+            parseEnrichedKanji(rawResponse)
         } catch (e: Exception) {
             logger.error("Failed to parse session={} response: {}", sessionId, e.message)
             return PhotoSessionResult(sessionId = sessionId, status = "error")
         }
 
         return PhotoSessionResult(sessionId = sessionId, status = "done", kanji = kanji)
+    }
+
+    suspend fun getRecentScans(userId: String): RecentScansResponse {
+        val sessions = photoRepository.getRecentSessions(userId)
+        val items = sessions.map { session ->
+            val kanjiCount = if (session.status == "DONE" && session.rawAiResponse != null) {
+                try {
+                    Json.parseToJsonElement(session.rawAiResponse).jsonArray.size
+                } catch (_: Exception) {
+                    null
+                }
+            } else null
+
+            RecentScanItem(
+                sessionId = session.id,
+                storagePath = session.storagePath,
+                status = session.status,
+                createdAt = session.createdAt?.toString() ?: "",
+                kanjiCount = kanjiCount,
+            )
+        }
+        return RecentScansResponse(sessions = items)
+    }
+
+    private fun parseEnrichedKanji(rawResponse: String): List<EnrichedKanji> {
+        val parsed = Json.parseToJsonElement(rawResponse).jsonArray
+        return parsed.map { element ->
+            val obj = element.jsonObject
+            with(obj) {
+                EnrichedKanji(
+                    kanjiMasterId = get("kanjiMasterId")?.jsonPrimitive?.contentOrNull,
+                    character = get("character")?.jsonPrimitive?.content ?: "",
+                    recommended = get("recommended")?.jsonPrimitive?.booleanOrNull ?: false,
+                    whyUseful = get("whyUseful")?.jsonPrimitive?.content ?: "",
+                    onyomi = get("onyomi")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
+                    kunyomi = get("kunyomi")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
+                    meanings = get("meanings")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
+                    frequency = get("frequency")?.jsonPrimitive?.intOrNull,
+                    exampleWords = get("exampleWords")?.jsonArray?.map { wordEl ->
+                        val w = wordEl.jsonObject
+                        ExampleWord(
+                            word = w["word"]?.jsonPrimitive?.content ?: "",
+                            reading = w["reading"]?.jsonPrimitive?.content ?: "",
+                            meaning = w["meaning"]?.jsonPrimitive?.content ?: ""
+                        )
+                    } ?: emptyList()
+                )
+            }
+        }
     }
 }

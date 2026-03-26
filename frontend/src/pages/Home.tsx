@@ -21,7 +21,16 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import PageHeader from "@/components/PageHeader";
 import { apiFetch } from "@/lib/api";
-import { formatTimeLeft } from "@/lib/format";
+import { supabase } from "@/lib/supabase";
+import { formatTimeLeft, timeAgo } from "@/lib/format";
+
+interface RecentScanItem {
+  sessionId: string;
+  storagePath: string | null;
+  status: string;
+  createdAt: string;
+  kanjiCount: number | null;
+}
 
 interface UserSummary {
   kanjiLearning: number;
@@ -47,6 +56,13 @@ export default function Home() {
     gcTime: 5 * 60_000, // keep in cache 5 min after unmount
     retry: 1,
   });
+  const { data: recentScans } = useQuery({
+    queryKey: ["recent-scans"],
+    queryFn: () => apiFetch<{ sessions: RecentScanItem[] }>("/api/photo/recent"),
+    staleTime: 15_000,
+    refetchInterval: 10_000,
+  });
+
   const loading = isLoading && !summary;
 
   const hour = new Date().getHours();
@@ -305,6 +321,19 @@ export default function Home() {
           </Box>
           <ChevronRightIcon sx={{ color: "text.disabled" }} />
         </Paper>
+        {/* Recent scans */}
+        {recentScans?.sessions && recentScans.sessions.length > 0 && (
+          <Box>
+            <Typography variant="body2" fontWeight="bold" sx={{ color: "text.secondary", mb: 1.5, px: 0.5 }}>
+              Recent Scans
+            </Typography>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+              {recentScans.sessions.map((scan) => (
+                <RecentScanCard key={scan.sessionId} scan={scan} />
+              ))}
+            </Box>
+          </Box>
+        )}
       </Box>
 
       {/* Bottom capture button */}
@@ -330,5 +359,79 @@ export default function Home() {
         </Button>
       </Box>
     </Box>
+  );
+}
+
+function RecentScanCard({ scan }: { scan: RecentScanItem }) {
+  const navigate = useNavigate();
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const isDone = scan.status === "DONE";
+
+  useEffect(() => {
+    if (!scan.storagePath) return;
+    supabase.storage
+      .from("photos")
+      .createSignedUrl(scan.storagePath, 300)
+      .then(({ data }) => {
+        if (data?.signedUrl) setThumbnailUrl(data.signedUrl);
+      });
+  }, [scan.storagePath]);
+
+  return (
+    <Paper
+      variant="outlined"
+      onClick={() => isDone ? navigate("/capture", { state: { sessionId: scan.sessionId } }) : undefined}
+      sx={{
+        borderRadius: 3,
+        p: 2,
+        display: "flex",
+        alignItems: "center",
+        gap: 2,
+        cursor: isDone ? "pointer" : "default",
+        "&:hover": isDone ? { bgcolor: "action.hover" } : {},
+      }}
+    >
+      <Box
+        component={thumbnailUrl ? "img" : "div"}
+        src={thumbnailUrl ?? undefined}
+        sx={{
+          width: 48,
+          height: 48,
+          borderRadius: 2,
+          objectFit: "cover",
+          bgcolor: "grey.900",
+          border: "1px solid",
+          borderColor: "grey.800",
+          flexShrink: 0,
+        }}
+      />
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Box
+            sx={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              bgcolor: isDone ? "#10b981" : "#818cf8",
+              flexShrink: 0,
+              ...(!isDone && {
+                "@keyframes pulse": {
+                  "0%, 100%": { opacity: 1 },
+                  "50%": { opacity: 0.4 },
+                },
+                animation: "pulse 2s ease-in-out infinite",
+              }),
+            }}
+          />
+          <Typography variant="body2" fontWeight="bold" noWrap>
+            {isDone ? `${scan.kanjiCount ?? "?"} kanji found` : "Analyzing..."}
+          </Typography>
+        </Box>
+        <Typography variant="caption" color="text.secondary">
+          {timeAgo(scan.createdAt)}
+        </Typography>
+      </Box>
+      {isDone && <ChevronRightIcon sx={{ color: "text.disabled", flexShrink: 0 }} />}
+    </Paper>
   );
 }

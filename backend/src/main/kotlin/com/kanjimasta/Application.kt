@@ -5,6 +5,7 @@ import com.kanjimasta.core.db.connectDatabase
 import com.kanjimasta.core.email.ResendClient
 import com.kanjimasta.modules.admin.AdminRepository
 import com.kanjimasta.modules.admin.AdminService
+import com.kanjimasta.modules.internal.InternalService
 import com.kanjimasta.core.plugins.configureCors
 import com.kanjimasta.core.plugins.configureObservability
 import com.kanjimasta.core.plugins.configureRouting
@@ -44,11 +45,14 @@ fun Application.module() {
         }
     }
 
+    val internalKey = environment.config.propertyOrNull("internal.key")?.getString() ?: ""
+    val selfUrl = environment.config.propertyOrNull("self.url")?.getString() ?: ""
+
     val photoRepository = PhotoRepository(database)
-    val photoService = PhotoService(photoRepository, httpClient, aiWorkerUrl)
+    val photoService = PhotoService(photoRepository, httpClient, aiWorkerUrl, selfUrl, internalKey)
 
     val kanjiRepository = KanjiRepository(database)
-    val kanjiService = KanjiService(kanjiRepository, photoRepository, httpClient, aiWorkerUrl)
+    val kanjiService = KanjiService(kanjiRepository, photoRepository, httpClient, aiWorkerUrl, selfUrl, internalKey)
 
     val quizRepository = QuizRepository(database)
     val quizService = QuizService(quizRepository)
@@ -64,6 +68,7 @@ fun Application.module() {
     val inviteService = InviteService(inviteRepository, settingsRepository, resendClient)
     val adminRepository = AdminRepository(database)
     val adminService = AdminService(adminRepository)
+    val internalService = InternalService(database)
 
-    configureRouting(photoService, kanjiService, quizService, userService, settingsRepository, inviteService, adminService, adminUserId)
+    configureRouting(photoService, kanjiService, quizService, userService, settingsRepository, inviteService, adminService, internalService, adminUserId, internalKey, selfUrl)
 }

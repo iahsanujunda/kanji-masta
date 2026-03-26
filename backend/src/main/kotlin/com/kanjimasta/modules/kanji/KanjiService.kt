@@ -18,6 +18,8 @@ class KanjiService(
     private val photoRepository: PhotoRepository,
     private val httpClient: HttpClient,
     private val aiWorkerUrl: String,
+    private val selfUrl: String = "",
+    private val internalKey: String = "",
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
 
@@ -163,7 +165,13 @@ class KanjiService(
                     contentType(ContentType.Application.Json)
                     if (idToken != null) header("Authorization", "Bearer $idToken")
                     header("X-Call-Id", org.slf4j.MDC.get("callId") ?: "no-call")
-                    setBody("{}")
+                    setBody(kotlinx.serialization.json.buildJsonObject {
+                        if (selfUrl.isNotBlank()) {
+                            put("callbackUrl", "$selfUrl/api/internal/quiz-result")
+                            put("callbackStatusUrl", "$selfUrl/api/internal/job-status")
+                            put("callbackKey", internalKey)
+                        }
+                    }.toString())
                 }
             } catch (e: Exception) {
                 logger.warn("Quiz generation trigger failed (will retry via schedule): {}", e.message)

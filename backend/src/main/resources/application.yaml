@@ -23,6 +23,12 @@ resend:
 admin:
   userId: "$ADMIN_USER_ID:"
 
+internal:
+  key: "$INTERNAL_API_KEY:"
+
+self:
+  url: "$SELF_URL:"
+
 claude:
   apiKey: "$CLAUDE_API_KEY:"
 

@@ -2,6 +2,8 @@ package com.kanjimasta.core.plugins
 
 import com.kanjimasta.modules.admin.AdminService
 import com.kanjimasta.modules.admin.adminRoutes
+import com.kanjimasta.modules.internal.InternalService
+import com.kanjimasta.modules.internal.internalRoutes
 import com.kanjimasta.modules.invite.InviteService
 import com.kanjimasta.modules.invite.inviteAdminRoutes
 import com.kanjimasta.modules.invite.invitePublicRoutes
@@ -29,14 +31,21 @@ fun Application.configureRouting(
     settingsRepository: SettingsRepository,
     inviteService: InviteService,
     adminService: AdminService,
+    internalService: InternalService,
     adminUserId: String,
+    internalKey: String,
+    selfUrl: String,
 ) {
     routing {
         get("/health") {
             call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
         }
 
+        // Public (no auth)
         invitePublicRoutes(inviteService)
+
+        // Internal (ai-worker callbacks, shared secret auth)
+        internalRoutes(internalService, internalKey)
 
         authenticate("supabase") {
             installInviteGuard(inviteService, settingsRepository)

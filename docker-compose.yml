@@ -10,6 +10,8 @@ services:
       SUPABASE_URL: http://host.docker.internal:54321
       AI_WORKER_URL: http://ai-worker:8080
       ADMIN_USER_ID: ${ADMIN_USER_ID:-}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-local-dev-key}
+      SELF_URL: http://backend:8080
     depends_on:
       ai-worker:
         condition: service_healthy

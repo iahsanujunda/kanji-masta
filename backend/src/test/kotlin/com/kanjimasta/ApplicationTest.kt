@@ -81,11 +81,12 @@ fun Application.testModule(db: Database) {
     val inviteService = com.kanjimasta.modules.invite.InviteService(inviteRepository, settingsRepository, resendClient)
     val adminRepository = com.kanjimasta.modules.admin.AdminRepository(db)
     val adminService = com.kanjimasta.modules.admin.AdminService(adminRepository)
+    val internalService = com.kanjimasta.modules.internal.InternalService(db)
 
     // Seed settings for test user so invite guard doesn't block existing tests
     settingsRepository.upsertSettings(TEST_USER_ID, 5, 6)
 
-    configureRouting(photoService, kanjiService, quizService, userService, settingsRepository, inviteService, adminService, TEST_USER_ID)
+    configureRouting(photoService, kanjiService, quizService, userService, settingsRepository, inviteService, adminService, internalService, TEST_USER_ID, "test-internal-key", "http://localhost:8080")
 }
 
 fun ApplicationTestBuilder.jsonClient() = createClient {

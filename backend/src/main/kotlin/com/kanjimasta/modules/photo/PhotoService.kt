@@ -18,6 +18,8 @@ class PhotoService(
     private val photoRepository: PhotoRepository,
     private val httpClient: HttpClient,
     private val aiWorkerUrl: String,
+    private val selfUrl: String = "",
+    private val internalKey: String = "",
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
 
@@ -41,6 +43,10 @@ class PhotoService(
                         put("imageUrl", imageUrl)
                         put("userId", userId)
                         put("sessionId", sessionId)
+                        if (selfUrl.isNotBlank()) {
+                            put("callbackUrl", "$selfUrl/api/internal/photo-result")
+                            put("callbackKey", internalKey)
+                        }
                     }.toString())
                 }
                 logger.info("AI worker call completed for session={}, status={}", sessionId, response.status)

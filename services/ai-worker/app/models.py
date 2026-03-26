@@ -5,10 +5,14 @@ class AnalyzePhotoRequest(BaseModel):
     imageUrl: str
     userId: str | None = None
     sessionId: str
+    callbackUrl: str | None = None
+    callbackKey: str | None = None
 
 
 class GenerateQuizzesRequest(BaseModel):
-    pass  # empty body — uses trace headers
+    callbackUrl: str | None = None
+    callbackStatusUrl: str | None = None
+    callbackKey: str | None = None
 
 
 class DiscoverWordsRequest(BaseModel):

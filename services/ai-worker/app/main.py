@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 
 from . import db
 from .gemini import get_client, analyze_image, generate_quizzes_text, discover_words_text, calculate_cost_microdollars
-from .models import AnalyzePhotoRequest, DiscoverWordsRequest, StatusResponse, DiscoverWordsResponse
+from .models import AnalyzePhotoRequest, GenerateQuizzesRequest, DiscoverWordsRequest, StatusResponse, DiscoverWordsResponse
 from .prompts import KANJI_PROMPT, QUIZ_PROMPT, REGEN_PROMPT, DISCOVERY_PROMPT, QUIZ_TYPE_MAP
 from .trace import TraceContext, default_ctx
 
@@ -97,7 +97,15 @@ async def analyze_photo(body: AnalyzePhotoRequest, request: Request):
         })
 
     enriched_json = json.dumps(enriched, ensure_ascii=False)
-    db.update_photo_session(body.sessionId, enriched_json, cost, user_id=body.userId or "")
+
+    if body.callbackUrl:
+        from .callback import send_photo_result
+        ok = await send_photo_result(body.callbackUrl, body.callbackKey or "", body.sessionId, body.userId or "", enriched_json, cost)
+        if not ok:
+            ctx.log_error("analyze_photo: callback failed for session=%s", body.sessionId)
+            return JSONResponse({"error": "Callback failed"}, status_code=500)
+    else:
+        db.update_photo_session(body.sessionId, enriched_json, cost, user_id=body.userId or "")
 
     elapsed = time.time() - start
     ctx.log_info("analyze_photo: session=%s done, %d kanji enriched in %.1fs", body.sessionId, len(enriched), elapsed)
@@ -108,7 +116,9 @@ async def analyze_photo(body: AnalyzePhotoRequest, request: Request):
 # generate-quizzes (HTTP trigger + cron)
 # ---------------------------------------------------------------------------
 
-def _run_quiz_generation(ctx: TraceContext):
+def _run_quiz_generation(ctx: TraceContext, callback_url: str = "", callback_status_url: str = "", callback_key: str = ""):
+    from .callback import send_quiz_result, send_job_status as send_job_status_callback
+
     client = get_client()
     jobs = db.get_pending_jobs(limit=10)
     if not jobs:
@@ -128,27 +138,49 @@ def _run_quiz_generation(ctx: TraceContext):
         op_type = "QUIZ_REGEN" if job_type == "REGEN" else "QUIZ_GENERATION"
 
         ctx.log_info("generate_quizzes: job=%s type=%s kanji=%s word=%s", job_id[:8], job_type, character, word_text)
-        db.update_job_status(job_id, "PROCESSING")
+
+        # Mark PROCESSING
+        if callback_status_url:
+            send_job_status_callback(callback_status_url, callback_key, job_id, "PROCESSING")
+        else:
+            db.update_job_status(job_id, "PROCESSING")
 
         try:
             if job_type == "REGEN":
-                cost, errors = _process_regen_job(client, job, ctx)
+                cost, errors, quizzes = _process_regen_job(client, job, ctx)
             else:
-                cost, errors = _process_initial_job(client, job, ctx)
+                cost, errors, quizzes = _process_initial_job(client, job, ctx)
 
             if errors == 0:
-                db.update_job_status(job_id, "DONE", cost=cost, user_id=user_id, operation_type=op_type)
-                ctx.log_info("generate_quizzes: job=%s done, cost=$%.4f", job_id[:8], cost / 1_000_000)
+                status = "DONE"
             else:
-                db.update_job_status(job_id, "FAILED", cost=cost, increment_attempts=True, user_id=user_id, operation_type=op_type)
-                ctx.log_error("generate_quizzes: job=%s had %d insert errors", job_id[:8], errors)
+                status = "FAILED"
+                ctx.log_error("generate_quizzes: job=%s had %d errors", job_id[:8], errors)
+
+            if callback_url:
+                ok = send_quiz_result(callback_url, callback_key, job_id, user_id, status, cost, op_type, quizzes)
+                if not ok:
+                    ctx.log_error("generate_quizzes: callback failed for job=%s", job_id[:8])
+                    continue
+            else:
+                # Legacy direct DB path
+                for q in quizzes:
+                    db.insert_quiz_and_distractor(q["kanjiId"], q["wordMasterId"], q)
+                db.update_job_status(job_id, status, cost=cost, user_id=user_id, operation_type=op_type,
+                                     increment_attempts=(status == "FAILED"))
+
+            if status == "DONE":
+                ctx.log_info("generate_quizzes: job=%s done, cost=$%.4f", job_id[:8], cost / 1_000_000)
 
         except Exception as e:
             ctx.log_error("generate_quizzes: job=%s failed — %s", job_id[:8], e)
-            db.update_job_status(job_id, "FAILED", increment_attempts=True)
+            if callback_status_url:
+                send_job_status_callback(callback_status_url, callback_key, job_id, "FAILED", increment_attempts=True)
+            else:
+                db.update_job_status(job_id, "FAILED", increment_attempts=True)
 
 
-def _process_initial_job(client, job: dict, ctx: TraceContext) -> tuple[int, int]:
+def _process_initial_job(client, job: dict, ctx: TraceContext) -> tuple[int, int, list[dict]]:
     kanji_id = job["kanjiId"]
     word_master_id = job.get("wordMasterId", "")
     word_data = job.get("wordMaster") or {}
@@ -164,24 +196,24 @@ def _process_initial_job(client, job: dict, ctx: TraceContext) -> tuple[int, int
 
     quizzes, cost = generate_quizzes_text(client, prompt)
 
-    errors = 0
+    # Attach IDs so the callback receiver knows where to insert
     for q in quizzes:
-        if not db.insert_quiz_and_distractor(kanji_id, word_master_id, q):
-            errors += 1
+        q["kanjiId"] = kanji_id
+        q["wordMasterId"] = word_master_id
 
-    return cost, errors
+    return cost, 0, quizzes
 
 
-def _process_regen_job(client, job: dict, ctx: TraceContext) -> tuple[int, int]:
+def _process_regen_job(client, job: dict, ctx: TraceContext) -> tuple[int, int, list[dict]]:
     quiz_id = job.get("quizId")
     if not quiz_id:
         ctx.log_error("REGEN job missing quizId")
-        return 0, 1
+        return 0, 1, []
 
     quiz = db.get_quiz_for_regen(quiz_id)
     if not quiz:
         ctx.log_error("Quiz %s not found for regen", quiz_id)
-        return 0, 1
+        return 0, 1, []
 
     user_id = quiz["user_id"]
     kanji_id = quiz["kanji_id"]
@@ -201,6 +233,7 @@ def _process_regen_job(client, job: dict, ctx: TraceContext) -> tuple[int, int]:
 
     distractors, cost = generate_quizzes_text(client, prompt)
 
+    # Regen still writes directly — it's a distractor update, not a new quiz
     trigger = job.get("trigger", "milestone")
     db.insert_regen_distractor(
         quiz_id=quiz_id,
@@ -211,14 +244,14 @@ def _process_regen_job(client, job: dict, ctx: TraceContext) -> tuple[int, int]:
         familiarity=familiarity,
     )
 
-    return cost, 0
+    return cost, 0, []
 
 
 @app.post("/generate-quizzes")
-def generate_quizzes_http(request: Request):
+def generate_quizzes_http(request: Request, body: GenerateQuizzesRequest = GenerateQuizzesRequest()):
     ctx = TraceContext.from_request(request)
     start = time.time()
-    _run_quiz_generation(ctx)
+    _run_quiz_generation(ctx, callback_url=body.callbackUrl or "", callback_status_url=body.callbackStatusUrl or "", callback_key=body.callbackKey or "")
     elapsed = time.time() - start
     ctx.log_info("generate_quizzes_http: completed in %.1fs", elapsed)
     return StatusResponse()

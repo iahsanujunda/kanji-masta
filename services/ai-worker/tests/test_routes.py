@@ -55,7 +55,7 @@ def test_analyze_photo(client, db_conn, mock_gemini):
 
 
 def test_generate_quizzes_no_jobs(client, mock_gemini):
-    resp = client.post("/generate-quizzes")
+    resp = client.post("/generate-quizzes", json={})
     assert resp.status_code == 200
 
 
@@ -89,7 +89,7 @@ def test_generate_quizzes_processes_job(client, db_conn, seed_kanji, mock_gemini
             (kanji_id, wm_id),
         )
 
-    resp = client.post("/generate-quizzes")
+    resp = client.post("/generate-quizzes", json={})
     assert resp.status_code == 200
 
     # Verify quizzes were created

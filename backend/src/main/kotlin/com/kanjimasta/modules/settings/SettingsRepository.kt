@@ -4,7 +4,7 @@ import com.kanjimasta.core.db.UserSettingsTable
 import org.ktorm.database.Database
 import org.ktorm.dsl.*
 import org.slf4j.LoggerFactory
-import java.time.Instant
+
 
 private val logger = LoggerFactory.getLogger("com.kanjimasta.modules.settings.SettingsRepository")
 
@@ -35,7 +35,6 @@ class SettingsRepository(private val db: Database) {
     fun markOnboardingComplete(userId: String) {
         val updated = db.update(UserSettingsTable) {
             set(it.onboardingComplete, true)
-            set(it.updatedAt, Instant.now())
             where { it.userId eq userId }
         }
         if (updated == 0) {
@@ -50,7 +49,6 @@ class SettingsRepository(private val db: Database) {
         val updated = db.update(UserSettingsTable) {
             set(it.quizAllowancePerSlot, allowance)
             set(it.slotDurationHours, duration)
-            set(it.updatedAt, Instant.now())
             where { it.userId eq userId }
         }
         if (updated == 0) {

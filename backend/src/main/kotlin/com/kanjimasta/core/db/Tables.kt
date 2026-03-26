@@ -37,6 +37,8 @@ object KanjiMasterTable : Table<Nothing>("kanji_master") {
     val meanings = textArray("meanings")
     val frequency = int("frequency")
     val jlpt = int("jlpt")
+    val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
 }
 
 object WordMasterTable : Table<Nothing>("word_master") {
@@ -47,6 +49,7 @@ object WordMasterTable : Table<Nothing>("word_master") {
     val kanjiIds = uuidArray("kanji_ids")
     val frequency = int("frequency")
     val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
 }
 
 object UserKanjiTable : Table<Nothing>("user_kanji") {
@@ -59,6 +62,7 @@ object UserKanjiTable : Table<Nothing>("user_kanji") {
     val nextReview = timestamp("next_review")
     val sourcePhotoId = uuid("source_photo_id")
     val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
 }
 
 object PhotoSessionTable : Table<Nothing>("photo_session") {
@@ -67,8 +71,10 @@ object PhotoSessionTable : Table<Nothing>("photo_session") {
     val imageUrl = text("image_url")
     val rawAiResponse = text("raw_ai_response")
     val status = text("status")
+    val storagePath = text("storage_path")
     val costMicrodollars = long("cost_microdollars")
     val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
 }
 
 object QuizBankTable : Table<Nothing>("quiz_bank") {
@@ -85,6 +91,7 @@ object QuizBankTable : Table<Nothing>("quiz_bank") {
     val servedCount = int("served_count")
     val servedAt = timestamp("served_at")
     val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
 }
 
 object QuizDistractorTable : Table<Nothing>("quiz_distractor") {
@@ -97,6 +104,7 @@ object QuizDistractorTable : Table<Nothing>("quiz_distractor") {
     val familiarityAtGeneration = int("familiarity_at_generation")
     val servedAt = timestamp("served_at")
     val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
 }
 
 object QuizSlotTable : Table<Nothing>("quiz_slot") {
@@ -108,6 +116,7 @@ object QuizSlotTable : Table<Nothing>("quiz_slot") {
     val completed = int("completed")
     val allowance = int("allowance")
     val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
 }
 
 object QuizServeTable : Table<Nothing>("quiz_serve") {
@@ -119,6 +128,8 @@ object QuizServeTable : Table<Nothing>("quiz_serve") {
     val wordFamiliarityAtServe = int("word_familiarity_at_serve")
     val correct = boolean("correct")
     val answeredAt = timestamp("answered_at")
+    val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
 }
 
 object QuizGenerationJobTable : Table<Nothing>("quiz_generation_job") {
@@ -133,6 +144,7 @@ object QuizGenerationJobTable : Table<Nothing>("quiz_generation_job") {
     val attempts = int("attempts")
     val costMicrodollars = long("cost_microdollars")
     val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
 }
 
 object UserWordsTable : Table<Nothing>("user_words") {
@@ -147,6 +159,7 @@ object UserWordsTable : Table<Nothing>("user_words") {
     val discoveredViaKanjiId = uuid("discovered_via_kanji_id")
     val unlocked = boolean("unlocked")
     val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
 }
 
 object ChallengeSessionTable : Table<Nothing>("challenge_session") {
@@ -156,6 +169,8 @@ object ChallengeSessionTable : Table<Nothing>("challenge_session") {
     val triggeredAt = timestamp("triggered_at")
     val completedAt = timestamp("completed_at")
     val score = int("score")
+    val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
 }
 
 object UserSettingsTable : Table<Nothing>("user_settings") {
@@ -164,6 +179,7 @@ object UserSettingsTable : Table<Nothing>("user_settings") {
     val slotDurationHours = int("slot_duration_hours")
     val timezone = text("timezone")
     val onboardingComplete = boolean("onboarding_complete")
+    val createdAt = timestamp("created_at")
     val updatedAt = timestamp("updated_at")
 }
 
@@ -174,6 +190,7 @@ object UserCostTable : Table<Nothing>("user_cost") {
     val operationId = uuid("operation_id")
     val costMicrodollars = long("cost_microdollars")
     val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
 }
 
 object UserInviteTable : Table<Nothing>("user_invite") {
@@ -184,4 +201,5 @@ object UserInviteTable : Table<Nothing>("user_invite") {
     val status = pgEnum<InviteStatus>("status", "invite_status")
     val createdAt = timestamp("created_at")
     val acceptedAt = timestamp("accepted_at")
+    val updatedAt = timestamp("updated_at")
 }

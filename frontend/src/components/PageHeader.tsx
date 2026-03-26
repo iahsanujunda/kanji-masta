@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 
 interface Props {
   title: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
   backTo?: string;
   right?: ReactNode;
   sx?: object;

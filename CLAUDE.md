@@ -26,8 +26,22 @@ Max header: 100 chars. Always include `Co-Authored-By: Claude Opus 4.6 (1M conte
 - Storage: `supabase.storage.from('photos')` for photo uploads
 - API caching via `@tanstack/react-query` — use `useQuery` for GET endpoints, not manual `useState` + `useEffect` + `apiFetch`
 - Shared components: `PageHeader` (all pages), `FamiliarityDots` (kanji/word lists)
-- Dark theme with indigo `#4338ca` accent. Mobile-first `maxWidth: 480`.
-- No AppBar — pages manage own headers via `PageHeader`
+- Mobile-first `maxWidth: 480`. No AppBar — pages manage own headers via `PageHeader`
+- Brand icon: emerald→indigo gradient square with leaf SVG (favicon, navbar, footer)
+- **Color theme** — use consistently across all pages:
+  - Backgrounds: `#050508` (page bg), `#0a0a0f` (sections), `#0f0f16` (cards), `#1a1a24` (elevated)
+  - Emerald `#10b981` — primary CTA buttons (black text), success states, active streaks
+  - Emerald light `#34d399` — hover states, positive labels, streak text, "Session Complete"
+  - Emerald pale `#6ee7b7` — secondary labels on dark gradients
+  - Indigo `#4338ca` — secondary accents, "Recommended" badges, selected states
+  - Indigo light `#818cf8` — icon tints, readings, tier labels, quiz type indicators
+  - Indigo pale `#a5b4fc` — subtle text accents
+  - Orange `#ff9800` — streak fire icon chip only
+  - Purple `#a78bfa` — collection tree roots zone, ecosystem feature icon
+  - Gradient `linear-gradient(135deg, #065f46, #312e81)` — slot cards (quiz ready/active/complete)
+  - Gradient `linear-gradient(135deg, #34d399, #4338ca)` — brand logo background
+  - Glass cards: `rgba(15,15,22,0.8)` + `backdropFilter: "blur(12px)"` — login/signup forms
+  - Glow effects: `boxShadow: "0 0 30px rgba(16,185,129,0.3)"` on primary CTAs
 
 ### AI Worker (FastAPI + Python)
 - Located at `services/ai-worker/app/`

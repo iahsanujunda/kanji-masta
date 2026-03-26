@@ -48,6 +48,9 @@ export default function Home() {
   });
   const loading = isLoading && !summary;
 
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+
   // Handle navigation state from Capture page
   useEffect(() => {
     const state = location.state as { error?: string; quizGenerating?: boolean } | null;
@@ -90,8 +93,8 @@ export default function Home() {
       }}
     >
       <PageHeader
-        title="Kanji Masta"
-        subtitle="Yokohama, JP"
+        title={greeting}
+        subtitle={loading ? "" : streak > 0 ? `${streak} day streak` : ""}
         right={
           <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
             <Chip
@@ -189,28 +192,28 @@ export default function Home() {
           </Paper>
         ) : hasActiveSlot && slotRemaining > 0 ? (
           /* Active slot with quizzes remaining */
-          <Paper elevation={4} sx={{ bgcolor: "#4338ca", color: "white", borderRadius: 4, p: 3 }}>
+          <Paper elevation={4} sx={{ background: "linear-gradient(135deg, #065f46, #312e81)", color: "white", borderRadius: 4, p: 3 }}>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 3 }}>
               <Box>
-                <Typography variant="body2" sx={{ opacity: 0.8, mb: 0.5 }}>Session Active</Typography>
+                <Typography variant="body2" sx={{ color: "#6ee7b7", mb: 0.5 }}>Session Active</Typography>
                 <Typography variant="h3" fontWeight="bold" component="div">
                   {slotRemaining}{" "}
                   <Typography component="span" variant="h6" sx={{ opacity: 0.7, fontWeight: "normal" }}>remaining</Typography>
                 </Typography>
               </Box>
-              <Chip label={slotTimeLeft} size="small" sx={{ bgcolor: "rgba(30, 27, 75, 0.5)", color: "inherit", fontSize: "0.75rem" }} />
+              <Chip label={slotTimeLeft} size="small" sx={{ bgcolor: "rgba(0,0,0,0.25)", color: "inherit", fontSize: "0.75rem" }} />
             </Box>
             <Button
               fullWidth size="large" variant="contained" endIcon={<ChevronRightIcon />}
               onClick={() => navigate("/quiz")}
-              sx={{ bgcolor: "white", color: "#4338ca", fontWeight: "bold", fontSize: "1.1rem", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "grey.100" } }}
+              sx={{ bgcolor: "#10b981", color: "black", fontWeight: "bold", fontSize: "1.1rem", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "#34d399" } }}
             >
               Continue Session
             </Button>
           </Paper>
         ) : hasActiveSlot && slotRemaining === 0 ? (
           /* Slot complete — show countdown to next session */
-          <Paper elevation={4} sx={{ bgcolor: "#4338ca", color: "white", borderRadius: 4, p: 3 }}>
+          <Paper elevation={4} sx={{ background: "linear-gradient(135deg, #065f46, #312e81)", color: "white", borderRadius: 4, p: 3 }}>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 2 }}>
               <Box>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
@@ -220,7 +223,7 @@ export default function Home() {
                 <Typography variant="h4" fontWeight="bold" component="div">
                   {slotTimeLeft}
                 </Typography>
-                <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                <Typography variant="body2" sx={{ color: "#6ee7b7", opacity: 0.7 }}>
                   until next session
                 </Typography>
               </Box>
@@ -229,17 +232,17 @@ export default function Home() {
               fullWidth variant="contained"
               onClick={() => navigate("/capture")}
               startIcon={<CameraAltIcon />}
-              sx={{ bgcolor: "rgba(255,255,255,0.15)", color: "white", fontWeight: "bold", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "rgba(255,255,255,0.25)" } }}
+              sx={{ bgcolor: "rgba(255,255,255,0.12)", color: "white", fontWeight: "bold", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "rgba(255,255,255,0.2)" } }}
             >
               Capture More Kanji
             </Button>
           </Paper>
         ) : (
           /* No active slot — ready to start */
-          <Paper elevation={4} sx={{ bgcolor: "#4338ca", color: "white", borderRadius: 4, p: 3 }}>
+          <Paper elevation={4} sx={{ background: "linear-gradient(135deg, #065f46, #312e81)", color: "white", borderRadius: 4, p: 3 }}>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 3 }}>
               <Box>
-                <Typography variant="body2" sx={{ opacity: 0.8, mb: 0.5 }}>Ready to quiz</Typography>
+                <Typography variant="body2" sx={{ color: "#6ee7b7", mb: 0.5 }}>Ready to quiz</Typography>
                 <Typography variant="h3" fontWeight="bold" component="div">
                   {slotTotal}{" "}
                   <Typography component="span" variant="h6" sx={{ opacity: 0.7, fontWeight: "normal" }}>quizzes</Typography>
@@ -249,7 +252,7 @@ export default function Home() {
             <Button
               fullWidth size="large" variant="contained" endIcon={<ChevronRightIcon />}
               onClick={() => navigate("/quiz")}
-              sx={{ bgcolor: "white", color: "#4338ca", fontWeight: "bold", fontSize: "1.1rem", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "grey.100" } }}
+              sx={{ bgcolor: "#10b981", color: "black", fontWeight: "bold", fontSize: "1.1rem", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "#34d399" } }}
             >
               Start Session
             </Button>
@@ -263,8 +266,8 @@ export default function Home() {
           sx={{ borderRadius: 4, p: 2.5, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", "&:hover": { bgcolor: "action.hover" } }}
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <Box sx={{ bgcolor: "action.selected", p: 1.5, borderRadius: 3, display: "flex" }}>
-              <MenuBookIcon />
+            <Box sx={{ bgcolor: "rgba(67,56,202,0.15)", p: 1.5, borderRadius: 3, display: "flex" }}>
+              <MenuBookIcon sx={{ color: "#818cf8" }} />
             </Box>
             <Box>
               <Typography fontWeight="bold">Your Kanji</Typography>
@@ -289,8 +292,8 @@ export default function Home() {
           sx={{ borderRadius: 4, p: 2.5, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", "&:hover": { bgcolor: "action.hover" } }}
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <Box sx={{ bgcolor: "action.selected", p: 1.5, borderRadius: 3, display: "flex" }}>
-              <TranslateIcon />
+            <Box sx={{ bgcolor: "rgba(67,56,202,0.15)", p: 1.5, borderRadius: 3, display: "flex" }}>
+              <TranslateIcon sx={{ color: "#818cf8" }} />
             </Box>
             <Box>
               <Typography fontWeight="bold">Dictionary</Typography>

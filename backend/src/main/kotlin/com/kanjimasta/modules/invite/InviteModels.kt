@@ -3,7 +3,7 @@ package com.kanjimasta.modules.invite
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class CreateInviteRequest(val email: String)
+data class CreateInviteRequest(val email: String, val sendEmail: Boolean = false)
 
 @Serializable
 data class InviteResponse(

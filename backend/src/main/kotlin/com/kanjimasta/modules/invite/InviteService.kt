@@ -13,15 +13,16 @@ class InviteService(
     private val settingsRepository: SettingsRepository,
     private val resendClient: ResendClient,
 ) {
-    suspend fun createInvite(email: String, adminUserId: String): InviteResponse {
+    suspend fun createInvite(email: String, adminUserId: String, sendEmail: Boolean = false): InviteResponse {
         val existing = inviteRepository.findByEmail(email)
         if (existing != null) {
+            if (sendEmail) resendClient.sendInvite(email, existing.code)
             return toResponse(existing)
         }
 
         val invite = inviteRepository.insert(email, adminUserId)
-        resendClient.sendInvite(email, invite.code)
-        logger.info("Invite created for email={} code={}", email, invite.code)
+        if (sendEmail) resendClient.sendInvite(email, invite.code)
+        logger.info("Invite created for email={} code={} emailSent={}", email, invite.code, sendEmail)
         return toResponse(invite)
     }
 

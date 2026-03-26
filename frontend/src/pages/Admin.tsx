@@ -3,11 +3,13 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   Tab,
   Tabs,
   TextField,
@@ -250,6 +252,7 @@ function InvitesTab() {
   const [error, setError] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newEmail, setNewEmail] = useState("");
+  const [sendEmail, setSendEmail] = useState(false);
   const [sending, setSending] = useState(false);
 
   const load = useCallback(() => {
@@ -262,7 +265,7 @@ function InvitesTab() {
     if (!newEmail.trim()) return;
     setSending(true);
     try {
-      await apiFetch("/api/admin/invite", { method: "POST", body: JSON.stringify({ email: newEmail.trim() }) });
+      await apiFetch("/api/admin/invite", { method: "POST", body: JSON.stringify({ email: newEmail.trim(), sendEmail }) });
       setNewEmail("");
       setDialogOpen(false);
       load();
@@ -360,6 +363,11 @@ function InvitesTab() {
             onChange={(e) => setNewEmail(e.target.value)}
             sx={{ mt: 1 }}
             onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+          />
+          <FormControlLabel
+            control={<Checkbox checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} sx={{ color: "grey.600", "&.Mui-checked": { color: "#34d399" } }} />}
+            label="Send invite email via Resend"
+            sx={{ mt: 1, color: "grey.400", "& .MuiTypography-root": { fontSize: 13 } }}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>

@@ -28,7 +28,7 @@ fun Route.inviteAdminRoutes(inviteService: InviteService, adminUserId: String) {
                 return@post call.respond(HttpStatusCode.Forbidden, mapOf("error" to "Admin only"))
             }
             val request = call.receive<CreateInviteRequest>()
-            val result = inviteService.createInvite(request.email, user.uid)
+            val result = inviteService.createInvite(request.email, user.uid, request.sendEmail)
             call.respond(result)
         }
 

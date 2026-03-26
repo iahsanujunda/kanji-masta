@@ -322,7 +322,7 @@ export default function Home() {
             fontSize: "1.2rem", fontWeight: "bold", letterSpacing: 1, bgcolor: "grey.100", color: "grey.900", "&:hover": { bgcolor: "grey.300" },
           }}
         >
-          Capture Kanji
+          Capture Japanese
         </Button>
       </Box>
     </Box>

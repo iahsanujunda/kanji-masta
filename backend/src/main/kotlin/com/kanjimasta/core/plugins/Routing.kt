@@ -1,5 +1,7 @@
 package com.kanjimasta.core.plugins
 
+import com.kanjimasta.modules.admin.AdminService
+import com.kanjimasta.modules.admin.adminRoutes
 import com.kanjimasta.modules.invite.InviteService
 import com.kanjimasta.modules.invite.inviteAdminRoutes
 import com.kanjimasta.modules.invite.invitePublicRoutes
@@ -26,6 +28,7 @@ fun Application.configureRouting(
     userService: UserService,
     settingsRepository: SettingsRepository,
     inviteService: InviteService,
+    adminService: AdminService,
     adminUserId: String,
 ) {
     routing {
@@ -44,6 +47,7 @@ fun Application.configureRouting(
             userRoutes(userService)
             settingsRoutes(settingsRepository)
             inviteAdminRoutes(inviteService, adminUserId)
+            adminRoutes(adminService, adminUserId)
         }
     }
 }

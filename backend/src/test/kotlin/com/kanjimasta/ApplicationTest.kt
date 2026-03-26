@@ -21,6 +21,7 @@ import io.ktor.server.response.*
 import io.ktor.server.testing.*
 import org.ktorm.database.Database
 import org.slf4j.LoggerFactory
+import org.testcontainers.containers.PostgreSQLContainer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertContains
@@ -29,30 +30,23 @@ const val TEST_USER_ID = "test-user-integration"
 const val TEST_USER_EMAIL = "test@example.com"
 
 /**
- * Test database connects to local Supabase PostgreSQL.
- * Start with `supabase start` before running tests.
- *
- * Falls back to TESTCONTAINERS if DATABASE_TEST_URL is not set and Supabase is not running.
- * Uses a separate schema per test run to avoid conflicts.
+ * Test database using Testcontainers — spins up a fresh PostgreSQL container.
+ * No external dependencies required (no `supabase start` needed).
  */
 object TestDatabase {
-    private const val DEFAULT_URL = "jdbc:postgresql://127.0.0.1:54322/postgres?user=postgres&password=postgres"
+    private val container = PostgreSQLContainer("postgres:16-alpine")
+        .withDatabaseName("test")
+        .withUsername("test")
+        .withPassword("test")
 
     val db: Database by lazy {
-        val url = System.getenv("DATABASE_TEST_URL") ?: DEFAULT_URL
-        val db = Database.connect(url)
-        // Apply migration if tables don't exist yet
+        container.start()
+        val db = Database.connect(container.jdbcUrl, user = "test", password = "test")
         db.useConnection { conn ->
-            val rs = conn.createStatement().executeQuery(
-                "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'kanji_master')"
-            )
-            rs.next()
-            if (!rs.getBoolean(1)) {
-                val sql = Thread.currentThread().contextClassLoader
-                    .getResource("test-schema.sql")?.readText()
-                    ?: error("test-schema.sql not found on classpath")
-                conn.createStatement().execute(sql)
-            }
+            val sql = Thread.currentThread().contextClassLoader
+                .getResource("test-schema.sql")?.readText()
+                ?: error("test-schema.sql not found on classpath")
+            conn.createStatement().execute(sql)
         }
         db
     }
@@ -85,11 +79,13 @@ fun Application.testModule(db: Database) {
     val resendClient = com.kanjimasta.core.email.ResendClient(httpClient, "")
     val inviteRepository = com.kanjimasta.modules.invite.InviteRepository(db)
     val inviteService = com.kanjimasta.modules.invite.InviteService(inviteRepository, settingsRepository, resendClient)
+    val adminRepository = com.kanjimasta.modules.admin.AdminRepository(db)
+    val adminService = com.kanjimasta.modules.admin.AdminService(adminRepository)
 
     // Seed settings for test user so invite guard doesn't block existing tests
     settingsRepository.upsertSettings(TEST_USER_ID, 5, 6)
 
-    configureRouting(photoService, kanjiService, quizService, userService, settingsRepository, inviteService, TEST_USER_ID)
+    configureRouting(photoService, kanjiService, quizService, userService, settingsRepository, inviteService, adminService, TEST_USER_ID)
 }
 
 fun ApplicationTestBuilder.jsonClient() = createClient {

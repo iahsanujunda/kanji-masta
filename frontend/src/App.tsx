@@ -17,6 +17,7 @@ const AddKanji = lazy(() => import("@/pages/AddKanji"));
 const Onboarding = lazy(() => import("@/pages/Onboarding"));
 const Signup = lazy(() => import("@/pages/Signup"));
 const Landing = lazy(() => import("@/pages/Landing"));
+const Admin = lazy(() => import("@/pages/Admin"));
 
 function Loading() {
   return (
@@ -113,6 +114,14 @@ export default function App() {
           element={
             <ProtectedRoute user={user} isLoading={isLoading}>
               <Onboarding />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute user={user} isLoading={isLoading}>
+              <Admin />
             </ProtectedRoute>
           }
         />

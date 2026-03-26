@@ -3,6 +3,8 @@ package com.kanjimasta
 import com.kanjimasta.core.auth.configureAuth
 import com.kanjimasta.core.db.connectDatabase
 import com.kanjimasta.core.email.ResendClient
+import com.kanjimasta.modules.admin.AdminRepository
+import com.kanjimasta.modules.admin.AdminService
 import com.kanjimasta.core.plugins.configureCors
 import com.kanjimasta.core.plugins.configureObservability
 import com.kanjimasta.core.plugins.configureRouting
@@ -60,6 +62,8 @@ fun Application.module() {
     val resendClient = ResendClient(httpClient, resendApiKey)
     val inviteRepository = InviteRepository(database)
     val inviteService = InviteService(inviteRepository, settingsRepository, resendClient)
+    val adminRepository = AdminRepository(database)
+    val adminService = AdminService(adminRepository)
 
-    configureRouting(photoService, kanjiService, quizService, userService, settingsRepository, inviteService, adminUserId)
+    configureRouting(photoService, kanjiService, quizService, userService, settingsRepository, inviteService, adminService, adminUserId)
 }

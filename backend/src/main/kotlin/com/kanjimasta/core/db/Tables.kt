@@ -167,6 +167,7 @@ object UserSettingsTable : Table<Nothing>("user_settings") {
 
 object UserInviteTable : Table<Nothing>("user_invite") {
     val id = uuid("id").primaryKey()
+    val code = text("code")
     val email = text("email")
     val invitedBy = text("invited_by")
     val status = pgEnum<InviteStatus>("status", "invite_status")

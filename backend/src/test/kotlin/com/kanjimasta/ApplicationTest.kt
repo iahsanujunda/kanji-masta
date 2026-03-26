@@ -82,7 +82,14 @@ fun Application.testModule(db: Database) {
     val quizService = com.kanjimasta.modules.quiz.QuizService(quizRepository)
     val settingsRepository = com.kanjimasta.modules.settings.SettingsRepository(db)
     val userService = com.kanjimasta.modules.user.UserService(com.kanjimasta.modules.user.UserRepository(db), quizRepository)
-    configureRouting(photoService, kanjiService, quizService, userService, settingsRepository)
+    val resendClient = com.kanjimasta.core.email.ResendClient(httpClient, "")
+    val inviteRepository = com.kanjimasta.modules.invite.InviteRepository(db)
+    val inviteService = com.kanjimasta.modules.invite.InviteService(inviteRepository, settingsRepository, resendClient)
+
+    // Seed settings for test user so invite guard doesn't block existing tests
+    settingsRepository.upsertSettings(TEST_USER_ID, 5, 6)
+
+    configureRouting(photoService, kanjiService, quizService, userService, settingsRepository, inviteService, TEST_USER_ID)
 }
 
 fun ApplicationTestBuilder.jsonClient() = createClient {

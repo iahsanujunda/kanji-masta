@@ -1,5 +1,8 @@
 package com.kanjimasta.core.plugins
 
+import com.kanjimasta.modules.invite.InviteService
+import com.kanjimasta.modules.invite.inviteAdminRoutes
+import com.kanjimasta.modules.invite.invitePublicRoutes
 import com.kanjimasta.modules.kanji.KanjiService
 import com.kanjimasta.modules.kanji.kanjiRoutes
 import com.kanjimasta.modules.photo.PhotoService
@@ -22,18 +25,25 @@ fun Application.configureRouting(
     quizService: QuizService,
     userService: UserService,
     settingsRepository: SettingsRepository,
+    inviteService: InviteService,
+    adminUserId: String,
 ) {
     routing {
         get("/health") {
             call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
         }
 
+        invitePublicRoutes(inviteService)
+
         authenticate("supabase") {
+            installInviteGuard(inviteService, settingsRepository)
+
             photoRoutes(photoService)
             kanjiRoutes(kanjiService)
             quizRoutes(quizService)
             userRoutes(userService)
             settingsRoutes(settingsRepository)
+            inviteAdminRoutes(inviteService, adminUserId)
         }
     }
 }

@@ -2,10 +2,13 @@ package com.kanjimasta
 
 import com.kanjimasta.core.auth.configureAuth
 import com.kanjimasta.core.db.connectDatabase
+import com.kanjimasta.core.email.ResendClient
 import com.kanjimasta.core.plugins.configureCors
 import com.kanjimasta.core.plugins.configureObservability
 import com.kanjimasta.core.plugins.configureRouting
 import com.kanjimasta.core.plugins.configureSerialization
+import com.kanjimasta.modules.invite.InviteRepository
+import com.kanjimasta.modules.invite.InviteService
 import com.kanjimasta.modules.kanji.KanjiRepository
 import com.kanjimasta.modules.kanji.KanjiService
 import com.kanjimasta.modules.photo.PhotoRepository
@@ -52,5 +55,11 @@ fun Application.module() {
     val userRepository = com.kanjimasta.modules.user.UserRepository(database)
     val userService = com.kanjimasta.modules.user.UserService(userRepository, quizRepository)
 
-    configureRouting(photoService, kanjiService, quizService, userService, settingsRepository)
+    val resendApiKey = environment.config.propertyOrNull("resend.apiKey")?.getString() ?: ""
+    val adminUserId = environment.config.propertyOrNull("admin.userId")?.getString() ?: ""
+    val resendClient = ResendClient(httpClient, resendApiKey)
+    val inviteRepository = InviteRepository(database)
+    val inviteService = InviteService(inviteRepository, settingsRepository, resendClient)
+
+    configureRouting(photoService, kanjiService, quizService, userService, settingsRepository, inviteService, adminUserId)
 }

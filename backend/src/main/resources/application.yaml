@@ -17,6 +17,12 @@ cors:
 aiWorker:
   baseUrl: "$AI_WORKER_URL:"
 
+resend:
+  apiKey: "$RESEND_API_KEY:"
+
+admin:
+  userId: "$ADMIN_USER_ID:"
+
 claude:
   apiKey: "$CLAUDE_API_KEY:"
 

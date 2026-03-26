@@ -196,6 +196,7 @@ CREATE TABLE user_settings (
 -- Invite-only access
 CREATE TABLE user_invite (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    code        text UNIQUE,
     email       text NOT NULL UNIQUE,
     invited_by  text NOT NULL,
     status      invite_status NOT NULL DEFAULT 'PENDING',

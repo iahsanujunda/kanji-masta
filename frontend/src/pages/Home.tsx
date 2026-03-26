@@ -31,6 +31,7 @@ interface UserSummary {
   slotRemaining: number;
   slotTotal: number;
   slotEndsAt: string | null;
+  onboardingComplete: boolean;
 }
 
 export default function Home() {
@@ -79,7 +80,7 @@ export default function Home() {
   const slotEndDate = slotEndsAt ? new Date(slotEndsAt) : null;
   const hasActiveSlot = slotEndDate != null && slotEndDate > new Date();
   const slotTimeLeft = slotEndDate ? formatTimeLeft(slotEndDate) : "";
-  const hasKanji = kanjiLearning + kanjiFamiliar > 0;
+  const onboardingComplete = summary?.onboardingComplete ?? false;
 
   return (
     <Box
@@ -156,36 +157,36 @@ export default function Home() {
         {/* Quiz slot card */}
         {loading ? (
           <Skeleton variant="rounded" height={160} sx={{ borderRadius: 4 }} />
-        ) : !hasKanji ? (
-          /* No kanji yet — onboarding prompt */
-          <Paper elevation={4} sx={{ bgcolor: "#4338ca", color: "white", borderRadius: 4, p: 3, textAlign: "center" }}>
-            <SpaIcon sx={{ fontSize: 40, opacity: 0.7, mb: 1.5 }} />
+        ) : !onboardingComplete ? (
+          /* Onboarding not complete — prompt to start */
+          <Paper elevation={4} sx={{ background: "linear-gradient(135deg, #065f46, #312e81)", color: "white", borderRadius: 4, p: 3, textAlign: "center" }}>
+            <SpaIcon sx={{ fontSize: 40, color: "#6ee7b7", mb: 1.5 }} />
             <Typography fontWeight="bold" sx={{ mb: 0.5 }}>Plant Your First Seeds</Typography>
-            <Typography variant="body2" sx={{ opacity: 0.7, mb: 2 }}>
+            <Typography variant="body2" sx={{ color: "#6ee7b7", opacity: 0.8, mb: 2 }}>
               Choose kanji you already know and ones you want to learn
             </Typography>
             <Button
               fullWidth
               variant="contained"
               onClick={() => navigate("/onboarding")}
-              sx={{ bgcolor: "white", color: "#4338ca", fontWeight: "bold", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "grey.100" } }}
+              sx={{ bgcolor: "#10b981", color: "black", fontWeight: "bold", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "#34d399" } }}
             >
               Start Learning
             </Button>
           </Paper>
         ) : wordCount === 0 ? (
           /* Kanji selected but quizzes still generating */
-          <Paper elevation={4} sx={{ bgcolor: "#4338ca", color: "white", borderRadius: 4, p: 3, textAlign: "center" }}>
-            <SpaIcon sx={{ fontSize: 40, opacity: 0.7, mb: 1.5 }} />
+          <Paper elevation={4} sx={{ background: "linear-gradient(135deg, #065f46, #312e81)", color: "white", borderRadius: 4, p: 3, textAlign: "center" }}>
+            <SpaIcon sx={{ fontSize: 40, color: "#6ee7b7", mb: 1.5 }} />
             <Typography fontWeight="bold" sx={{ mb: 0.5 }}>Preparing Your Quizzes</Typography>
-            <Typography variant="body2" sx={{ opacity: 0.7, mb: 2 }}>
+            <Typography variant="body2" sx={{ color: "#6ee7b7", opacity: 0.8, mb: 2 }}>
               We're setting up quizzes for your {kanjiLearning + kanjiFamiliar} kanji. This usually takes a moment.
             </Typography>
             <Button
               fullWidth
               variant="contained"
               onClick={() => navigate("/onboarding")}
-              sx={{ bgcolor: "rgba(255,255,255,0.2)", color: "white", fontWeight: "bold", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "rgba(255,255,255,0.3)" } }}
+              sx={{ bgcolor: "rgba(255,255,255,0.12)", color: "white", fontWeight: "bold", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "rgba(255,255,255,0.2)" } }}
             >
               Add More Kanji
             </Button>

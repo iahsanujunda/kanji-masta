@@ -16,6 +16,7 @@ const emptySummary = {
   slotRemaining: 5,
   slotTotal: 5,
   slotEndsAt: null,
+  onboardingComplete: false,
 };
 
 const activeSummary = {
@@ -26,6 +27,7 @@ const activeSummary = {
   slotRemaining: 3,
   slotTotal: 5,
   slotEndsAt: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
+  onboardingComplete: true,
 };
 
 describe("Home", () => {

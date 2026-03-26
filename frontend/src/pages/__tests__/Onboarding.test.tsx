@@ -35,14 +35,32 @@ const mockBatch = {
   hasMore: true,
 };
 
+async function startDeck(user: ReturnType<typeof userEvent.setup>) {
+  // Welcome screen → click Get Started
+  await waitFor(() => {
+    expect(screen.getByText("Welcome to Shuukan")).toBeInTheDocument();
+  });
+  await user.click(screen.getByText("Get Started"));
+}
+
 describe("Onboarding", () => {
   beforeEach(() => {
     mockApiFetch.mockReset();
   });
 
+  it("shows welcome screen first", () => {
+    renderWithProviders(<Onboarding />);
+    expect(screen.getByText("Welcome to Shuukan")).toBeInTheDocument();
+    expect(screen.getByText("Get Started")).toBeInTheDocument();
+    expect(screen.getByText("Skip for now")).toBeInTheDocument();
+  });
+
   it("renders kanji card with character and meaning", async () => {
     mockApiFetch.mockResolvedValue(mockBatch);
     renderWithProviders(<Onboarding />);
+    const user = userEvent.setup();
+
+    await startDeck(user);
 
     await waitFor(() => {
       expect(screen.getByText("日")).toBeInTheDocument();
@@ -53,6 +71,9 @@ describe("Onboarding", () => {
   it("shows readings", async () => {
     mockApiFetch.mockResolvedValue(mockBatch);
     renderWithProviders(<Onboarding />);
+    const user = userEvent.setup();
+
+    await startDeck(user);
 
     await waitFor(() => {
       expect(screen.getByText("ニチ")).toBeInTheDocument();
@@ -63,6 +84,9 @@ describe("Onboarding", () => {
   it("shows 'seen as' example when available", async () => {
     mockApiFetch.mockResolvedValue(mockBatch);
     renderWithProviders(<Onboarding />);
+    const user = userEvent.setup();
+
+    await startDeck(user);
 
     await waitFor(() => {
       expect(screen.getByText("日本")).toBeInTheDocument();
@@ -75,6 +99,7 @@ describe("Onboarding", () => {
     renderWithProviders(<Onboarding />);
     const user = userEvent.setup();
 
+    await startDeck(user);
     await waitFor(() => {
       expect(screen.getByText("日")).toBeInTheDocument();
     });
@@ -91,6 +116,7 @@ describe("Onboarding", () => {
     renderWithProviders(<Onboarding />);
     const user = userEvent.setup();
 
+    await startDeck(user);
     await waitFor(() => {
       expect(screen.getByText("日")).toBeInTheDocument();
     });
@@ -106,6 +132,8 @@ describe("Onboarding", () => {
     mockApiFetch.mockResolvedValue(mockBatch);
     renderWithProviders(<Onboarding />);
     const user = userEvent.setup();
+
+    await startDeck(user);
 
     // Go through both cards
     await waitFor(() => screen.getByText("日"));

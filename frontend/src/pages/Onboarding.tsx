@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Box,
@@ -7,6 +7,7 @@ import {
   Paper,
   Typography,
 } from "@mui/material";
+import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import CheckIcon from "@mui/icons-material/Check";
 import ParkIcon from "@mui/icons-material/Park";
 import SpaIcon from "@mui/icons-material/Spa";
@@ -34,14 +35,14 @@ interface Selection {
   status: "learning" | "familiar";
 }
 
-type View = "loading" | "deck" | "batch-done" | "finished";
+type View = "welcome" | "loading" | "deck" | "batch-done" | "photo-prompt" | "finished";
 
 export default function Onboarding() {
   const navigate = useNavigate();
   const [kanji, setKanji] = useState<OnboardingKanji[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selections, setSelections] = useState<Selection[]>([]);
-  const [view, setView] = useState<View>("loading");
+  const [view, setView] = useState<View>("welcome");
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [animating, setAnimating] = useState(false);
@@ -69,7 +70,9 @@ export default function Onboarding() {
     }
   }, [navigate]);
 
-  useEffect(() => { loadBatch(0); }, [loadBatch]);
+  const startDeck = useCallback(() => {
+    loadBatch(0);
+  }, [loadBatch]);
 
   const handleDecision = useCallback((status: "learning" | "familiar") => {
     if (animating) return;
@@ -98,6 +101,14 @@ export default function Onboarding() {
     loadBatch(newOffset);
   }, [offset, loadBatch]);
 
+  const completeOnboarding = useCallback(async () => {
+    try {
+      await apiFetch("/api/onboarding/complete", { method: "POST" });
+    } catch {
+      // Continue anyway
+    }
+  }, []);
+
   const handleFinish = useCallback(async () => {
     setView("loading");
     try {
@@ -108,7 +119,7 @@ export default function Onboarding() {
     } catch {
       // Continue anyway
     }
-    setView("finished");
+    setView("photo-prompt");
   }, [selections]);
 
   const handleRemoveSelection = useCallback((kanjiMasterId: string) => {
@@ -117,6 +128,88 @@ export default function Onboarding() {
 
   const learningCount = selections.filter((s) => s.status === "learning").length;
   const familiarCount = selections.filter((s) => s.status === "familiar").length;
+
+  // --- Welcome ---
+  if (view === "welcome") {
+    return (
+      <Box sx={{ minHeight: "100vh", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", p: 3, textAlign: "center" }}>
+        <Box sx={{ width: 80, height: 80, borderRadius: 3, background: "linear-gradient(135deg, #34d399, #4338ca)", display: "flex", alignItems: "center", justifyContent: "center", mb: 4 }}>
+          <SpaIcon sx={{ fontSize: 40, color: "white" }} />
+        </Box>
+        <Typography variant="h4" fontWeight="bold" sx={{ mb: 1 }}>
+          Welcome to Shuukan
+        </Typography>
+        <Typography color="text.secondary" sx={{ mb: 5, maxWidth: 320 }}>
+          Let's set up your profile. Mark kanji you already know so we can personalize your learning.
+        </Typography>
+        <Button
+          fullWidth
+          variant="contained"
+          onClick={startDeck}
+          sx={{
+            bgcolor: "#10b981", color: "black", fontWeight: 700, py: 2, borderRadius: "9999px",
+            fontSize: "1.1rem", textTransform: "none", maxWidth: 320,
+            boxShadow: "0 0 20px rgba(16,185,129,0.2)",
+            "&:hover": { bgcolor: "#34d399" },
+          }}
+        >
+          Get Started
+        </Button>
+        <Button
+          onClick={async () => {
+            await completeOnboarding();
+            navigate("/home");
+          }}
+          sx={{ mt: 2, color: "grey.500", textTransform: "none", "&:hover": { color: "grey.300" } }}
+        >
+          Skip for now
+        </Button>
+      </Box>
+    );
+  }
+
+  // --- Photo prompt ---
+  if (view === "photo-prompt") {
+    return (
+      <Box sx={{ minHeight: "100vh", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", p: 3, textAlign: "center" }}>
+        <Box sx={{ width: 80, height: 80, bgcolor: "rgba(99,102,241,0.15)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", mb: 3 }}>
+          <CameraAltIcon sx={{ fontSize: 40, color: "#818cf8" }} />
+        </Box>
+        <Typography variant="h5" fontWeight="bold" sx={{ mb: 1 }}>
+          Take your first photo
+        </Typography>
+        <Typography color="text.secondary" sx={{ mb: 5, maxWidth: 320 }}>
+          Snap any sign, menu, or notice around you. We'll extract the kanji and create your first quizzes.
+        </Typography>
+        <Button
+          fullWidth
+          variant="contained"
+          startIcon={<CameraAltIcon />}
+          onClick={async () => {
+            await completeOnboarding();
+            navigate("/capture");
+          }}
+          sx={{
+            bgcolor: "#10b981", color: "black", fontWeight: 700, py: 2, borderRadius: "9999px",
+            fontSize: "1.1rem", textTransform: "none", maxWidth: 320,
+            boxShadow: "0 0 20px rgba(16,185,129,0.2)",
+            "&:hover": { bgcolor: "#34d399" },
+          }}
+        >
+          Open Camera
+        </Button>
+        <Button
+          onClick={async () => {
+            await completeOnboarding();
+            navigate("/home");
+          }}
+          sx={{ mt: 2, color: "grey.500", textTransform: "none", "&:hover": { color: "grey.300" } }}
+        >
+          Skip for now
+        </Button>
+      </Box>
+    );
+  }
 
   // --- Loading ---
   if (view === "loading") {
@@ -262,7 +355,10 @@ export default function Onboarding() {
             : "Capture a photo to start learning kanji."}
         </Typography>
         <Button
-          onClick={() => navigate("/home")}
+          onClick={async () => {
+            await completeOnboarding();
+            navigate("/home");
+          }}
           sx={{ bgcolor: "grey.800", color: "white", fontWeight: "bold", py: 1.5, px: 4, borderRadius: 3, "&:hover": { bgcolor: "grey.700" } }}
         >
           Go to Home

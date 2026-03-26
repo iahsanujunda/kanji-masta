@@ -14,6 +14,8 @@ import {
   Typography,
 } from "@mui/material";
 import LogoutIcon from "@mui/icons-material/Logout";
+import MenuBookIcon from "@mui/icons-material/MenuBook";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { apiFetch } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
@@ -24,6 +26,7 @@ interface Settings {
 }
 
 export default function Settings() {
+  const navigate = useNavigate();
   const [settings, setSettings] = useState<Settings>({ quizAllowancePerSlot: 5, slotDurationHours: 6 });
   const [loaded, setLoaded] = useState(false);
 
@@ -110,6 +113,15 @@ export default function Settings() {
         {/* Account */}
         <Paper variant="outlined" sx={{ borderRadius: 3, overflow: "hidden" }}>
           <List disablePadding>
+            <ListItem disablePadding>
+              <ListItemButton onClick={() => navigate("/onboarding")}>
+                <ListItemIcon>
+                  <MenuBookIcon />
+                </ListItemIcon>
+                <ListItemText primary="Re-seed known kanji" secondary="Add more kanji you already know" />
+              </ListItemButton>
+            </ListItem>
+            <Divider />
             <ListItem disablePadding>
               <ListItemButton onClick={handleLogout}>
                 <ListItemIcon>

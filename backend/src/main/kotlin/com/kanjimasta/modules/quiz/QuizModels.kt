@@ -23,6 +23,7 @@ data class QuizItem(
     val explanation: String? = null,
     val wordFamiliarity: Int,
     val currentTier: String,
+    val kanjiId: String,
 )
 
 @Serializable

@@ -29,6 +29,23 @@ private val QUIZ_TYPES = listOf(
     "MEANING_RECALL", "READING_RECOGNITION", "REVERSE_READING", "BOLD_WORD_MEANING", "FILL_IN_THE_BLANK"
 )
 
+internal fun selectDiverseQuizzes(
+    quizzes: List<QuizItem>,
+    limit: Int,
+    maxPerKanji: Int = 2
+): List<QuizItem> {
+    val countPerKanji = mutableMapOf<String, Int>()
+    val result = mutableListOf<QuizItem>()
+    for (quiz in quizzes) {
+        if (result.size >= limit) break
+        val count = countPerKanji.getOrDefault(quiz.kanjiId, 0)
+        if (count >= maxPerKanji) continue
+        countPerKanji[quiz.kanjiId] = count + 1
+        result.add(quiz)
+    }
+    return result
+}
+
 class QuizService(private val quizRepository: QuizRepository) {
 
     fun getSlot(userId: String): SlotResponse {
@@ -38,6 +55,7 @@ class QuizService(private val quizRepository: QuizRepository) {
         val activeSlot = quizRepository.getActiveSlot(userId)
         var slotEndsAt: String? = null
         var remaining = allowance
+        val fetchLimit = remaining * 2
 
         if (activeSlot != null && activeSlot.slotEnd.isAfter(now)) {
             remaining = (allowance - activeSlot.completed).coerceAtLeast(0)
@@ -48,19 +66,19 @@ class QuizService(private val quizRepository: QuizRepository) {
             return SlotResponse(quizzes = emptyList(), remaining = 0, slotEndsAt = slotEndsAt)
         }
 
-        val overdueLimit = (allowance * 0.6).toInt().coerceAtLeast(1)
-        val newLimit = (allowance * 0.2).toInt().coerceAtLeast(1)
+        val overdueLimit = (fetchLimit * 0.6).toInt().coerceAtLeast(1)
+        val newLimit = (fetchLimit * 0.2).toInt().coerceAtLeast(1)
 
         val overdueWords = quizRepository.getOverdueWords(userId, overdueLimit)
         val newWords = quizRepository.getNewWords(userId, newLimit)
-        val resurfacedWords = quizRepository.getLearningWords(userId, allowance)
+        val resurfacedWords = quizRepository.getLearningWords(userId, fetchLimit)
 
         val seenIds = mutableSetOf<String>()
         val selectedWords = mutableListOf<UserWordRow>()
 
         fun addWords(words: List<UserWordRow>, limit: Int) {
             for (w in words) {
-                if (selectedWords.size >= remaining) break
+                if (selectedWords.size >= fetchLimit) break
                 if (w.id in seenIds) continue
                 seenIds.add(w.id)
                 selectedWords.add(w)
@@ -70,7 +88,7 @@ class QuizService(private val quizRepository: QuizRepository) {
 
         addWords(overdueWords, overdueLimit)
         addWords(newWords, newLimit + selectedWords.size)
-        addWords(resurfacedWords, remaining)
+        addWords(resurfacedWords, fetchLimit)
 
         val quizzes = mutableListOf<QuizItem>()
         for (word in selectedWords) {
@@ -113,11 +131,14 @@ class QuizService(private val quizRepository: QuizRepository) {
                 explanation = quiz.explanation,
                 wordFamiliarity = word.familiarity,
                 currentTier = word.currentTier,
+                kanjiId = quiz.kanjiId,
             ))
         }
 
-        logger.info("Slot for user={}: {} quizzes selected", userId, quizzes.size)
-        return SlotResponse(quizzes = quizzes, remaining = quizzes.size, slotEndsAt = slotEndsAt)
+        val diverseQuizzes = selectDiverseQuizzes(quizzes, limit = remaining)
+
+        logger.info("Slot for user={}: {} quizzes selected", userId, diverseQuizzes.size)
+        return SlotResponse(quizzes = diverseQuizzes, remaining = diverseQuizzes.size, slotEndsAt = slotEndsAt)
     }
 
     fun submitResult(userId: String, request: SubmitResultRequest): ResultResponse {

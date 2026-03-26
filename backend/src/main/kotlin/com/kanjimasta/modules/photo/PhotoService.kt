@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
+import org.slf4j.MDC
 
 private val logger = LoggerFactory.getLogger("com.kanjimasta.modules.photo.PhotoService")
 
@@ -33,8 +34,8 @@ class PhotoService(
                 val idToken = getIdentityToken(httpClient, aiWorkerUrl)
                 val response = httpClient.post(url) {
                     contentType(ContentType.Application.Json)
-                    if (idToken != null) header("Authorization", "Bearer $idToken")
-                    header("X-Call-Id", org.slf4j.MDC.get("callId") ?: "no-call")
+                    idToken?.let { header("Authorization", "Bearer $it") }
+                    header("X-Call-Id", MDC.get("callId") ?: "no-call")
                     header("X-User-Id", userId)
                     setBody(buildJsonObject {
                         put("imageUrl", imageUrl)
@@ -65,24 +66,26 @@ class PhotoService(
             val parsed = Json.parseToJsonElement(rawResponse).jsonArray
             parsed.map { element ->
                 val obj = element.jsonObject
-                EnrichedKanji(
-                    kanjiMasterId = obj["kanjiMasterId"]?.jsonPrimitive?.contentOrNull,
-                    character = obj["character"]?.jsonPrimitive?.content ?: "",
-                    recommended = obj["recommended"]?.jsonPrimitive?.booleanOrNull ?: false,
-                    whyUseful = obj["whyUseful"]?.jsonPrimitive?.content ?: "",
-                    onyomi = obj["onyomi"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
-                    kunyomi = obj["kunyomi"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
-                    meanings = obj["meanings"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
-                    frequency = obj["frequency"]?.jsonPrimitive?.intOrNull,
-                    exampleWords = obj["exampleWords"]?.jsonArray?.map { wordEl ->
-                        val w = wordEl.jsonObject
-                        ExampleWord(
-                            word = w["word"]?.jsonPrimitive?.content ?: "",
-                            reading = w["reading"]?.jsonPrimitive?.content ?: "",
-                            meaning = w["meaning"]?.jsonPrimitive?.content ?: "",
-                        )
-                    } ?: emptyList(),
-                )
+                with(obj) {
+                    EnrichedKanji(
+                        kanjiMasterId = get("kanjiMasterId")?.jsonPrimitive?.contentOrNull,
+                        character = get("character")?.jsonPrimitive?.content ?: "",
+                        recommended = get("recommended")?.jsonPrimitive?.booleanOrNull ?: false,
+                        whyUseful = get("whyUseful")?.jsonPrimitive?.content ?: "",
+                        onyomi = get("onyomi")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
+                        kunyomi = get("kunyomi")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
+                        meanings = get("meanings")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
+                        frequency = get("frequency")?.jsonPrimitive?.intOrNull,
+                        exampleWords = get("exampleWords")?.jsonArray?.map { wordEl ->
+                            val w = wordEl.jsonObject
+                            ExampleWord(
+                                word = w["word"]?.jsonPrimitive?.content ?: "",
+                                reading = w["reading"]?.jsonPrimitive?.content ?: "",
+                                meaning = w["meaning"]?.jsonPrimitive?.content ?: ""
+                            )
+                        } ?: emptyList()
+                    )
+                }
             }
         } catch (e: Exception) {
             logger.error("Failed to parse session={} response: {}", sessionId, e.message)

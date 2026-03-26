@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from "react";
+import { Link } from "react-router-dom";
 import { Alert, Box, Button, TextField, Typography } from "@mui/material";
 import { supabase } from "@/lib/supabase";
 
@@ -81,6 +82,12 @@ export default function Login() {
         >
           {loading ? "Signing in..." : "Sign In"}
         </Button>
+        <Typography variant="body2" sx={{ mt: 2, textAlign: "center", color: "rgba(255,255,255,0.7)" }}>
+          Have an invite?{" "}
+          <Box component={Link} to="/signup" sx={{ color: "white" }}>
+            Sign up
+          </Box>
+        </Typography>
       </Box>
     </Box>
   );

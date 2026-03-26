@@ -19,6 +19,11 @@ export async function apiFetch<T>(
   });
 
   if (!response.ok) {
+    if (response.status === 403) {
+      await supabase.auth.signOut();
+      window.location.href = "/login";
+      throw new Error("Access denied. Your invite may be invalid or revoked.");
+    }
     throw new Error(`API error: ${response.status}`);
   }
 

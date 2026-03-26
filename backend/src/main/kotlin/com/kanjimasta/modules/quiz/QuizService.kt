@@ -35,15 +35,16 @@ internal fun selectDiverseQuizzes(
     maxPerKanji: Int = 2
 ): List<QuizItem> {
     val countPerKanji = mutableMapOf<String, Int>()
-    val result = mutableListOf<QuizItem>()
-    for (quiz in quizzes) {
-        if (result.size >= limit) break
-        val count = countPerKanji.getOrDefault(quiz.kanjiId, 0)
-        if (count >= maxPerKanji) continue
-        countPerKanji[quiz.kanjiId] = count + 1
-        result.add(quiz)
-    }
-    return result
+
+    return quizzes
+        .filter { quiz ->
+            val count = countPerKanji.getOrDefault(quiz.kanjiId, 0)
+            if (count < maxPerKanji) {
+                countPerKanji[quiz.kanjiId] = count + 1
+                true
+            } else false
+        }
+        .take(limit)
 }
 
 class QuizService(private val quizRepository: QuizRepository) {
@@ -53,14 +54,14 @@ class QuizService(private val quizRepository: QuizRepository) {
         val now = Instant.now()
 
         val activeSlot = quizRepository.getActiveSlot(userId)
-        var slotEndsAt: String? = null
-        var remaining = allowance
-        val fetchLimit = remaining * 2
+            ?.takeIf { it.slotEnd.isAfter(now) }
 
-        if (activeSlot != null && activeSlot.slotEnd.isAfter(now)) {
-            remaining = (allowance - activeSlot.completed).coerceAtLeast(0)
-            slotEndsAt = activeSlot.slotEnd.toString()
-        }
+        val remaining = activeSlot?.let {
+            (allowance - it.completed).coerceAtLeast(0)
+        } ?: allowance
+        val slotEndsAt = activeSlot?.slotEnd?.toString()
+
+        val fetchLimit = remaining * 2
 
         if (remaining == 0) {
             return SlotResponse(quizzes = emptyList(), remaining = 0, slotEndsAt = slotEndsAt)
@@ -73,66 +74,50 @@ class QuizService(private val quizRepository: QuizRepository) {
         val newWords = quizRepository.getNewWords(userId, newLimit)
         val resurfacedWords = quizRepository.getLearningWords(userId, fetchLimit)
 
-        val seenIds = mutableSetOf<String>()
-        val selectedWords = mutableListOf<UserWordRow>()
+        val selectedWords = (overdueWords.take(overdueLimit) +
+                newWords.take(newLimit) +
+                resurfacedWords)
+            .distinctBy { it.id }
+            .take(fetchLimit)
 
-        fun addWords(words: List<UserWordRow>, limit: Int) {
-            for (w in words) {
-                if (selectedWords.size >= fetchLimit) break
-                if (w.id in seenIds) continue
-                seenIds.add(w.id)
-                selectedWords.add(w)
-                if (selectedWords.size >= limit) break
-            }
-        }
-
-        addWords(overdueWords, overdueLimit)
-        addWords(newWords, newLimit + selectedWords.size)
-        addWords(resurfacedWords, fetchLimit)
-
-        val quizzes = mutableListOf<QuizItem>()
-        for (word in selectedWords) {
+        val quizzes = selectedWords.mapNotNull { word ->
             val quizType = pickQuizType(word.familiarity)
 
+            // Use 'run' to group the quiz fetching logic
             val quiz = quizRepository.getQuizForWordMaster(word.wordMasterId, quizType)
                 ?: quizRepository.getAnyQuizForWordMaster(word.wordMasterId)
-            if (quiz == null) {
-                logger.debug("No quiz found for user={} word='{}' type={}", userId, word.word, quizType)
-                continue
+                ?: return@mapNotNull null // Equivalent to 'continue'
+
+            // Fetch distractors
+            val storedDistractors = quizRepository.getUnservedDistractor(quiz.id)?.distractors
+                ?: quizRepository.getLatestDistractor(quiz.id)?.distractors
+                ?: emptyList()
+
+            with(quiz) {
+                QuizItem(
+                    id = id,
+                    quizType = quizType,
+                    word = word.word,
+                    wordReading = word.reading,
+                    prompt = prompt,
+                    target = target,
+                    furigana = furigana,
+                    answer = answer,
+                    options = if (word.familiarity >= 5) emptyList() else {
+                        (storedDistractors + getRandomCandidates(quizType, quiz.answer, userId))
+                            .filter { it != quiz.answer }
+                            .distinct()
+                            .shuffled()
+                            .take(3)
+                            .plus(quiz.answer)
+                            .shuffled()
+                    },
+                    explanation = explanation,
+                    wordFamiliarity = word.familiarity,
+                    currentTier = word.currentTier,
+                    kanjiId = kanjiId,
+                )
             }
-
-            val actualType = quiz.quizType
-            if (actualType != quizType) {
-                logger.warn("Wanted {} but got {} for word='{}' (fallback)", quizType, actualType, word.word)
-            }
-
-            val distractor = quizRepository.getUnservedDistractor(quiz.id)
-                ?: quizRepository.getLatestDistractor(quiz.id)
-            val storedDistractors = distractor?.distractors ?: emptyList()
-
-            val randomCandidates = getRandomCandidates(quizType, quiz.answer, userId)
-            val pool = (storedDistractors + randomCandidates)
-                .filter { it != quiz.answer }
-                .distinct()
-                .shuffled()
-                .take(3)
-            val options = (pool + quiz.answer).shuffled()
-
-            quizzes.add(QuizItem(
-                id = quiz.id,
-                quizType = quiz.quizType,
-                word = word.word,
-                wordReading = word.reading,
-                prompt = quiz.prompt,
-                target = quiz.target,
-                furigana = quiz.furigana,
-                answer = quiz.answer,
-                options = if (word.familiarity >= 5) emptyList() else options,
-                explanation = quiz.explanation,
-                wordFamiliarity = word.familiarity,
-                currentTier = word.currentTier,
-                kanjiId = quiz.kanjiId,
-            ))
         }
 
         val diverseQuizzes = selectDiverseQuizzes(quizzes, limit = remaining)

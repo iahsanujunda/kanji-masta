@@ -194,6 +194,19 @@ CREATE TABLE user_settings (
     updated_at              timestamptz NOT NULL DEFAULT now()
 );
 
+-- Dedicated cost tracking
+CREATE TABLE user_cost (
+    id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id           text NOT NULL,
+    operation_type    text NOT NULL,
+    operation_id      uuid,
+    cost_microdollars bigint NOT NULL,
+    created_at        timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_user_cost_user_id ON user_cost(user_id);
+CREATE INDEX idx_user_cost_created_at ON user_cost(created_at);
+
 -- Invite-only access
 CREATE TABLE user_invite (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),

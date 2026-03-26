@@ -97,7 +97,7 @@ async def analyze_photo(body: AnalyzePhotoRequest, request: Request):
         })
 
     enriched_json = json.dumps(enriched, ensure_ascii=False)
-    db.update_photo_session(body.sessionId, enriched_json, cost)
+    db.update_photo_session(body.sessionId, enriched_json, cost, user_id=body.userId or "")
 
     elapsed = time.time() - start
     ctx.log_info("analyze_photo: session=%s done, %d kanji enriched in %.1fs", body.sessionId, len(enriched), elapsed)
@@ -124,6 +124,9 @@ def _run_quiz_generation(ctx: TraceContext):
         word_data = job.get("wordMaster") or {}
         word_text = word_data.get("word", "(no word)")
 
+        user_id = job.get("userId", "")
+        op_type = "QUIZ_REGEN" if job_type == "REGEN" else "QUIZ_GENERATION"
+
         ctx.log_info("generate_quizzes: job=%s type=%s kanji=%s word=%s", job_id[:8], job_type, character, word_text)
         db.update_job_status(job_id, "PROCESSING")
 
@@ -134,10 +137,10 @@ def _run_quiz_generation(ctx: TraceContext):
                 cost, errors = _process_initial_job(client, job, ctx)
 
             if errors == 0:
-                db.update_job_status(job_id, "DONE", cost=cost)
+                db.update_job_status(job_id, "DONE", cost=cost, user_id=user_id, operation_type=op_type)
                 ctx.log_info("generate_quizzes: job=%s done, cost=$%.4f", job_id[:8], cost / 1_000_000)
             else:
-                db.update_job_status(job_id, "FAILED", cost=cost, increment_attempts=True)
+                db.update_job_status(job_id, "FAILED", cost=cost, increment_attempts=True, user_id=user_id, operation_type=op_type)
                 ctx.log_error("generate_quizzes: job=%s had %d insert errors", job_id[:8], errors)
 
         except Exception as e:

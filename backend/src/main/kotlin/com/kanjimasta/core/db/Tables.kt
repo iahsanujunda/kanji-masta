@@ -166,6 +166,15 @@ object UserSettingsTable : Table<Nothing>("user_settings") {
     val updatedAt = timestamp("updated_at")
 }
 
+object UserCostTable : Table<Nothing>("user_cost") {
+    val id = uuid("id").primaryKey()
+    val userId = text("user_id")
+    val operationType = text("operation_type")
+    val operationId = uuid("operation_id")
+    val costMicrodollars = long("cost_microdollars")
+    val createdAt = timestamp("created_at")
+}
+
 object UserInviteTable : Table<Nothing>("user_invite") {
     val id = uuid("id").primaryKey()
     val code = text("code")

@@ -76,13 +76,24 @@ def lookup_kanji(characters: list[str]) -> dict[str, dict]:
             return {row["character"]: {**row, "id": str(row["id"])} for row in rows}
 
 
-def update_photo_session(session_id: str, raw_response: str, cost_microdollars: int):
+def record_user_cost(cur, user_id: str, operation_type: str, operation_id: str, cost_microdollars: int):
+    """Insert a cost record into user_cost table. Must be called within a transaction."""
+    if cost_microdollars <= 0 or not user_id:
+        return
+    cur.execute(
+        "INSERT INTO user_cost (user_id, operation_type, operation_id, cost_microdollars) VALUES (%s, %s, %s, %s)",
+        (user_id, operation_type, operation_id, cost_microdollars),
+    )
+
+
+def update_photo_session(session_id: str, raw_response: str, cost_microdollars: int, user_id: str = ""):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE photo_session SET raw_ai_response = %s, cost_microdollars = %s WHERE id = %s",
                 (raw_response, cost_microdollars, session_id),
             )
+            record_user_cost(cur, user_id, "PHOTO_ANALYSIS", session_id, cost_microdollars)
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +153,7 @@ def _map_job_row(row: dict) -> dict:
     }
 
 
-def update_job_status(job_id: str, status: str, cost: int = 0, increment_attempts: bool = False):
+def update_job_status(job_id: str, status: str, cost: int = 0, increment_attempts: bool = False, user_id: str = "", operation_type: str = "QUIZ_GENERATION"):
     with get_conn() as conn:
         with conn.cursor() as cur:
             if increment_attempts:
@@ -164,6 +175,7 @@ def update_job_status(job_id: str, status: str, cost: int = 0, increment_attempt
                     """,
                     (status, cost if cost > 0 else None, job_id),
                 )
+            record_user_cost(cur, user_id, operation_type, job_id, cost)
 
 
 def insert_quiz_and_distractor(kanji_id: str, word_master_id: str, quiz: dict) -> bool:

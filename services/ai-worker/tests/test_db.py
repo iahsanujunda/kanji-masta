@@ -45,13 +45,22 @@ def test_update_photo_session(client, db_conn):
             "INSERT INTO photo_session (id, user_id, image_url) VALUES (%s, 'test-user', 'https://example.com/img.jpg')",
             (session_id,),
         )
-    db.update_photo_session(session_id, '{"test": true}', 12345)
+    db.update_photo_session(session_id, '{"test": true}', 12345, user_id="test-user")
 
     with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute("SELECT raw_ai_response, cost_microdollars FROM photo_session WHERE id = %s", (session_id,))
         row = cur.fetchone()
     assert row["raw_ai_response"] == '{"test": true}'
     assert row["cost_microdollars"] == 12345
+
+    # Verify user_cost record was also created
+    with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("SELECT * FROM user_cost WHERE operation_id = %s", (session_id,))
+        cost_row = cur.fetchone()
+    assert cost_row is not None
+    assert cost_row["user_id"] == "test-user"
+    assert cost_row["operation_type"] == "PHOTO_ANALYSIS"
+    assert cost_row["cost_microdollars"] == 12345
 
 
 def test_get_pending_jobs_empty(client):
@@ -122,3 +131,84 @@ def test_find_or_create_word_master(client, db_conn, seed_kanji):
 
 def test_has_global_quizzes_false(client):
     assert db.has_global_quizzes(str(uuid.uuid4())) is False
+
+
+# --- user_cost tests ---
+
+
+def test_record_user_cost_inserts_row(client, db_conn):
+    op_id = str(uuid.uuid4())
+    with db_conn.cursor() as cur:
+        db.record_user_cost(cur, "cost-test-user", "PHOTO_ANALYSIS", op_id, 5000)
+    with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("SELECT * FROM user_cost WHERE operation_id = %s", (op_id,))
+        row = cur.fetchone()
+    assert row is not None
+    assert row["user_id"] == "cost-test-user"
+    assert row["operation_type"] == "PHOTO_ANALYSIS"
+    assert row["cost_microdollars"] == 5000
+
+
+def test_record_user_cost_skips_zero_cost(client, db_conn):
+    op_id = str(uuid.uuid4())
+    with db_conn.cursor() as cur:
+        db.record_user_cost(cur, "cost-test-user", "PHOTO_ANALYSIS", op_id, 0)
+    with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("SELECT * FROM user_cost WHERE operation_id = %s", (op_id,))
+        row = cur.fetchone()
+    assert row is None
+
+
+def test_record_user_cost_skips_empty_user(client, db_conn):
+    op_id = str(uuid.uuid4())
+    with db_conn.cursor() as cur:
+        db.record_user_cost(cur, "", "PHOTO_ANALYSIS", op_id, 5000)
+    with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("SELECT * FROM user_cost WHERE operation_id = %s", (op_id,))
+        row = cur.fetchone()
+    assert row is None
+
+
+def test_update_job_status_records_cost(client, db_conn, seed_kanji):
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT id FROM kanji_master WHERE character = '電'")
+        kanji_id = cur.fetchone()[0]
+        job_id = str(uuid.uuid4())
+        cur.execute(
+            "INSERT INTO quiz_generation_job (id, user_id, kanji_id, status) VALUES (%s, 'cost-test-user', %s, 'PENDING')",
+            (job_id, kanji_id),
+        )
+    db.update_job_status(job_id, "DONE", cost=8000, user_id="cost-test-user", operation_type="QUIZ_GENERATION")
+
+    with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("SELECT * FROM user_cost WHERE operation_id = %s", (job_id,))
+        cost_row = cur.fetchone()
+    assert cost_row is not None
+    assert cost_row["user_id"] == "cost-test-user"
+    assert cost_row["operation_type"] == "QUIZ_GENERATION"
+    assert cost_row["cost_microdollars"] == 8000
+
+    # Also verify the job itself was updated
+    with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("SELECT status, cost_microdollars FROM quiz_generation_job WHERE id = %s", (job_id,))
+        job_row = cur.fetchone()
+    assert job_row["status"] == "DONE"
+    assert job_row["cost_microdollars"] == 8000
+
+
+def test_update_job_status_no_cost_no_user_cost_row(client, db_conn, seed_kanji):
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT id FROM kanji_master WHERE character = '電'")
+        kanji_id = cur.fetchone()[0]
+        job_id = str(uuid.uuid4())
+        cur.execute(
+            "INSERT INTO quiz_generation_job (id, user_id, kanji_id, status) VALUES (%s, 'cost-test-user', %s, 'PENDING')",
+            (job_id, kanji_id),
+        )
+    # No cost, no user_id → should not create user_cost row
+    db.update_job_status(job_id, "FAILED", increment_attempts=True)
+
+    with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("SELECT * FROM user_cost WHERE operation_id = %s", (job_id,))
+        cost_row = cur.fetchone()
+    assert cost_row is None

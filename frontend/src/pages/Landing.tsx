@@ -8,6 +8,15 @@ import SpaIcon from "@mui/icons-material/Spa";
 import CheckIcon from "@mui/icons-material/Check";
 import StarOutlineIcon from "@mui/icons-material/StarOutline";
 
+function LeafIcon({ size = 20, color = "white" }: { size?: number; color?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/>
+      <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>
+    </svg>
+  );
+}
+
 // --- Phone Screen Mockups ---
 
 function HomeScreen() {
@@ -275,7 +284,7 @@ export default function Landing() {
         <Box sx={{ maxWidth: 1152, mx: "auto", px: 3, height: 80, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <Box sx={{ width: 32, height: 32, borderRadius: 1.5, background: "linear-gradient(135deg, #34d399, #4338ca)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <SpaIcon sx={{ fontSize: 20, color: "white" }} />
+              <LeafIcon size={20} />
             </Box>
             <Typography sx={{ fontSize: 20, fontWeight: 700, letterSpacing: -0.5, color: "white" }}>Shuukan</Typography>
           </Box>
@@ -408,7 +417,7 @@ export default function Landing() {
         </Button>
         <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, alignItems: "center", justifyContent: "space-between", maxWidth: 1152, mx: "auto", pt: 4, borderTop: "1px solid", borderColor: "grey.900" }}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: { xs: 2, md: 0 } }}>
-            <SpaIcon sx={{ fontSize: 16, color: "grey.700" }} />
+            <LeafIcon size={16} color="#616161" />
             <Typography sx={{ fontSize: 12, color: "grey.600", fontWeight: 500 }}>&copy; 2026 Shuukan App. All rights reserved.</Typography>
           </Box>
           <Box sx={{ display: "flex", gap: 3 }}>

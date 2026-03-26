@@ -5,6 +5,46 @@ import { supabase } from "@/lib/supabase";
 
 const apiUrl = import.meta.env.VITE_API_URL;
 
+function LeafIcon({ size = 20 }: { size?: number }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/>
+      <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>
+    </svg>
+  );
+}
+
+function PageShell({ children }: { children: React.ReactNode }) {
+  return (
+    <Box
+      sx={{
+        minHeight: "100vh",
+        bgcolor: "#050508",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      <Box sx={{ position: "absolute", top: "30%", left: "50%", transform: "translateX(-50%)", width: 600, height: 300, bgcolor: "rgba(16,185,129,0.1)", filter: "blur(120px)", borderRadius: "50%", pointerEvents: "none" }} />
+      <Box sx={{ position: "absolute", top: "50%", right: "20%", width: 300, height: 300, bgcolor: "rgba(67,56,202,0.1)", filter: "blur(120px)", borderRadius: "50%", pointerEvents: "none" }} />
+
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 5, position: "relative", zIndex: 1 }}>
+        <Box sx={{ width: 40, height: 40, borderRadius: 2, background: "linear-gradient(135deg, #34d399, #4338ca)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <LeafIcon size={24} />
+        </Box>
+        <Typography sx={{ fontSize: 28, fontWeight: 800, letterSpacing: -0.5, color: "white" }}>Shuukan</Typography>
+      </Box>
+
+      <Box sx={{ position: "relative", zIndex: 1, width: "100%", display: "flex", justifyContent: "center" }}>
+        {children}
+      </Box>
+    </Box>
+  );
+}
+
 export default function Signup() {
   const [searchParams] = useSearchParams();
   const inviteCode = searchParams.get("invite");
@@ -66,54 +106,78 @@ export default function Signup() {
 
   if (checking) {
     return (
-      <Box sx={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <CircularProgress />
-      </Box>
+      <PageShell>
+        <CircularProgress sx={{ color: "#34d399" }} />
+      </PageShell>
     );
   }
 
   if (!inviteCode) {
     return (
-      <Box sx={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <PageShell>
         <Box sx={{ textAlign: "center", px: 3 }}>
-          <Typography variant="h6" sx={{ mb: 2 }}>No invite code provided</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          <Typography sx={{ fontSize: 20, fontWeight: 700, color: "white", mb: 1.5 }}>No invite code provided</Typography>
+          <Typography sx={{ fontSize: 13, color: "grey.500", mb: 3 }}>
             You need an invite link to sign up.
           </Typography>
-          <Button component={Link} to="/login" variant="outlined">
+          <Button
+            component={Link}
+            to="/login"
+            sx={{
+              color: "#34d399", borderColor: "#34d399", textTransform: "none", fontWeight: 600,
+              "&:hover": { borderColor: "#10b981", bgcolor: "rgba(16,185,129,0.1)" },
+            }}
+            variant="outlined"
+          >
             Back to Login
           </Button>
         </Box>
-      </Box>
+      </PageShell>
     );
   }
 
   if (success) {
     return (
-      <Box sx={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <Box sx={{ textAlign: "center", px: 3, maxWidth: 360 }}>
-          <Typography variant="h6" sx={{ mb: 2 }}>Check your email</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            We sent a confirmation link to <strong>{email}</strong>.
+      <PageShell>
+        <Box sx={{ textAlign: "center", px: 3, maxWidth: 380 }}>
+          <Typography sx={{ fontSize: 20, fontWeight: 700, color: "white", mb: 1.5 }}>Check your email</Typography>
+          <Typography sx={{ fontSize: 13, color: "grey.500", mb: 3 }}>
+            We sent a confirmation link to <strong style={{ color: "white" }}>{email}</strong>.
             Click the link to activate your account.
           </Typography>
-          <Button component={Link} to="/login" variant="outlined">
+          <Button
+            component={Link}
+            to="/login"
+            sx={{
+              color: "#34d399", borderColor: "#34d399", textTransform: "none", fontWeight: 600,
+              "&:hover": { borderColor: "#10b981", bgcolor: "rgba(16,185,129,0.1)" },
+            }}
+            variant="outlined"
+          >
             Back to Login
           </Button>
         </Box>
-      </Box>
+      </PageShell>
     );
   }
 
   return (
-    <Box sx={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <PageShell>
       <Box
         component="form"
         onSubmit={handleSubmit}
-        sx={{ width: "100%", maxWidth: 360, px: 3, py: 4, bgcolor: "#4338ca", borderRadius: 4 }}
+        sx={{
+          width: "100%", maxWidth: 380, px: 4, py: 5, mx: 3,
+          bgcolor: "rgba(15,15,22,0.8)", backdropFilter: "blur(12px)",
+          border: "1px solid", borderColor: "grey.800",
+          borderRadius: 4,
+        }}
       >
-        <Typography variant="h5" sx={{ mb: 3, textAlign: "center" }}>
-          Join Kanji Masta
+        <Typography sx={{ fontSize: 22, fontWeight: 700, color: "white", textAlign: "center", mb: 0.5 }}>
+          Join Shuukan
+        </Typography>
+        <Typography sx={{ fontSize: 13, color: "grey.500", textAlign: "center", mb: 3 }}>
+          Create your account to start learning
         </Typography>
 
         {error && (
@@ -158,25 +222,26 @@ export default function Signup() {
           size="large"
           disabled={loading || !inviteValid}
           sx={{
-            bgcolor: "grey.100",
-            color: "#4338ca",
+            bgcolor: "#10b981",
+            color: "black",
             py: 1.5,
-            borderRadius: 6,
+            borderRadius: "9999px",
             fontSize: "1rem",
-            fontWeight: "bold",
-            letterSpacing: 0.5,
-            "&:hover": { bgcolor: "grey.300" },
+            fontWeight: 700,
+            textTransform: "none",
+            boxShadow: "0 0 20px rgba(16,185,129,0.2)",
+            "&:hover": { bgcolor: "#34d399" },
           }}
         >
           {loading ? "Creating account..." : "Sign Up"}
         </Button>
-        <Typography variant="body2" sx={{ mt: 2, textAlign: "center", color: "rgba(255,255,255,0.7)" }}>
+        <Typography sx={{ mt: 2.5, textAlign: "center", fontSize: 13, color: "grey.500" }}>
           Already have an account?{" "}
-          <Box component={Link} to="/login" sx={{ color: "white" }}>
+          <Box component={Link} to="/login" sx={{ color: "#34d399", textDecoration: "none", fontWeight: 600, "&:hover": { textDecoration: "underline" } }}>
             Sign in
           </Box>
         </Typography>
       </Box>
-    </Box>
+    </PageShell>
   );
 }

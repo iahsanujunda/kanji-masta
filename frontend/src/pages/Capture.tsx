@@ -76,7 +76,9 @@ export default function Capture() {
       const filePath = `${user.id}/${crypto.randomUUID()}.jpg`;
       const { error: uploadError } = await supabase.storage.from("photos").upload(filePath, file);
       if (uploadError) throw uploadError;
-      const { data: { publicUrl: imageUrl } } = supabase.storage.from("photos").getPublicUrl(filePath);
+      const { data: signedData, error: signError } = await supabase.storage.from("photos").createSignedUrl(filePath, 600);
+      if (signError || !signedData?.signedUrl) throw signError || new Error("Failed to create signed URL");
+      const imageUrl = signedData.signedUrl;
 
       setView("analyzing");
       setStatusText("AI is scanning image...");

@@ -43,9 +43,12 @@ async def analyze_photo(body: AnalyzePhotoRequest, request: Request):
 
     ctx.log_info("analyze_photo: session=%s downloading image", body.sessionId)
 
-    # Download image
+    # Download image — rewrite localhost URLs for Docker networking
+    image_url = body.imageUrl
+    for host in ("127.0.0.1", "localhost"):
+        image_url = image_url.replace(f"http://{host}:", "http://host.docker.internal:")
     async with httpx.AsyncClient() as http:
-        img_resp = await http.get(body.imageUrl)
+        img_resp = await http.get(image_url)
     if img_resp.status_code != 200:
         ctx.log_error("analyze_photo: failed to download image, status=%d", img_resp.status_code)
         return JSONResponse({"error": f"Failed to download image: {img_resp.status_code}"}, status_code=500)

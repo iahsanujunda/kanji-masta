@@ -60,6 +60,7 @@ dependencies {
     testImplementation(libs.kotlin.test)
     testImplementation(libs.ktor.client.content.negotiation)
     testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.docker.java.transport)
 }
 
 tasks.withType<Test> {

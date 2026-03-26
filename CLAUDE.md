@@ -77,8 +77,8 @@ make up
 
 ```
 make test             # Run all tests (backend + ai-worker + frontend)
-make test-backend     # 17 integration tests (requires local Supabase)
-make test-ai-worker   # 21 pytest tests (requires local Supabase)
+make test-backend     # Integration tests (uses Testcontainers — no Supabase needed)
+make test-ai-worker   # Pytest tests (uses Testcontainers — no Supabase needed)
 make test-frontend    # Frontend unit tests
 ```
 

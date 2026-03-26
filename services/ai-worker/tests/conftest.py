@@ -1,20 +1,26 @@
 from __future__ import annotations
 
-import os
 import pathlib
 from unittest.mock import MagicMock
 
 import psycopg2
 import pytest
 from fastapi.testclient import TestClient
-
-# Point to local Supabase by default
-DEFAULT_TEST_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+from testcontainers.postgres import PostgresContainer
 
 
 @pytest.fixture(scope="session")
-def db_url():
-    return os.environ.get("DATABASE_TEST_URL", DEFAULT_TEST_URL)
+def postgres_container():
+    """Session-scoped PostgreSQL container — shared across all tests."""
+    with PostgresContainer("postgres:16-alpine") as pg:
+        yield pg
+
+
+@pytest.fixture(scope="session")
+def db_url(postgres_container):
+    # testcontainers returns "postgresql+psycopg2://..." — strip the driver suffix
+    url = postgres_container.get_connection_url()
+    return url.replace("postgresql+psycopg2://", "postgresql://")
 
 
 @pytest.fixture(scope="session")
@@ -23,15 +29,15 @@ def db_conn(db_url):
     conn = psycopg2.connect(db_url)
     conn.autocommit = True
 
-    # Verify schema exists
+    # Apply DDL migrations (skip Supabase-specific: storage, RLS)
+    skip_keywords = {"storage.", "enable_rls", "row level security"}
+    migration_dir = pathlib.Path(__file__).resolve().parents[3] / "supabase" / "migrations"
     with conn.cursor() as cur:
-        cur.execute("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'kanji_master')")
-        exists = cur.fetchone()[0]
-        if not exists:
-            # Apply migration
-            migration_dir = pathlib.Path(__file__).resolve().parents[2] / ".." / ".." / "supabase" / "migrations"
-            for sql_file in sorted(migration_dir.glob("*.sql")):
-                cur.execute(sql_file.read_text())
+        for sql_file in sorted(migration_dir.glob("*.sql")):
+            content = sql_file.read_text()
+            if any(kw in content.lower() for kw in skip_keywords):
+                continue
+            cur.execute(content)
 
     yield conn
     conn.close()
@@ -53,6 +59,7 @@ def _clean_test_data(db_conn):
             DELETE FROM photo_session;
             DELETE FROM word_master;
             DELETE FROM user_settings;
+            DELETE FROM user_cost;
         """)
 
 
@@ -91,7 +98,7 @@ def mock_gemini(monkeypatch):
 
 @pytest.fixture
 def client(db_url, seed_kanji, monkeypatch):
-    """FastAPI TestClient with real DB."""
+    """FastAPI TestClient with real DB via Testcontainers."""
     monkeypatch.setenv("DATABASE_URL", db_url)
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
 

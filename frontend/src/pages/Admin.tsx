@@ -16,6 +16,7 @@ import {
 import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
 import WorkIcon from "@mui/icons-material/Work";
 import PeopleIcon from "@mui/icons-material/People";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import SpaIcon from "@mui/icons-material/Spa";
 import { apiFetch } from "@/lib/api";
@@ -314,14 +315,26 @@ function InvitesTab() {
                   <Chip label={inv.status} size="small" sx={{ ...statusColor(inv.status), fontWeight: 700, fontSize: 10, border: "1px solid" }} />
                 </Box>
                 <Box component="td" sx={{ py: 2, px: 2, color: "grey.500", fontSize: 12 }}>{inv.createdAt.slice(0, 10)}</Box>
-                <Box component="td" sx={{ py: 2, px: 2, textAlign: "right" }}>
-                  {inv.status === "PENDING" ? (
-                    <Button size="small" onClick={() => handleRevoke(inv.id)} sx={{ color: "#f87171", textTransform: "none", fontWeight: 700, fontSize: 11, border: "1px solid rgba(239,68,68,0.3)", "&:hover": { bgcolor: "rgba(239,68,68,0.1)" } }}>
-                      Revoke
-                    </Button>
-                  ) : (
-                    <Typography color="grey.700">—</Typography>
+                <Box component="td" sx={{ py: 2, px: 2, textAlign: "right", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 1 }}>
+                  {inv.status === "PENDING" && (
+                    <>
+                      <Button
+                        size="small"
+                        startIcon={<ContentCopyIcon sx={{ fontSize: 12 }} />}
+                        onClick={() => {
+                          const link = `${window.location.origin}/signup?invite=${inv.code}`;
+                          navigator.clipboard.writeText(link);
+                        }}
+                        sx={{ color: "#34d399", textTransform: "none", fontWeight: 700, fontSize: 11, border: "1px solid rgba(16,185,129,0.3)", "&:hover": { bgcolor: "rgba(16,185,129,0.1)" } }}
+                      >
+                        Copy Link
+                      </Button>
+                      <Button size="small" onClick={() => handleRevoke(inv.id)} sx={{ color: "#f87171", textTransform: "none", fontWeight: 700, fontSize: 11, border: "1px solid rgba(239,68,68,0.3)", "&:hover": { bgcolor: "rgba(239,68,68,0.1)" } }}>
+                        Revoke
+                      </Button>
+                    </>
                   )}
+                  {inv.status !== "PENDING" && <Typography color="grey.700">—</Typography>}
                 </Box>
               </Box>
             ))}

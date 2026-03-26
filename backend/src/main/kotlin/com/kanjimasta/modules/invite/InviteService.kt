@@ -44,11 +44,18 @@ class InviteService(
         if (email.isNullOrBlank()) return false
 
         val invite = inviteRepository.findByEmail(email) ?: return false
-        if (invite.status != InviteStatus.PENDING) return false
+        if (invite.status == InviteStatus.REVOKED) return false
 
-        inviteRepository.accept(invite.id)
-        settingsRepository.upsertSettings(userId, 5, 6)
-        logger.info("Invite accepted for email={} userId={}", email, userId)
+        if (invite.status == InviteStatus.PENDING) {
+            inviteRepository.accept(invite.id)
+        }
+
+        // Ensure settings row exists (idempotent)
+        if (!settingsRepository.hasSettings(userId)) {
+            settingsRepository.upsertSettings(userId, 5, 6)
+        }
+
+        logger.info("Invite validated for email={} userId={} status={}", email, userId, invite.status)
         return true
     }
 

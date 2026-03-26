@@ -1,11 +1,13 @@
 package com.kanjimasta.modules.user
 
 import com.kanjimasta.modules.quiz.QuizRepository
+import com.kanjimasta.modules.settings.SettingsRepository
 import java.time.Instant
 
 class UserService(
     private val userRepository: UserRepository,
     private val quizRepository: QuizRepository,
+    private val settingsRepository: SettingsRepository,
 ) {
     fun getSummary(userId: String): UserSummaryResponse {
         val (learning, familiar) = userRepository.getKanjiCounts(userId)
@@ -32,6 +34,7 @@ class UserService(
             slotRemaining = slotRemaining,
             slotTotal = allowance,
             slotEndsAt = slotEndsAt,
+            onboardingComplete = settingsRepository.getSettings(userId).onboardingComplete,
         )
     }
 }

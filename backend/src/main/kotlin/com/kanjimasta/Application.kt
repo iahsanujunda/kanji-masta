@@ -53,7 +53,7 @@ fun Application.module() {
 
     val settingsRepository = com.kanjimasta.modules.settings.SettingsRepository(database)
     val userRepository = com.kanjimasta.modules.user.UserRepository(database)
-    val userService = com.kanjimasta.modules.user.UserService(userRepository, quizRepository)
+    val userService = com.kanjimasta.modules.user.UserService(userRepository, quizRepository, settingsRepository)
 
     val resendApiKey = environment.config.propertyOrNull("resend.apiKey")?.getString() ?: ""
     val adminUserId = environment.config.propertyOrNull("admin.userId")?.getString() ?: ""

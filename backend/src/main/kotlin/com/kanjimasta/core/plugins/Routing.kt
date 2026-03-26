@@ -39,7 +39,7 @@ fun Application.configureRouting(
             installInviteGuard(inviteService, settingsRepository)
 
             photoRoutes(photoService)
-            kanjiRoutes(kanjiService)
+            kanjiRoutes(kanjiService, settingsRepository)
             quizRoutes(quizService)
             userRoutes(userService)
             settingsRoutes(settingsRepository)

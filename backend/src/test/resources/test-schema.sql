@@ -190,6 +190,7 @@ CREATE TABLE user_settings (
     quiz_allowance_per_slot integer NOT NULL DEFAULT 5,
     slot_duration_hours     integer NOT NULL DEFAULT 6,
     timezone                text NOT NULL DEFAULT 'Asia/Tokyo',
+    onboarding_complete     boolean NOT NULL DEFAULT false,
     updated_at              timestamptz NOT NULL DEFAULT now()
 );
 

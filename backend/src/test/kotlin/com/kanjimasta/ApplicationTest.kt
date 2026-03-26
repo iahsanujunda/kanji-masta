@@ -81,7 +81,7 @@ fun Application.testModule(db: Database) {
     val quizRepository = com.kanjimasta.modules.quiz.QuizRepository(db)
     val quizService = com.kanjimasta.modules.quiz.QuizService(quizRepository)
     val settingsRepository = com.kanjimasta.modules.settings.SettingsRepository(db)
-    val userService = com.kanjimasta.modules.user.UserService(com.kanjimasta.modules.user.UserRepository(db), quizRepository)
+    val userService = com.kanjimasta.modules.user.UserService(com.kanjimasta.modules.user.UserRepository(db), quizRepository, settingsRepository)
     val resendClient = com.kanjimasta.core.email.ResendClient(httpClient, "")
     val inviteRepository = com.kanjimasta.modules.invite.InviteRepository(db)
     val inviteService = com.kanjimasta.modules.invite.InviteService(inviteRepository, settingsRepository, resendClient)

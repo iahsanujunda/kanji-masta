@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 data class SettingsResponse(
     val quizAllowancePerSlot: Int,
     val slotDurationHours: Int,
+    val onboardingComplete: Boolean,
 )
 
 @Serializable

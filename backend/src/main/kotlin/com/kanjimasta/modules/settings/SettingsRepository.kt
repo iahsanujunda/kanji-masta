@@ -18,10 +18,11 @@ class SettingsRepository(private val db: Database) {
                 SettingsResponse(
                     quizAllowancePerSlot = r[UserSettingsTable.quizAllowancePerSlot] ?: 5,
                     slotDurationHours = r[UserSettingsTable.slotDurationHours] ?: 6,
+                    onboardingComplete = r[UserSettingsTable.onboardingComplete] ?: false,
                 )
             }
             .firstOrNull()
-        return row ?: SettingsResponse(quizAllowancePerSlot = 5, slotDurationHours = 6)
+        return row ?: SettingsResponse(quizAllowancePerSlot = 5, slotDurationHours = 6, onboardingComplete = false)
     }
 
     fun hasSettings(userId: String): Boolean {
@@ -29,6 +30,20 @@ class SettingsRepository(private val db: Database) {
             .select(UserSettingsTable.userId)
             .where { UserSettingsTable.userId eq userId }
             .totalRecordsInAllPages > 0
+    }
+
+    fun markOnboardingComplete(userId: String) {
+        val updated = db.update(UserSettingsTable) {
+            set(it.onboardingComplete, true)
+            set(it.updatedAt, Instant.now())
+            where { it.userId eq userId }
+        }
+        if (updated == 0) {
+            db.insert(UserSettingsTable) {
+                set(it.userId, userId)
+                set(it.onboardingComplete, true)
+            }
+        }
     }
 
     fun upsertSettings(userId: String, allowance: Int, duration: Int) {

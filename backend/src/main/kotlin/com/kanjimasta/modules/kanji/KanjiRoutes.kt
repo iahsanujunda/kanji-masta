@@ -1,13 +1,14 @@
 package com.kanjimasta.modules.kanji
 
 import com.kanjimasta.core.auth.AuthUser
+import com.kanjimasta.modules.settings.SettingsRepository
 import io.ktor.http.*
 import io.ktor.server.auth.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 
-fun Route.kanjiRoutes(kanjiService: KanjiService) {
+fun Route.kanjiRoutes(kanjiService: KanjiService, settingsRepository: SettingsRepository) {
     route("/api/kanji") {
         post("/session") {
             val user = call.principal<AuthUser>()!!
@@ -46,6 +47,12 @@ fun Route.kanjiRoutes(kanjiService: KanjiService) {
             val user = call.principal<AuthUser>()!!
             val request = call.receive<OnboardingSelectRequest>()
             kanjiService.saveOnboardingSelections(user.uid, request.selections)
+            call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
+        }
+
+        post("/complete") {
+            val user = call.principal<AuthUser>()!!
+            settingsRepository.markOnboardingComplete(user.uid)
             call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
         }
     }

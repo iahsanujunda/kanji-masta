@@ -135,15 +135,16 @@ type QuizGenerationJob @table {
 }
 ```
 
-**`UserInvite`** — NEW. Manages invite-only access.
+**`UserInvite`** — NEW. Manages invite-only access. Uses a 10-character alphanumeric code as the invite ID (e.g. `a3Bf9xK2mQ`) instead of UUID — shorter for URLs and easier to share.
 
 ```graphql
 enum InviteStatus { PENDING, ACCEPTED, REVOKED }
 
 type UserInvite @table {
   id: UUID! @default(expr: "uuidV4()")
+  code: String! @unique        # 10-char alphanumeric, used in invite URLs
   email: String! @unique
-  invitedBy: String!          # userId of admin who sent the invite
+  invitedBy: String!           # userId of admin who sent the invite
   status: InviteStatus! @default(value: "PENDING")
   createdAt: Timestamp! @default(expr: "request.time")
   acceptedAt: Timestamp
@@ -191,7 +192,7 @@ fun handleWordEncountered(userId: String, word: String, reading: String,
 
 ### 2.1.3 Quiz Generation — Global Output
 
-The Firebase Function `generate_quizzes` now writes `QuizBank` rows with `userId = null`:
+The ai-worker `generate_quizzes` endpoint now writes `QuizBank` rows with `userId = null`:
 
 ```python
 # functions/main.py
@@ -270,7 +271,7 @@ python scripts/migrate_phase2.py --env prod
 
 # Iteration 2.2 — Invite System
 
-Gates new user access. You create invites; users sign up via an invite link; Firebase Auth handles identity; Ktor validates invite status on first login.
+Gates new user access. You create invites; users sign up via an invite link; Supabase Auth handles identity; Ktor validates invite status on first login. Emails sent via Resend.
 
 ### 2.2.1 Invite Flow
 
@@ -278,11 +279,15 @@ Gates new user access. You create invites; users sign up via an invite link; Fir
 You (admin):
   POST /api/admin/invite { email }
     → insert UserInvite row (status: PENDING)
-    → send email with signup link: https://app.com/signup?invite={id}
+    → Ktor calls Resend API to send invite email
+    → email contains signup link: https://shuukanhq.com/signup?invite={code}
 
 New user:
   Opens signup link
-  → Signs up via Firebase Auth (Google or email/password)
+  → Frontend reads ?invite={code}, fetches invite details to pre-fill email
+  → Signs up via Supabase Auth (email/password)
+  → Supabase sends confirmation email (built-in, uses Resend as SMTP provider)
+  → After email confirmation, user logs in
   → On first authenticated request, Ktor checks UserInvite for their email
       → PENDING → mark ACCEPTED, create UserSettings row, allow access
       → no invite / REVOKED → return 403
@@ -290,7 +295,7 @@ New user:
 You (admin):
   PUT /api/admin/invite/{id}/revoke
     → set status REVOKED
-    → optionally disable Firebase Auth account
+    → optionally call Supabase Admin API to disable the user account
 ```
 
 ### 2.2.2 Ktor Middleware — Invite Guard
@@ -300,63 +305,132 @@ A Ktor plugin that runs on every authenticated request for new users. Checks are
 ```kotlin
 fun Application.configureInviteGuard() {
     intercept(ApplicationCallPipeline.Plugins) {
-        val userId = call.principal<UserPrincipal>()?.uid ?: return@intercept
-        val email = call.principal<UserPrincipal>()?.email ?: return@intercept
+        val user = call.principal<AuthUser>() ?: return@intercept
 
         // Check UserSettings — if row exists, user is already onboarded
-        val settings = userSettingsRepo.findByUserId(userId)
+        val settings = settingsRepo.findByUserId(user.uid)
         if (settings != null) return@intercept  // already validated, skip
 
         // First login — validate invite
-        val invite = inviteRepo.findByEmail(email)
+        val invite = inviteRepo.findByEmail(user.email)
         if (invite == null || invite.status == InviteStatus.REVOKED) {
-            call.respond(HttpStatusCode.Forbidden, "No valid invite found")
+            call.respond(HttpStatusCode.Forbidden, mapOf("error" to "No valid invite found"))
             finish()
             return@intercept
         }
 
-        // Accept invite + create UserSettings in one @transaction mutation
-        inviteRepo.acceptAndCreateSettings(invite.id, userId)
+        // Accept invite + create UserSettings in a single DB transaction
+        inviteRepo.acceptAndCreateSettings(invite.id, user.uid)
     }
 }
 ```
 
 ### 2.2.3 Admin Endpoints
 
-Simple admin-only endpoints. Protected by checking `userId` against a hardcoded admin list in `AppConfig` — no need for a full role system at this scale.
+Simple admin-only endpoints in Ktor. Protected by checking `userId` against a hardcoded admin list in `AppConfig` — no need for a full role system at this scale.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/admin/invite` | Create invite, send email |
+| `POST` | `/api/admin/invite` | Create invite, send email via Resend |
 | `GET` | `/api/admin/invites` | List all invites with status |
 | `PUT` | `/api/admin/invite/{id}/revoke` | Revoke access |
 
-### 2.2.4 Invite Email
+### 2.2.4 Invite Email via Resend
 
-Plain text email via Firebase Extensions (Trigger Email) or a simple SMTP call from a Firebase Function:
+Ktor backend calls Resend HTTP API directly — no separate service needed. Resend API key stored as environment variable (`RESEND_API_KEY`).
+
+```kotlin
+// core/email/ResendClient.kt
+class ResendClient(private val httpClient: HttpClient, private val apiKey: String) {
+    suspend fun sendInvite(toEmail: String, inviteCode: String) {
+        httpClient.post("https://api.resend.com/emails") {
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject {
+                put("from", "Kanji Masta <noreply@shuukanhq.com>")
+                put("to", toEmail)
+                put("subject", "You're invited to Kanji Masta")
+                put("text", """
+                    You've been invited to join Kanji Masta —
+                    a photo-driven kanji learning tool for people living in Japan.
+
+                    Click to get started:
+                    https://shuukanhq.com/signup?invite=$inviteCode
+
+                    This link is personal to you. Do not share it.
+                """.trimIndent())
+            }.toString())
+        }
+    }
+}
+```
+
+### 2.2.5 Supabase Auth — Resend as SMTP Provider
+
+Supabase Auth sends transactional emails (confirmation, password reset) via its built-in email system. Configure Resend as the custom SMTP provider so all emails come from the same domain.
+
+### 2.2.6 Frontend — Signup Page
+
+New `/signup` route (lazy-loaded). Reads `?invite={code}` from URL, fetches invite details from a public endpoint to pre-fill email (read-only). User sets password and submits via `supabase.auth.signUp()`.
 
 ```
-Subject: You're invited to Kanji App
-
-[Name] has invited you to join Kanji App —
-a photo-driven kanji learning tool for people living in Japan.
-
-Click to get started:
-https://app.com/signup?invite={inviteId}
-
-This link is personal to you. Do not share it.
+GET /api/invite/{code}/details → { email, status } (public, no auth required)
 ```
+
+### 2.2.7 Setup To-Do List
+
+Infrastructure setup required before implementing the invite flow:
+
+**Resend setup:**
+- [ ] Create Resend account at resend.com
+- [ ] Add and verify domain `shuukanhq.com` (DNS records: SPF, DKIM, DMARC)
+- [ ] Generate API key, store as `RESEND_API_KEY` in Cloud Run env vars
+- [ ] Test sending from `noreply@shuukanhq.com` via Resend dashboard
+
+**Supabase SMTP setup (so confirmation emails use Resend):**
+- [ ] In Supabase Dashboard → Settings → Auth → SMTP Settings, enable custom SMTP
+- [ ] Set SMTP host: `smtp.resend.com`, port: `465` (SSL)
+- [ ] Set username: `resend`, password: Resend API key
+- [ ] Set sender: `noreply@shuukanhq.com`
+- [ ] Test confirmation email flow with a test signup
+
+**Backend (Ktor):**
+- [ ] Add `ResendClient` in `core/email/` — simple HTTP POST to Resend API
+- [ ] Add `InviteRepository` in `modules/invite/` — CRUD for `user_invite` table
+- [ ] Add `InviteService` — orchestrates invite creation + email sending
+- [ ] Add invite guard middleware (intercept pipeline, check invite on first login)
+- [ ] Add admin endpoints: `POST /invite`, `GET /invites`, `PUT /invite/{id}/revoke`
+- [ ] Add public endpoint: `GET /api/invite/{code}/details` (returns email + status, no auth)
+- [ ] Add `RESEND_API_KEY` and `ADMIN_USER_ID` to `application.yaml` config
+- [ ] Wire `RESEND_API_KEY` and `ADMIN_USER_ID` as env vars in Cloud Run
+- [ ] Add admin guard in invite routes — compare `AuthUser.uid` against `ADMIN_USER_ID`, return 403 if mismatch
+
+**Admin user setup:**
+- [ ] Find your Supabase user ID (Supabase Dashboard → Authentication → Users)
+- [ ] Set `ADMIN_USER_ID` env var in Cloud Run to that user ID
+- [ ] Set `ADMIN_USER_ID` in local `.env` for dev (same Supabase user ID from local instance)
+- [ ] Only this user can call `/api/admin/*` endpoints — everyone else gets 403
+
+**Frontend (React):**
+- [ ] Add `/signup` page — reads `?invite={code}`, pre-fills email, calls `supabase.auth.signUp()`
+- [ ] Update `/login` page — add "Don't have an account?" link to `/signup`
+- [ ] Handle 403 from invite guard — show "No valid invite" message, redirect to login
+
+**Database:**
+- [ ] Add `code` column (text, unique) to `user_invite` table via Supabase migration
+- [ ] Generate 10-char alphanumeric codes in `InviteRepository` on insert
 
 ### Definition of Done
 
-- [ ] `POST /api/admin/invite` creates `UserInvite` row and sends email
-- [ ] Signup page reads `?invite={id}` and pre-fills email
-- [ ] Firebase Auth signup works (Google + email/password)
+- [ ] `POST /api/admin/invite` creates `UserInvite` row and sends email via Resend
+- [ ] Signup page reads `?invite={code}` and pre-fills email
+- [ ] Supabase Auth signup works (email/password) with Resend-powered confirmation email
 - [ ] First login validates invite → creates `UserSettings` → allows access
 - [ ] Invalid or revoked invite returns 403 with clear message
 - [ ] `GET /api/admin/invites` lists all invites with status
 - [ ] `PUT /api/admin/invite/{id}/revoke` sets status REVOKED
-- [ ] Invite accept + UserSettings creation wrapped in `@transaction`
+- [ ] Invite accept + UserSettings creation in a single DB transaction
+- [ ] All emails (invite + Supabase confirmation) sent from `shuukanhq.com` via Resend
 
 ---
 
@@ -489,7 +563,7 @@ Account
 
 A single `/admin` route within the existing React app. Protected by admin `userId` check in Ktor middleware. Built with existing MUI components — no separate frontend, no separate deployment.
 
-Firebase Console already covers table inspection, function logs, and Auth management. The admin panel covers what Console doesn't: aggregated cost, job retry, invite management, and quiz quality control.
+Supabase Dashboard covers table inspection and Auth management. Cloud Run logs cover service monitoring. The admin panel covers what those don't: aggregated cost, job retry, invite management, and quiz quality control.
 
 ### 2.5.1 Admin Guard (Ktor)
 
@@ -504,7 +578,7 @@ fun ApplicationCall.requireAdmin() {
 }
 ```
 
-`AppConfig.adminUserId` is your Firebase UID, set as an environment variable. No role table needed at this scale.
+`AppConfig.adminUserId` is your Supabase user ID, set as an environment variable. No role table needed at this scale.
 
 ### 2.5.2 Schema — Add costMicrodollars to Job Tables
 
@@ -513,16 +587,16 @@ fun ApplicationCall.requireAdmin() {
 ```graphql
 type QuizGenerationJob @table {
   # ... existing fields
-  costMicrodollars: Int64    # NEW — populated by Firebase Function on completion
+  costMicrodollars: Int64    # NEW — populated by ai-worker on completion
 }
 
 type ChallengeSession @table {
   # ... existing fields
-  costMicrodollars: Int64    # NEW — populated by generate_challenge Function
+  costMicrodollars: Int64    # NEW — populated by ai-worker on completion
 }
 ```
 
-Firebase Functions already call `extract_cost(response.usage_metadata)` — just write the value back to the job/session row on completion.
+The ai-worker already calls `calculate_cost_microdollars(response.usage_metadata)` — just write the value back to the job/session row on completion.
 
 ### 2.5.3 Admin Endpoints
 
@@ -659,7 +733,7 @@ Single mutation, naturally atomic — no `@transaction` strictly needed here but
 ### Definition of Done
 
 - [ ] `costMicrodollars` added to `QuizGenerationJob` and `ChallengeSession` schema
-- [ ] Firebase Functions write cost to job/session row on completion
+- [ ] ai-worker writes cost to job/session row on completion
 - [ ] `/admin` route protected by `requireAdmin()` middleware
 - [ ] `GET /api/admin/cost` returns total + per-user + per-day breakdown
 - [ ] `GET /api/admin/jobs` returns job list with status counts
@@ -699,7 +773,7 @@ Single mutation, naturally atomic — no `@transaction` strictly needed here but
 - `GET /api/admin/quizzes`
 - `DELETE /api/admin/quizzes/{id}`
 
-**New Firebase Function:** none — existing `generate_quizzes` updated to write global rows.
+**New services:** `ResendClient` in Ktor `core/email/` for invite emails. No new Cloud Run services — existing ai-worker `generate_quizzes` updated to write global rows.
 
 ### API Cost Model
 
@@ -715,6 +789,6 @@ After a small group uses the app for a few weeks, the shared `QuizBank` will cov
 
 **Global quizzes, personal progress** — `QuizBank` rows with `userId = null` are the canonical quiz content. Personal `QuizServe` rows track who answered what. This separation means a user can be deleted cleanly (remove all personal rows) without affecting the shared quiz content.
 
-**Invite acceptance is atomic** — `UserInvite` status update and `UserSettings` creation happen in a single `@transaction` mutation. A failure in either step leaves the user in a clean state — they can retry signup without corrupting invite state.
+**Invite acceptance is atomic** — `UserInvite` status update and `UserSettings` creation happen in a single database transaction. A failure in either step leaves the user in a clean state — they can retry signup without corrupting invite state.
 
 **No role system** — admin access is a hardcoded `userId` check in `AppConfig`. At this scale (5–10 users) a full RBAC system is unnecessary overhead.

@@ -71,6 +71,7 @@ CREATE TABLE photo_session (
     user_id             text NOT NULL,
     image_url           text,
     raw_ai_response     text,
+    status              text NOT NULL DEFAULT 'PROCESSING',
     cost_microdollars   bigint,
     created_at          timestamptz NOT NULL DEFAULT now()
 );

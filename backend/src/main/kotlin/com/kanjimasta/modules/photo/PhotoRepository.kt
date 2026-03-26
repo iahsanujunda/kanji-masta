@@ -25,6 +25,7 @@ class PhotoRepository(private val db: Database) {
                 PhotoSessionRow(
                     id = row[PhotoSessionTable.id].toString(),
                     rawAiResponse = row[PhotoSessionTable.rawAiResponse],
+                    status = row[PhotoSessionTable.status] ?: "PROCESSING",
                     costMicrodollars = row[PhotoSessionTable.costMicrodollars],
                 )
             }
@@ -35,5 +36,6 @@ class PhotoRepository(private val db: Database) {
 data class PhotoSessionRow(
     val id: String,
     val rawAiResponse: String?,
+    val status: String,
     val costMicrodollars: Long?,
 )

@@ -66,6 +66,7 @@ object PhotoSessionTable : Table<Nothing>("photo_session") {
     val userId = text("user_id")
     val imageUrl = text("image_url")
     val rawAiResponse = text("raw_ai_response")
+    val status = text("status")
     val costMicrodollars = long("cost_microdollars")
     val createdAt = timestamp("created_at")
 }

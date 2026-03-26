@@ -13,8 +13,10 @@ class InternalService(private val db: Database) {
     fun handlePhotoResult(request: PhotoResultRequest) {
         db.useTransaction {
             // 1. Update photo_session
+            val status = if (request.enrichedKanji.isNotBlank() && request.enrichedKanji != "[]") "DONE" else "ERROR"
             db.update(PhotoSessionTable) {
                 set(it.rawAiResponse, request.enrichedKanji)
+                set(it.status, status)
                 set(it.costMicrodollars, request.costMicrodollars)
                 where { it.id eq UUID.fromString(request.sessionId) }
             }

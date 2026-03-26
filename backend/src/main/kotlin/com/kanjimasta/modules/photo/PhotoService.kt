@@ -65,6 +65,10 @@ class PhotoService(
         val session = photoRepository.getSession(sessionId)
             ?: return PhotoSessionResult(sessionId = sessionId, status = "not_found")
 
+        if (session.status == "ERROR") {
+            return PhotoSessionResult(sessionId = sessionId, status = "error")
+        }
+
         val rawResponse = session.rawAiResponse
             ?: return PhotoSessionResult(sessionId = sessionId, status = "processing")
 

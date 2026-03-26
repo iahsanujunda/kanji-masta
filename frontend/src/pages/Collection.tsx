@@ -230,7 +230,7 @@ export default function Collection() {
       <PageHeader
         title="Your Tree"
         subtitle={`${collection.total} Kanji in Ecosystem`}
-        backTo="/"
+        backTo="/home"
         sx={{ zIndex: 20 }}
         backButtonSx={{
           bgcolor: "rgba(255,255,255,0.1)",

@@ -26,7 +26,7 @@ export default function ProtectedRoute({ user, isLoading, children }: Props) {
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;

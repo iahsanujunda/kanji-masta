@@ -56,7 +56,7 @@ export default function Settings() {
         flexDirection: "column",
       }}
     >
-      <PageHeader title="Settings" backTo="/" />
+      <PageHeader title="Settings" backTo="/home" />
 
       <Box sx={{ px: 3, display: "flex", flexDirection: "column", gap: 3 }}>
         {/* Quiz Settings */}

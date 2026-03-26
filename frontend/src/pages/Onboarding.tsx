@@ -65,7 +65,7 @@ export default function Onboarding() {
       setSlideIn(true);
       setView(data.kanji.length > 0 ? "deck" : "finished");
     } catch {
-      navigate("/");
+      navigate("/home");
     }
   }, [navigate]);
 
@@ -262,7 +262,7 @@ export default function Onboarding() {
             : "Capture a photo to start learning kanji."}
         </Typography>
         <Button
-          onClick={() => navigate("/")}
+          onClick={() => navigate("/home")}
           sx={{ bgcolor: "grey.800", color: "white", fontWeight: "bold", py: 1.5, px: 4, borderRadius: 3, "&:hover": { bgcolor: "grey.700" } }}
         >
           Go to Home

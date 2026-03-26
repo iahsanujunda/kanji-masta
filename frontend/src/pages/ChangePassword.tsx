@@ -94,7 +94,7 @@ export default function ChangePassword() {
         >
           {loading ? "Updating..." : "Update Password"}
         </Button>
-        <Button fullWidth onClick={() => navigate("/")}>
+        <Button fullWidth onClick={() => navigate("/home")}>
           Back
         </Button>
       </Box>

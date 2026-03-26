@@ -57,13 +57,13 @@ export default function Capture() {
   }, []);
 
   const handleError = useCallback((message: string) => {
-    navigate("/", { state: { error: message } });
+    navigate("/home", { state: { error: message } });
   }, [navigate]);
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) {
-      navigate("/");
+      navigate("/home");
       return;
     }
 
@@ -247,7 +247,7 @@ export default function Capture() {
           subtitle={`${kanjiResults.length} detected`}
           right={
             <Button
-              onClick={() => navigate("/")}
+              onClick={() => navigate("/home")}
               sx={{ minWidth: 0, p: 1, color: "grey.400" }}
             >
               <CloseIcon />
@@ -460,7 +460,7 @@ export default function Capture() {
       <Button variant="outlined" onClick={() => fileInputRef.current?.click()}>
         Select Photo
       </Button>
-      <Button sx={{ mt: 1 }} onClick={() => navigate("/")}>
+      <Button sx={{ mt: 1 }} onClick={() => navigate("/home")}>
         Cancel
       </Button>
     </Box>

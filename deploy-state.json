@@ -4,8 +4,8 @@
     "deployedAt": "2026-03-25T08:43:26Z"
   },
   "backend": {
-    "commit": "5d34d9e",
-    "deployedAt": "2026-03-25T08:43:11Z"
+    "commit": "c12c62c",
+    "deployedAt": "2026-03-26T04:21:38Z"
   },
   "ai-worker": {
     "commit": "5d34d9e",

@@ -92,7 +92,7 @@ export default function Dictionary() {
       <PageHeader
         title="Dictionary"
         subtitle={loading ? "Loading..." : `${total} words`}
-        backTo="/"
+        backTo="/home"
       />
 
       {/* Search bar */}

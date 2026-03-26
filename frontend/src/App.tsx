@@ -15,6 +15,8 @@ const KanjiList = lazy(() => import("@/pages/KanjiList"));
 const Dictionary = lazy(() => import("@/pages/Dictionary"));
 const AddKanji = lazy(() => import("@/pages/AddKanji"));
 const Onboarding = lazy(() => import("@/pages/Onboarding"));
+const Signup = lazy(() => import("@/pages/Signup"));
+const Landing = lazy(() => import("@/pages/Landing"));
 
 function Loading() {
   return (
@@ -31,11 +33,19 @@ export default function App() {
     <Suspense fallback={<Loading />}>
       <Routes>
         <Route
-          path="/login"
-          element={user ? <Navigate to="/" replace /> : <Login />}
+          path="/"
+          element={user ? <Navigate to="/home" replace /> : <Landing />}
         />
         <Route
-          path="/"
+          path="/login"
+          element={user ? <Navigate to="/home" replace /> : <Login />}
+        />
+        <Route
+          path="/signup"
+          element={user ? <Navigate to="/home" replace /> : <Signup />}
+        />
+        <Route
+          path="/home"
           element={
             <ProtectedRoute user={user} isLoading={isLoading}>
               <Home />
@@ -106,7 +116,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/home" replace />} />
       </Routes>
     </Suspense>
   );

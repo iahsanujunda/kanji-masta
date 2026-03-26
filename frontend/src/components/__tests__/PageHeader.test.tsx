@@ -20,7 +20,7 @@ describe("PageHeader", () => {
   });
 
   it("renders back button when backTo is provided", () => {
-    renderWithProviders(<PageHeader title="Title" backTo="/" />);
+    renderWithProviders(<PageHeader title="Title" backTo="/home" />);
     expect(document.querySelector("button")).toBeInTheDocument();
   });
 

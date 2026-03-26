@@ -41,7 +41,7 @@ export default function Quiz() {
 
   const goHome = () => {
     queryClient.invalidateQueries({ queryKey: ["user-summary"] });
-    navigate("/");
+    navigate("/home");
   };
   const [quizzes, setQuizzes] = useState<QuizItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);

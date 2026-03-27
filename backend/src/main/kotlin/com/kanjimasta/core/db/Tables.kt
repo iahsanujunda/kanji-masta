@@ -2,6 +2,7 @@ package com.kanjimasta.core.db
 
 import org.ktorm.schema.Table
 import org.ktorm.schema.boolean
+import org.ktorm.schema.date
 import org.ktorm.schema.int
 import org.ktorm.schema.long
 import org.ktorm.schema.text
@@ -179,6 +180,7 @@ object UserSettingsTable : Table<Nothing>("user_settings") {
     val slotDurationHours = int("slot_duration_hours")
     val timezone = text("timezone")
     val onboardingComplete = boolean("onboarding_complete")
+    val birthDate = date("birth_date")
     val createdAt = timestamp("created_at")
     val updatedAt = timestamp("updated_at")
 }

@@ -15,7 +15,7 @@ fun Route.settingsRoutes(settingsRepository: SettingsRepository) {
         put {
             val user = call.principal<AuthUser>()!!
             val request = call.receive<UpdateSettingsRequest>()
-            settingsRepository.upsertSettings(user.uid, request.quizAllowancePerSlot, request.slotDurationHours)
+            settingsRepository.upsertSettings(user.uid, request.quizAllowancePerSlot, request.slotDurationHours, request.birthDate)
             call.respond(mapOf("status" to "ok"))
         }
     }

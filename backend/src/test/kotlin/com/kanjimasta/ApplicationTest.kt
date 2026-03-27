@@ -84,7 +84,7 @@ fun Application.testModule(db: Database) {
     val internalService = com.kanjimasta.modules.internal.InternalService(db)
 
     // Seed settings for test user so tests that depend on settings work
-    settingsRepository.upsertSettings(TEST_USER_ID, 5, 6)
+    settingsRepository.upsertSettings(TEST_USER_ID, 5, 6, null)
 
     configureRouting(photoService, kanjiService, quizService, userService, settingsRepository, inviteService, adminService, internalService, TEST_USER_ID, "test-internal-key", "http://localhost:8080")
 }

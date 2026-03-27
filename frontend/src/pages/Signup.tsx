@@ -52,6 +52,7 @@ export default function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [birthDate, setBirthDate] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -93,12 +94,21 @@ export default function Signup() {
       setError("Password must be at least 6 characters.");
       return;
     }
+    if (!birthDate) {
+      setError("Please enter your date of birth.");
+      return;
+    }
+    if (new Date(birthDate) >= new Date()) {
+      setError("Date of birth must be in the past.");
+      return;
+    }
 
     setLoading(true);
     const { error } = await supabase.auth.signUp({ email, password });
     if (error) {
       setError(error.message);
     } else {
+      try { localStorage.setItem("pending_birth_date", birthDate); } catch { /* ignore */ }
       setSuccess(true);
     }
     setLoading(false);
@@ -212,6 +222,17 @@ export default function Signup() {
           required
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}
+          sx={{ mb: 2 }}
+          disabled={!inviteValid}
+        />
+        <TextField
+          label="Date of Birth"
+          type="date"
+          fullWidth
+          required
+          value={birthDate}
+          onChange={(e) => setBirthDate(e.target.value)}
+          slotProps={{ inputLabel: { shrink: true } }}
           sx={{ mb: 3 }}
           disabled={!inviteValid}
         />

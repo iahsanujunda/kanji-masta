@@ -4,6 +4,7 @@ import com.kanjimasta.core.db.UserSettingsTable
 import org.ktorm.database.Database
 import org.ktorm.dsl.*
 import org.slf4j.LoggerFactory
+import java.time.LocalDate
 
 
 private val logger = LoggerFactory.getLogger("com.kanjimasta.modules.settings.SettingsRepository")
@@ -19,6 +20,7 @@ class SettingsRepository(private val db: Database) {
                     quizAllowancePerSlot = r[UserSettingsTable.quizAllowancePerSlot] ?: 5,
                     slotDurationHours = r[UserSettingsTable.slotDurationHours] ?: 6,
                     onboardingComplete = r[UserSettingsTable.onboardingComplete] ?: false,
+                    birthDate = r[UserSettingsTable.birthDate]?.toString(),
                 )
             }
             .firstOrNull()
@@ -58,17 +60,19 @@ class SettingsRepository(private val db: Database) {
         }
     }
 
-    fun upsertSettings(userId: String, allowance: Int, duration: Int) {
+    fun upsertSettings(userId: String, allowance: Int?, duration: Int?, birthDate: String?) {
         val updated = db.update(UserSettingsTable) {
-            set(it.quizAllowancePerSlot, allowance)
-            set(it.slotDurationHours, duration)
+            if (allowance != null) set(it.quizAllowancePerSlot, allowance)
+            if (duration != null) set(it.slotDurationHours, duration)
+            if (birthDate != null) set(it.birthDate, LocalDate.parse(birthDate))
             where { it.userId eq userId }
         }
         if (updated == 0) {
             db.insert(UserSettingsTable) {
                 set(it.userId, userId)
-                set(it.quizAllowancePerSlot, allowance)
-                set(it.slotDurationHours, duration)
+                if (allowance != null) set(it.quizAllowancePerSlot, allowance)
+                if (duration != null) set(it.slotDurationHours, duration)
+                if (birthDate != null) set(it.birthDate, LocalDate.parse(birthDate))
             }
         }
     }

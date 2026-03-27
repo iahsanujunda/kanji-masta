@@ -24,7 +24,8 @@ import PageHeader from "@/components/PageHeader";
 import { apiFetch } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import { formatTimeLeft, timeAgo } from "@/lib/format";
-import { getTodayLesson, isLessonCompleted } from "@/lib/insights";
+import { getCurrentLesson, isLessonCompleted } from "@/lib/insights";
+import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 
 interface RecentScanItem {
   sessionId: string;
@@ -88,13 +89,16 @@ export default function Home() {
     }
   }, [location.state]);
 
-  const todayLesson = getTodayLesson();
+  const [lessonState, setLessonState] = useState(() => getCurrentLesson());
+  const { lesson: todayLesson, locked: lessonLocked, unlocksAt: lessonUnlocksAt } = lessonState;
   const [lessonCompleted, setLessonCompleted] = useState(() => isLessonCompleted(todayLesson.id));
 
-  // Refresh completion state when returning from lesson detail
+  // Refresh lesson state when returning from lesson detail
   useEffect(() => {
-    setLessonCompleted(isLessonCompleted(todayLesson.id));
-  }, [location.key, todayLesson.id]);
+    const state = getCurrentLesson();
+    setLessonState(state);
+    setLessonCompleted(isLessonCompleted(state.lesson.id));
+  }, [location.key]);
 
   const streak = summary?.streak ?? 0;
   const kanjiLearning = summary?.kanjiLearning ?? 0;
@@ -289,18 +293,25 @@ export default function Home() {
         {/* Daily insight card */}
         <Paper
           variant="outlined"
-          onClick={() => navigate(`/insights/${todayLesson.id}`)}
-          sx={{ borderRadius: 4, p: 2.5, cursor: "pointer", "&:hover": { bgcolor: "action.hover" } }}
+          onClick={lessonLocked ? undefined : () => navigate(`/insights/${todayLesson.id}`)}
+          sx={{ borderRadius: 4, p: 2.5, cursor: lessonLocked ? "default" : "pointer", opacity: lessonLocked ? 0.6 : 1, "&:hover": lessonLocked ? {} : { bgcolor: "action.hover" } }}
         >
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 1.5 }}>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <LightbulbOutlinedIcon sx={{ fontSize: 18, color: todayLesson.accentColor }} />
+              <LightbulbOutlinedIcon sx={{ fontSize: 18, color: lessonLocked ? "text.disabled" : todayLesson.accentColor }} />
               <Typography variant="caption" sx={{ fontWeight: 700, color: "text.disabled", letterSpacing: 1.5, textTransform: "uppercase" }}>
                 Today's Lesson
               </Typography>
             </Box>
             {lessonCompleted ? (
               <CheckCircleIcon sx={{ fontSize: 20, color: "#10b981" }} />
+            ) : lessonLocked ? (
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <LockOutlinedIcon sx={{ fontSize: 14, color: "text.disabled" }} />
+                <Typography variant="caption" sx={{ fontWeight: 700, color: "text.disabled" }}>
+                  {lessonUnlocksAt ? `Unlocks in ${Math.ceil((lessonUnlocksAt.getTime() - Date.now()) / 3_600_000)}h` : "Locked"}
+                </Typography>
+              </Box>
             ) : (
               <Box sx={{ px: 1.5, py: 0.5, borderRadius: 1.5, bgcolor: todayLesson.accentBg, border: "1px solid", borderColor: `${todayLesson.accentColor}4D` }}>
                 <Typography variant="caption" sx={{ fontWeight: 700, color: todayLesson.accentColor }}>
@@ -309,10 +320,10 @@ export default function Home() {
               </Box>
             )}
           </Box>
-          <Typography fontWeight="bold" sx={{ mb: lessonCompleted ? 0 : 0.75, color: lessonCompleted ? "text.disabled" : "text.primary" }}>
+          <Typography fontWeight="bold" sx={{ mb: lessonCompleted ? 0 : 0.75, color: lessonCompleted || lessonLocked ? "text.disabled" : "text.primary" }}>
             {todayLesson.title}
           </Typography>
-          {!lessonCompleted && (
+          {!lessonCompleted && !lessonLocked && (
             <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
               {todayLesson.teaser}
             </Typography>

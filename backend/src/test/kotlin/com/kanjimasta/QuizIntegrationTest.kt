@@ -426,7 +426,7 @@ class QuizIntegrationTest {
             client.get("/health")
 
             // NOW override allowance to 8 (after testModule seeded allowance=5)
-            com.kanjimasta.modules.settings.SettingsRepository(TestDatabase.db).upsertSettings(QUIZ_TEST_USER, 8, 6)
+            com.kanjimasta.modules.settings.SettingsRepository(TestDatabase.db).upsertSettings(QUIZ_TEST_USER, 8, 6, null)
 
             val response = client.get("/api/quiz/slot") {
                 header(HttpHeaders.Authorization, "Bearer test-token")

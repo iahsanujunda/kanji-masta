@@ -25,6 +25,19 @@ class SettingsRepository(private val db: Database) {
         return row ?: SettingsResponse(quizAllowancePerSlot = 5, slotDurationHours = 6, onboardingComplete = false)
     }
 
+    fun ensureUserInitialized(email: String?, userId: String) {
+        if (hasSettings(userId)) return
+        if (email.isNullOrBlank()) return
+        db.useConnection { conn ->
+            conn.prepareStatement("SELECT accept_invite_for_user(?, ?)").use { stmt ->
+                stmt.setString(1, email)
+                stmt.setString(2, userId)
+                stmt.execute()
+            }
+        }
+        logger.info("Initialized user via RPC: userId={} email={}", userId, email)
+    }
+
     fun hasSettings(userId: String): Boolean {
         return db.from(UserSettingsTable)
             .select(UserSettingsTable.userId)

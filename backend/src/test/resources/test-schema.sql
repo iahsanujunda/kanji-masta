@@ -220,7 +220,7 @@ CREATE TABLE user_invite (
 );
 
 -- RPC: accept invite and create user settings (called by auth trigger + backend)
-CREATE OR REPLACE FUNCTION accept_invite_for_user(p_email text, p_user_id text)
+CREATE OR REPLACE FUNCTION accept_invite_for_user(p_email varchar, p_user_id text)
 RETURNS void AS $$
 BEGIN
     UPDATE user_invite

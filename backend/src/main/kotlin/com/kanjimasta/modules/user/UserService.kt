@@ -9,6 +9,10 @@ class UserService(
     private val quizRepository: QuizRepository,
     private val settingsRepository: SettingsRepository,
 ) {
+    fun ensureUserInitialized(email: String?, userId: String) {
+        settingsRepository.ensureUserInitialized(email, userId)
+    }
+
     fun getSummary(userId: String): UserSummaryResponse {
         val (learning, familiar) = userRepository.getKanjiCounts(userId)
         val wordCount = userRepository.getWordCount(userId)

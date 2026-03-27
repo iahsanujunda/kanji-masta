@@ -55,7 +55,7 @@ export default function InsightDetail() {
         {lesson.interactive ? (
           <InteractiveLesson1 onComplete={handleComplete} isCompleted={completed} />
         ) : (
-          <StaticLesson lesson={lesson} onComplete={handleComplete} isCompleted={completed} />
+          <StaticLesson lesson={lesson} />
         )}
       </Box>
 
@@ -134,7 +134,7 @@ function InteractiveLesson1({ onComplete, isCompleted }: { onComplete: () => voi
       {step === 0 && (
         <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
           <Typography variant="body1" sx={{ color: "text.secondary", lineHeight: 1.8 }}>
-            We've all been there. We stare at a flashcard, flip it to check the translation, and memorize the meaning perfectly.
+            We stare at a flashcard, flip it to check the translation, and memorize the meaning perfectly. Sounds familiar?
           </Typography>
 
           {/* Flashcard */}
@@ -213,7 +213,7 @@ function InteractiveLesson1({ onComplete, isCompleted }: { onComplete: () => voi
       {step === 1 && (
         <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
           <Typography variant="body1" sx={{ color: "text.secondary", lineHeight: 1.8 }}>
-            Three days later, you see this in a quiz. Which one was it again?
+            Three days later, we see this in a quiz. Which one was it again?
           </Typography>
 
           <Box sx={{ bgcolor: "#0f0f16", border: "1px solid", borderColor: "grey.800", borderRadius: 4, p: 3 }}>
@@ -284,7 +284,7 @@ function InteractiveLesson1({ onComplete, isCompleted }: { onComplete: () => voi
           <Typography variant="body1" sx={{ color: "text.secondary", lineHeight: 1.8 }}>
             If you hesitated, it's because staring at an isolated symbol is called{" "}
             <Box component="strong" sx={{ color: "text.primary" }}>Shallow Processing</Box>.
-            {" "}Your brain didn't have any context to hold onto.
+            {" "}Our brain didn't have any context to hold onto.
           </Typography>
           <Typography variant="body1" sx={{ color: "text.secondary", lineHeight: 1.8 }}>
             To create a permanent memory, the brain needs a{" "}
@@ -335,7 +335,7 @@ function InteractiveLesson1({ onComplete, isCompleted }: { onComplete: () => voi
           </Box>
 
           <Typography variant="body1" sx={{ color: "text.secondary", lineHeight: 1.8 }}>
-            This is why Shuukan anchors every character to a real word — vocabulary you'll actually see in the wild, not buried in a textbook.
+            This is why Shuukan anchors every character to a real word — vocabulary we'll actually see in the wild, not buried in a textbook.
           </Typography>
           <Typography variant="h6" fontWeight="bold" sx={{ color: "text.primary" }}>
             Ready to start building some deep memories?
@@ -408,12 +408,8 @@ const STATIC_CONTENT: Record<string, ContentBlock[]> = {
 
 function StaticLesson({
   lesson,
-  onComplete,
-  isCompleted,
 }: {
   lesson: { id: string; title: string; teaser: string; accentColor: string; accentBg: string };
-  onComplete: () => void;
-  isCompleted: boolean;
 }) {
   const blocks = STATIC_CONTENT[lesson.id] ?? [];
 

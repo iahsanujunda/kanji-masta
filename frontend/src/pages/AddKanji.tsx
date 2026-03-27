@@ -298,13 +298,13 @@ function CurriculumDetail({
       {/* Kanji Grid */}
       <Box sx={{ flex: 1, px: 3, pb: 4, overflow: "auto" }}>
         {isLoading ? (
-          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1.5 }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1.5, alignItems: "start" }}>
             {[...Array(20)].map((_, i) => (
               <Skeleton key={i} variant="rounded" sx={{ aspectRatio: "1", borderRadius: 3 }} />
             ))}
           </Box>
         ) : (
-          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1.5 }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1.5, alignItems: "start" }}>
             {data?.kanji.map((k) => (
               <KanjiCell
                 key={k.kanjiMasterId}
@@ -491,6 +491,8 @@ function KanjiCell({
       disabled={batchMode ? !tappable : !isNew}
       sx={{
         aspectRatio: "1",
+        width: "100%",
+        overflow: "hidden",
         borderRadius: 3,
         display: "flex",
         flexDirection: "column",

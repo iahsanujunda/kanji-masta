@@ -175,7 +175,7 @@ export default function Capture() {
     return (
       <Box
         sx={{
-          minHeight: "100vh",
+          minHeight: "var(--app-height)",
           maxWidth: 480,
           mx: "auto",
           display: "flex",
@@ -243,7 +243,7 @@ export default function Capture() {
     return (
       <Box
         sx={{
-          minHeight: "100vh",
+          minHeight: "var(--app-height)",
           maxWidth: 480,
           mx: "auto",
           display: "flex",
@@ -327,9 +327,14 @@ export default function Capture() {
                     >
                       {kanji.onyomi.join("、")}
                     </Typography>
-                    <Typography variant="h6" fontWeight="bold" sx={{ textTransform: "capitalize", lineHeight: 1.2, mb: 1 }}>
+                    <Typography variant="h6" fontWeight="bold" sx={{ textTransform: "capitalize", lineHeight: 1.2, mb: 0.5 }}>
                       {kanji.meanings[0] || ""}
                     </Typography>
+                    {kanji.whyUseful && (
+                      <Typography variant="caption" sx={{ color: "text.secondary", lineHeight: 1.3, mb: 1, display: "block" }}>
+                        {kanji.whyUseful}
+                      </Typography>
+                    )}
                     {kanji.exampleWords[0] && (
                       <Box sx={{ bgcolor: "rgba(0,0,0,0.3)", px: 1.5, py: 1, borderRadius: 2, border: "1px solid", borderColor: "grey.800" }}>
                         <Typography variant="body2" component="span" sx={{ mr: 1 }}>
@@ -448,7 +453,7 @@ export default function Capture() {
   return (
     <Box
       sx={{
-        minHeight: "100vh",
+        minHeight: "var(--app-height)",
         maxWidth: 480,
         mx: "auto",
         display: "flex",

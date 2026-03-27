@@ -134,33 +134,61 @@ export default function Dictionary() {
             </Typography>
           </Box>
         ) : (
-          words.map((w) => (
-            <Paper
-              key={w.id}
-              variant="outlined"
-              sx={{
-                borderRadius: 3,
-                p: 2,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <Box sx={{ minWidth: 0 }}>
-                <Box sx={{ display: "flex", alignItems: "baseline", gap: 1.5, mb: 0.5 }}>
-                  <Typography fontWeight="bold" sx={{ fontSize: "1.1rem" }}>{w.word}</Typography>
-                  <Typography variant="body2" color="text.secondary">{w.reading}</Typography>
+          words.map((w) => {
+            const mastered = w.familiarity === 5;
+            const learning = w.familiarity > 0 && w.familiarity < 5;
+
+            return (
+              <Paper
+                key={w.id}
+                variant="outlined"
+                sx={{
+                  borderRadius: 3,
+                  p: 2,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  position: "relative",
+                  overflow: "hidden",
+                  ...(mastered && {
+                    background: "linear-gradient(to right, rgba(16,185,129,0.1), #0f0f16)",
+                    borderColor: "rgba(16,185,129,0.25)",
+                    boxShadow: "0 4px 20px rgba(16,185,129,0.04)",
+                  }),
+                  ...(learning && {
+                    background: "linear-gradient(to right, rgba(67,56,202,0.07), #0f0f16)",
+                    borderColor: "rgba(67,56,202,0.2)",
+                  }),
+                }}
+              >
+                {/* Left status indicator */}
+                <Box
+                  sx={{
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 2,
+                    ...(mastered && { bgcolor: "#10b981" }),
+                    ...(learning && { bgcolor: "rgba(99,102,241,0.4)" }),
+                  }}
+                />
+                <Box sx={{ minWidth: 0, pl: 0.5 }}>
+                  <Box sx={{ display: "flex", alignItems: "baseline", gap: 1.5, mb: 0.5 }}>
+                    <Typography fontWeight="bold" sx={{ fontSize: "1.1rem" }}>{w.word}</Typography>
+                    <Typography variant="body2" color="text.secondary">{w.reading}</Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" noWrap>{w.meaning}</Typography>
                 </Box>
-                <Typography variant="body2" color="text.secondary" noWrap>{w.meaning}</Typography>
-              </Box>
-              <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 0.5, flexShrink: 0, ml: 2 }}>
-                <FamiliarityDots value={w.familiarity} />
-                {w.nextReview && (
-                  <Typography variant="caption" color="text.disabled">{formatNextReview(w.nextReview)}</Typography>
-                )}
-              </Box>
-            </Paper>
-          ))
+                <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 0.5, flexShrink: 0, ml: 2 }}>
+                  <FamiliarityDots value={w.familiarity} />
+                  {w.nextReview && (
+                    <Typography variant="caption" color="text.disabled">{formatNextReview(w.nextReview)}</Typography>
+                  )}
+                </Box>
+              </Paper>
+            );
+          })
         )}
 
         {/* Infinite scroll sentinel */}

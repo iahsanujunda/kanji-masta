@@ -1,6 +1,6 @@
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Box, Paper, Skeleton, Typography } from "@mui/material";
+import { Box, Button, Paper, Skeleton, Typography } from "@mui/material";
 import PageHeader from "@/components/PageHeader";
 import FamiliarityDots from "@/components/FamiliarityDots";
 import { apiFetch } from "@/lib/api";
@@ -13,15 +13,16 @@ interface KanjiListItem {
 }
 
 const ZONE_CONFIG = {
-  canopy: { label: "Mastered", tier: "Tier 4-5", color: "#34d399", min: 4, max: 5 },
-  trunk: { label: "Growing", tier: "Tier 2-3", color: "#818cf8", min: 2, max: 3 },
-  roots: { label: "Seeded", tier: "Tier 0-1", color: "#c084fc", min: 0, max: 1 },
+  canopy: { label: "Mastered", tier: "Tier 4-5", color: "#34d399", min: 4, max: 5, level: 5 as number | null },
+  trunk: { label: "Growing", tier: "Tier 2-3", color: "#818cf8", min: 2, max: 3, level: null as number | null },
+  roots: { label: "Seeded", tier: "Tier 0-1", color: "#c084fc", min: 0, max: 1, level: 0 as number | null },
 } as const;
 
 type Zone = keyof typeof ZONE_CONFIG;
 
 export default function KanjiList() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const zone = (searchParams.get("zone") || "roots") as Zone;
   const config = ZONE_CONFIG[zone] || ZONE_CONFIG.roots;
 
@@ -72,7 +73,7 @@ export default function KanjiList() {
         }}
       />
 
-      <Box sx={{ flex: 1, px: 3, pb: 4, position: "relative", zIndex: 1 }}>
+      <Box sx={{ flex: 1, px: 3, pb: config.level !== null ? 2 : 4, position: "relative", zIndex: 1 }}>
         {loading ? (
           <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
             {[...Array(6)].map((_, i) => (
@@ -111,6 +112,28 @@ export default function KanjiList() {
           </Box>
         )}
       </Box>
+
+      {config.level !== null && (
+        <Box sx={{ px: 3, pb: 4, pt: 2, position: "relative", zIndex: 1 }}>
+          <Button
+            fullWidth
+            variant="contained"
+            size="large"
+            onClick={() => navigate(`/kanji/add?level=${config.level}`)}
+            sx={{
+              bgcolor: config.color,
+              color: zone === "canopy" ? "black" : "white",
+              fontWeight: 700,
+              py: 1.5,
+              borderRadius: 3,
+              boxShadow: `0 0 30px ${config.color}4D`,
+              "&:hover": { filter: "brightness(1.1)" },
+            }}
+          >
+            Add Kanji
+          </Button>
+        </Box>
+      )}
     </Box>
   );
 }

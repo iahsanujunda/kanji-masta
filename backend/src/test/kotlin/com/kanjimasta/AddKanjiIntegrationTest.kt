@@ -329,4 +329,182 @@ class AddKanjiIntegrationTest {
         }
         assertEquals(HttpStatusCode.BadRequest, response.status)
     }
+
+    // =========================================================================
+    // Test: FAMILIAR status → familiarity=5, currentTier=FILL_IN_THE_BLANK
+    // =========================================================================
+
+    @Test
+    fun `POST kanji add with familiar status sets familiarity 5 and fill-in-the-blank tier`() = testApplication {
+        application { testModule(TestDatabase.db) }
+        cleanupTestUser(TestDatabase.db, TEST_USER_ID)
+
+        val kanjiId = seedKanjiWithWordsAndQuizzes(TestDatabase.db, "月", "moon")
+
+        try {
+            val client = jsonClient()
+            val response = client.post("/api/kanji/add") {
+                header(HttpHeaders.Authorization, "Bearer test-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"selections":[{"kanjiMasterId":"$kanjiId","status":"familiar"}]}""")
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+
+            val userKanji = TestDatabase.db.from(UserKanjiTable)
+                .select(UserKanjiTable.familiarity, UserKanjiTable.currentTier)
+                .where { (UserKanjiTable.userId eq TEST_USER_ID) and (UserKanjiTable.kanjiId eq kanjiId) }
+                .map { it[UserKanjiTable.familiarity]!! to it[UserKanjiTable.currentTier]!! }
+                .first()
+
+            assertEquals(5, userKanji.first, "FAMILIAR kanji should have familiarity=5")
+            assertEquals(QuizType.FILL_IN_THE_BLANK, userKanji.second, "FAMILIAR kanji should have FILL_IN_THE_BLANK tier")
+
+            // Familiar kanji do not enter the quiz pipeline
+            val jobCount = TestDatabase.db.from(QuizGenerationJobTable)
+                .select()
+                .where { (QuizGenerationJobTable.userId eq TEST_USER_ID) and (QuizGenerationJobTable.kanjiId eq kanjiId) }
+                .totalRecordsInAllPages
+            assertEquals(0, jobCount, "FAMILIAR kanji should not enqueue quiz generation jobs")
+        } finally {
+            cleanupTestUser(TestDatabase.db, TEST_USER_ID)
+        }
+    }
+
+    // =========================================================================
+    // Test: LEARNING status → familiarity=0, currentTier=MEANING_RECALL
+    // =========================================================================
+
+    @Test
+    fun `POST kanji add with learning status sets familiarity 0 and meaning-recall tier`() = testApplication {
+        application { testModule(TestDatabase.db) }
+        cleanupTestUser(TestDatabase.db, TEST_USER_ID)
+
+        val kanjiId = seedKanjiWithWordsAndQuizzes(TestDatabase.db, "火", "fire")
+
+        try {
+            val client = jsonClient()
+            val response = client.post("/api/kanji/add") {
+                header(HttpHeaders.Authorization, "Bearer test-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"selections":[{"kanjiMasterId":"$kanjiId","status":"learning"}]}""")
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+
+            Thread.sleep(500)
+
+            val userKanji = TestDatabase.db.from(UserKanjiTable)
+                .select(UserKanjiTable.familiarity, UserKanjiTable.currentTier)
+                .where { (UserKanjiTable.userId eq TEST_USER_ID) and (UserKanjiTable.kanjiId eq kanjiId) }
+                .map { it[UserKanjiTable.familiarity]!! to it[UserKanjiTable.currentTier]!! }
+                .first()
+
+            assertEquals(0, userKanji.first, "LEARNING kanji should have familiarity=0")
+            assertEquals(QuizType.MEANING_RECALL, userKanji.second, "LEARNING kanji should have MEANING_RECALL tier")
+        } finally {
+            cleanupTestUser(TestDatabase.db, TEST_USER_ID)
+        }
+    }
+
+    // =========================================================================
+    // Test: LEARNING limit — reject more than 5 learning kanji in one batch
+    // =========================================================================
+
+    @Test
+    fun `POST kanji add with more than 5 learning kanji returns 400`() = testApplication {
+        application { testModule(TestDatabase.db) }
+        cleanupTestUser(TestDatabase.db, TEST_USER_ID)
+
+        val kanjiChars = listOf("亜", "哀", "愛", "悪", "握", "圧")
+        val kanjiIds = kanjiChars.map { seedKanjiWithoutWords(TestDatabase.db, it, "meaning-$it") }
+
+        try {
+            val client = jsonClient()
+            val selections = kanjiIds.joinToString(",") { """{"kanjiMasterId":"$it","status":"learning"}""" }
+            val response = client.post("/api/kanji/add") {
+                header(HttpHeaders.Authorization, "Bearer test-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"selections":[$selections]}""")
+            }
+            assertEquals(HttpStatusCode.BadRequest, response.status)
+
+            // No user_kanji rows should have been inserted
+            val insertedCount = TestDatabase.db.from(UserKanjiTable)
+                .select()
+                .where { (UserKanjiTable.userId eq TEST_USER_ID) and (UserKanjiTable.kanjiId inList kanjiIds) }
+                .totalRecordsInAllPages
+            assertEquals(0, insertedCount, "No kanji should be inserted when batch exceeds limit")
+        } finally {
+            cleanupTestUser(TestDatabase.db, TEST_USER_ID)
+        }
+    }
+
+    // =========================================================================
+    // Test: Batch of exactly 5 LEARNING kanji succeeds
+    // =========================================================================
+
+    @Test
+    fun `POST kanji add with exactly 5 learning kanji succeeds`() = testApplication {
+        application { testModule(TestDatabase.db) }
+        cleanupTestUser(TestDatabase.db, TEST_USER_ID)
+
+        val kanjiChars = listOf("案", "以", "衣", "位", "囲")
+        val kanjiIds = kanjiChars.map { seedKanjiWithoutWords(TestDatabase.db, it, "meaning-$it") }
+
+        try {
+            val client = jsonClient()
+            val selections = kanjiIds.joinToString(",") { """{"kanjiMasterId":"$it","status":"learning"}""" }
+            val response = client.post("/api/kanji/add") {
+                header(HttpHeaders.Authorization, "Bearer test-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"selections":[$selections]}""")
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+
+            Thread.sleep(500)
+
+            val insertedCount = TestDatabase.db.from(UserKanjiTable)
+                .select()
+                .where { (UserKanjiTable.userId eq TEST_USER_ID) and (UserKanjiTable.kanjiId inList kanjiIds) }
+                .totalRecordsInAllPages
+            assertEquals(5, insertedCount, "All 5 learning kanji should be inserted")
+        } finally {
+            cleanupTestUser(TestDatabase.db, TEST_USER_ID)
+        }
+    }
+
+    // =========================================================================
+    // Test: FAMILIAR submissions are not limited by the 5-kanji cap
+    // =========================================================================
+
+    @Test
+    fun `POST kanji add with 6 familiar kanji succeeds — no cap on familiar`() = testApplication {
+        application { testModule(TestDatabase.db) }
+        cleanupTestUser(TestDatabase.db, TEST_USER_ID)
+
+        val kanjiChars = listOf("医", "域", "育", "一", "壱", "逸")
+        val kanjiIds = kanjiChars.map { seedKanjiWithWordsAndQuizzes(TestDatabase.db, it, "meaning-$it") }
+
+        try {
+            val client = jsonClient()
+            val selections = kanjiIds.joinToString(",") { """{"kanjiMasterId":"$it","status":"familiar"}""" }
+            val response = client.post("/api/kanji/add") {
+                header(HttpHeaders.Authorization, "Bearer test-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"selections":[$selections]}""")
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+
+            val insertedCount = TestDatabase.db.from(UserKanjiTable)
+                .select()
+                .where {
+                    (UserKanjiTable.userId eq TEST_USER_ID) and
+                    (UserKanjiTable.kanjiId inList kanjiIds) and
+                    (UserKanjiTable.familiarity eq 5)
+                }
+                .totalRecordsInAllPages
+            assertEquals(6, insertedCount, "All 6 familiar kanji should be inserted with familiarity=5")
+        } finally {
+            cleanupTestUser(TestDatabase.db, TEST_USER_ID)
+        }
+    }
 }

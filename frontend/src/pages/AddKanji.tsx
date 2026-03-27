@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Box,
@@ -36,9 +37,19 @@ interface CurriculumDetailResponse {
   kanji: CurriculumKanjiItem[];
 }
 
+const MAX_LEARNING_BATCH = 5;
+
+function levelToStatus(level: number): "familiar" | "learning" {
+  return level >= 4 ? "familiar" : "learning";
+}
+
 export default function AddKanji() {
+  const [searchParams] = useSearchParams();
+  const levelParam = searchParams.get("level");
+  const level = levelParam !== null ? parseInt(levelParam, 10) : null;
+  const batchMode = level !== null;
+
   const [selectedJlpt, setSelectedJlpt] = useState<number | null>(null);
-  const [selectedKanji, setSelectedKanji] = useState<CurriculumKanjiItem | null>(null);
   const queryClient = useQueryClient();
 
   if (selectedJlpt !== null) {
@@ -46,8 +57,8 @@ export default function AddKanji() {
       <CurriculumDetail
         jlpt={selectedJlpt}
         onBack={() => setSelectedJlpt(null)}
-        selectedKanji={selectedKanji}
-        onSelectKanji={setSelectedKanji}
+        batchMode={batchMode}
+        level={level}
         queryClient={queryClient}
       />
     );
@@ -61,6 +72,7 @@ export default function AddKanji() {
 // =============================================================================
 
 function CurriculumHub({ onSelect }: { onSelect: (jlpt: number) => void }) {
+  const navigate = useNavigate();
   const { data, isLoading } = useQuery({
     queryKey: ["curriculum"],
     queryFn: () => apiFetch<{ curriculums: CurriculumItem[] }>("/api/kanji/curriculum"),
@@ -76,7 +88,7 @@ function CurriculumHub({ onSelect }: { onSelect: (jlpt: number) => void }) {
         flexDirection: "column",
       }}
     >
-      <PageHeader title="Add Kanji" backTo="/collection" />
+      <PageHeader title="Add Kanji" onBack={() => navigate(-1)} />
 
       <Box sx={{ flex: 1, px: 3, pb: 4, display: "flex", flexDirection: "column", gap: 2 }}>
         <Typography
@@ -160,20 +172,66 @@ function CurriculumHub({ onSelect }: { onSelect: (jlpt: number) => void }) {
 function CurriculumDetail({
   jlpt,
   onBack,
-  selectedKanji,
-  onSelectKanji,
+  batchMode,
+  level,
   queryClient,
 }: {
   jlpt: number;
   onBack: () => void;
-  selectedKanji: CurriculumKanjiItem | null;
-  onSelectKanji: (k: CurriculumKanjiItem | null) => void;
+  batchMode: boolean;
+  level: number | null;
   queryClient: ReturnType<typeof useQueryClient>;
 }) {
   const { data, isLoading } = useQuery({
     queryKey: ["curriculum-detail", jlpt],
     queryFn: () => apiFetch<CurriculumDetailResponse>(`/api/kanji/curriculum/${jlpt}`),
   });
+
+  // Legacy mode state
+  const [selectedKanji, setSelectedKanji] = useState<CurriculumKanjiItem | null>(null);
+
+  // Batch mode state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [submitting, setSubmitting] = useState(false);
+
+  const isLearningBatch = batchMode && level !== null && levelToStatus(level) === "learning";
+  const cap = isLearningBatch ? MAX_LEARNING_BATCH : Infinity;
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      if (prev.has(id)) {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      }
+      if (prev.size >= cap) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  };
+
+  const handleBatchSubmit = async () => {
+    if (!selectedIds.size || level === null) return;
+    setSubmitting(true);
+    try {
+      await apiFetch("/api/kanji/add", {
+        method: "POST",
+        body: JSON.stringify({
+          selections: Array.from(selectedIds).map((id) => ({
+            kanjiMasterId: id,
+            status: levelToStatus(level),
+          })),
+        }),
+      });
+      queryClient.invalidateQueries({ queryKey: ["curriculum-detail", jlpt] });
+      queryClient.invalidateQueries({ queryKey: ["curriculum"] });
+      queryClient.invalidateQueries({ queryKey: ["kanji-list"] });
+      setSelectedIds(new Set());
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleTriage = async (status: string) => {
     if (!selectedKanji) return;
@@ -184,12 +242,18 @@ function CurriculumDetail({
           selections: [{ kanjiMasterId: selectedKanji.kanjiMasterId, status }],
         }),
       });
-      onSelectKanji(null);
+      setSelectedKanji(null);
       queryClient.invalidateQueries({ queryKey: ["curriculum-detail", jlpt] });
       queryClient.invalidateQueries({ queryKey: ["curriculum"] });
     } catch {
       // fail silently
     }
+  };
+
+  const batchButtonLabel = () => {
+    if (submitting) return "Saving...";
+    if (selectedIds.size === 0) return isLearningBatch ? `Select up to ${MAX_LEARNING_BATCH} kanji` : "Select kanji to add";
+    return `Add ${selectedIds.size} kanji`;
   };
 
   return (
@@ -225,6 +289,12 @@ function CurriculumDetail({
         ))}
       </Box>
 
+      {batchMode && isLearningBatch && (
+        <Typography variant="caption" sx={{ px: 3, mb: 1.5, color: "text.disabled", textAlign: "center", display: "block" }}>
+          Tap to select · max {MAX_LEARNING_BATCH} at a time
+        </Typography>
+      )}
+
       {/* Kanji Grid */}
       <Box sx={{ flex: 1, px: 3, pb: 4, overflow: "auto" }}>
         {isLoading ? (
@@ -236,14 +306,21 @@ function CurriculumDetail({
         ) : (
           <Box sx={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1.5 }}>
             {data?.kanji.map((k) => (
-              <KanjiCell key={k.kanjiMasterId} kanji={k} onTap={onSelectKanji} />
+              <KanjiCell
+                key={k.kanjiMasterId}
+                kanji={k}
+                batchMode={batchMode}
+                selected={selectedIds.has(k.kanjiMasterId)}
+                atCap={selectedIds.size >= cap && !selectedIds.has(k.kanjiMasterId)}
+                onTap={batchMode ? () => toggleSelect(k.kanjiMasterId) : () => setSelectedKanji(k)}
+              />
             ))}
           </Box>
         )}
       </Box>
 
-      {/* Bottom Sheet */}
-      {selectedKanji && (
+      {/* Legacy mode: bottom sheet */}
+      {!batchMode && selectedKanji && (
         <Box
           sx={{
             position: "fixed",
@@ -256,7 +333,7 @@ function CurriculumDetail({
         >
           {/* Backdrop */}
           <Box
-            onClick={() => onSelectKanji(null)}
+            onClick={() => setSelectedKanji(null)}
             sx={{ position: "absolute", inset: 0, bgcolor: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
           />
 
@@ -345,6 +422,41 @@ function CurriculumDetail({
           </Box>
         </Box>
       )}
+
+      {/* Batch mode: sticky submit bar */}
+      {batchMode && (
+        <Box
+          sx={{
+            position: "sticky",
+            bottom: 0,
+            px: 3,
+            pb: 4,
+            pt: 2,
+            background: "linear-gradient(transparent, #050508 40%)",
+            zIndex: 10,
+          }}
+        >
+          <Button
+            fullWidth
+            variant="contained"
+            size="large"
+            disabled={!selectedIds.size || submitting}
+            onClick={handleBatchSubmit}
+            sx={{
+              bgcolor: "#10b981",
+              color: "black",
+              fontWeight: 700,
+              py: 1.5,
+              borderRadius: 3,
+              boxShadow: selectedIds.size ? "0 0 30px rgba(16,185,129,0.3)" : "none",
+              "&:hover": { bgcolor: "#34d399" },
+              "&.Mui-disabled": { bgcolor: "grey.800", color: "grey.600" },
+            }}
+          >
+            {batchButtonLabel()}
+          </Button>
+        </Box>
+      )}
     </Box>
   );
 }
@@ -355,20 +467,28 @@ function CurriculumDetail({
 
 function KanjiCell({
   kanji,
+  batchMode,
+  selected,
+  atCap,
   onTap,
 }: {
   kanji: CurriculumKanjiItem;
+  batchMode: boolean;
+  selected: boolean;
+  atCap: boolean;
   onTap: (k: CurriculumKanjiItem) => void;
 }) {
   const isNew = kanji.userStatus === "new";
   const isLearning = kanji.userStatus === "learning";
   const isMastered = kanji.userStatus === "mastered";
 
+  const tappable = isNew && (!atCap || selected);
+
   return (
     <Box
       component="button"
-      onClick={() => isNew && onTap(kanji)}
-      disabled={!isNew}
+      onClick={() => tappable && onTap(kanji)}
+      disabled={batchMode ? !tappable : !isNew}
       sx={{
         aspectRatio: "1",
         borderRadius: 3,
@@ -376,16 +496,26 @@ function KanjiCell({
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        cursor: isNew ? "pointer" : "default",
+        cursor: tappable ? "pointer" : "default",
         transition: "all 0.15s",
         background: "transparent",
         p: 0,
+        position: "relative",
 
-        ...(isNew && {
+        ...(isNew && !selected && {
           border: "2px dotted",
-          borderColor: "grey.500",
-          color: "grey.500",
-          "&:hover": { bgcolor: "rgba(255,255,255,0.04)", color: "grey.300", borderColor: "grey.400" },
+          borderColor: atCap && batchMode ? "grey.800" : "grey.500",
+          color: atCap && batchMode ? "grey.700" : "grey.500",
+          ...(tappable && {
+            "&:hover": { bgcolor: "rgba(255,255,255,0.04)", color: "grey.300", borderColor: "grey.400" },
+            "&:active": { transform: "scale(0.95)" },
+          }),
+        }),
+        ...(isNew && batchMode && selected && {
+          bgcolor: "rgba(16,185,129,0.15)",
+          border: "2px solid #10b981",
+          color: "#34d399",
+          boxShadow: "0 0 15px rgba(16,185,129,0.2)",
           "&:active": { transform: "scale(0.95)" },
         }),
         ...(isLearning && {
@@ -403,7 +533,7 @@ function KanjiCell({
       }}
     >
       <Typography sx={{ fontSize: "1.5rem", fontWeight: 500, lineHeight: 1 }}>{kanji.character}</Typography>
-      {isNew && (
+      {isNew && !selected && (
         <Typography
           sx={{
             fontSize: "0.55rem",
@@ -418,6 +548,25 @@ function KanjiCell({
         >
           {kanji.meanings[0] || ""}
         </Typography>
+      )}
+
+      {batchMode && selected && isNew && (
+        <Box
+          sx={{
+            position: "absolute",
+            top: 4,
+            right: 4,
+            width: 16,
+            height: 16,
+            bgcolor: "#10b981",
+            borderRadius: "50%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <CheckIcon sx={{ fontSize: 10, color: "black" }} />
+        </Box>
       )}
     </Box>
   );

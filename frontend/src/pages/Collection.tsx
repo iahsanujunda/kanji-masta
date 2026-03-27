@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Box, Button, Typography } from "@mui/material";
+import { Box, Typography } from "@mui/material";
 import PageHeader from "@/components/PageHeader";
 import { apiFetch } from "@/lib/api";
 
@@ -285,24 +285,6 @@ export default function Collection() {
         />
       </Box>
 
-      {/* Bottom action */}
-      <Box sx={{ px: 3, pb: 4, pt: 2, zIndex: 20 }}>
-        <Button
-          fullWidth
-          variant="contained"
-          size="large"
-          onClick={() => navigate("/kanji/add")}
-          sx={{
-            bgcolor: "#4338ca",
-            fontWeight: "bold",
-            py: 1.5,
-            borderRadius: 3,
-            "&:hover": { bgcolor: "#3730a3" },
-          }}
-        >
-          Add Familiar Kanji
-        </Button>
-      </Box>
     </Box>
   );
 }

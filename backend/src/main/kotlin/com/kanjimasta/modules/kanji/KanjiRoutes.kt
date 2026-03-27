@@ -32,6 +32,11 @@ fun Route.kanjiRoutes(kanjiService: KanjiService, settingsRepository: SettingsRe
         post("/add") {
             val user = call.principal<AuthUser>()!!
             val request = call.receive<OnboardingSelectRequest>()
+            val learningCount = request.selections.count { it.status.uppercase() == "LEARNING" }
+            if (learningCount > 5) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Max 5 kanji per submission at learning level"))
+                return@post
+            }
             kanjiService.saveOnboardingSelections(user.uid, request.selections)
             call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
         }

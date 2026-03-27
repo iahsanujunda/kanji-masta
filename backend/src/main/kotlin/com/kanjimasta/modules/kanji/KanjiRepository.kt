@@ -187,6 +187,74 @@ class KanjiRepository(private val db: Database) {
             .totalRecordsInAllPages
     }
 
+    // --- Curriculum ---
+
+    fun getCurriculumSummary(userId: String): List<Pair<Int, Int>> {
+        // Get user's kanji grouped by JLPT level
+        val plantedByJlpt = db.from(UserKanjiTable)
+            .innerJoin(KanjiMasterTable, on = UserKanjiTable.kanjiId eq KanjiMasterTable.id)
+            .select(KanjiMasterTable.jlpt)
+            .where { UserKanjiTable.userId eq userId }
+            .mapNotNull { it[KanjiMasterTable.jlpt] }
+            .groupingBy { it }
+            .eachCount()
+
+        // Get total kanji per JLPT level
+        val totalByJlpt = db.from(KanjiMasterTable)
+            .select(KanjiMasterTable.jlpt)
+            .where { KanjiMasterTable.jlpt.isNotNull() }
+            .mapNotNull { it[KanjiMasterTable.jlpt] }
+            .groupingBy { it }
+            .eachCount()
+
+        return (5 downTo 1).mapNotNull { jlpt ->
+            val total = totalByJlpt[jlpt] ?: return@mapNotNull null
+            val planted = plantedByJlpt[jlpt] ?: 0
+            jlpt to planted
+        }
+    }
+
+    fun getCurriculumKanji(userId: String, jlpt: Int): List<CurriculumKanjiItem> {
+        // Get user's kanji for this JLPT level
+        val userKanjiMap = db.from(UserKanjiTable)
+            .innerJoin(KanjiMasterTable, on = UserKanjiTable.kanjiId eq KanjiMasterTable.id)
+            .select(UserKanjiTable.kanjiId, UserKanjiTable.familiarity)
+            .where { (UserKanjiTable.userId eq userId) and (KanjiMasterTable.jlpt eq jlpt) }
+            .associate { row ->
+                row[UserKanjiTable.kanjiId]!! to (row[UserKanjiTable.familiarity] ?: 0)
+            }
+
+        // Get all kanji in this JLPT level
+        return db.from(KanjiMasterTable)
+            .select()
+            .where { KanjiMasterTable.jlpt eq jlpt }
+            .orderBy(KanjiMasterTable.frequency.asc())
+            .map { row ->
+                val kanjiId = row[KanjiMasterTable.id]!!
+                val familiarity = userKanjiMap[kanjiId]
+                val status = when {
+                    familiarity == null -> "new"
+                    familiarity >= 5 -> "mastered"
+                    else -> "learning"
+                }
+                CurriculumKanjiItem(
+                    kanjiMasterId = kanjiId.toString(),
+                    character = row[KanjiMasterTable.character] ?: "",
+                    meanings = row[KanjiMasterTable.meanings] ?: emptyList(),
+                    userStatus = status,
+                )
+            }
+    }
+
+    fun getTotalKanjiByJlpt(): Map<Int, Int> {
+        return db.from(KanjiMasterTable)
+            .select(KanjiMasterTable.jlpt)
+            .where { KanjiMasterTable.jlpt.isNotNull() }
+            .mapNotNull { it[KanjiMasterTable.jlpt] }
+            .groupingBy { it }
+            .eachCount()
+    }
+
     // --- Onboarding ---
 
     private data class KanjiMasterRow(

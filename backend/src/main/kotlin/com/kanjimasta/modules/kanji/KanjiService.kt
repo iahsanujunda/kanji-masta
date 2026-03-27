@@ -116,6 +116,42 @@ class KanjiService(
         }
     }
 
+    private val jlptMeta = mapOf(
+        5 to ("JLPT N5" to "The Basics"),
+        4 to ("JLPT N4" to "Everyday Life"),
+        3 to ("JLPT N3" to "Intermediate"),
+        2 to ("JLPT N2" to "Advanced"),
+        1 to ("JLPT N1" to "Expert"),
+    )
+
+    suspend fun getCurriculumSummary(userId: String): CurriculumResponse {
+        val totals = kanjiRepository.getTotalKanjiByJlpt()
+        val summary = kanjiRepository.getCurriculumSummary(userId)
+        val items = summary.map { (jlpt, planted) ->
+            val (title, subtitle) = jlptMeta[jlpt] ?: ("JLPT N$jlpt" to "")
+            CurriculumItem(
+                jlpt = jlpt,
+                title = title,
+                subtitle = subtitle,
+                total = totals[jlpt] ?: 0,
+                planted = planted,
+            )
+        }
+        return CurriculumResponse(curriculums = items)
+    }
+
+    suspend fun getCurriculumKanji(userId: String, jlpt: Int): CurriculumDetailResponse {
+        val totals = kanjiRepository.getTotalKanjiByJlpt()
+        val (title, _) = jlptMeta[jlpt] ?: ("JLPT N$jlpt" to "")
+        val kanji = kanjiRepository.getCurriculumKanji(userId, jlpt)
+        return CurriculumDetailResponse(
+            jlpt = jlpt,
+            title = title,
+            total = totals[jlpt] ?: 0,
+            kanji = kanji,
+        )
+    }
+
     suspend fun getPendingJobCount(userId: String): Int {
         return kanjiRepository.countPendingJobs(userId)
     }

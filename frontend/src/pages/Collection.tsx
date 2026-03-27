@@ -228,8 +228,8 @@ export default function Collection() {
       }}
     >
       <PageHeader
-        title="Your Tree"
-        subtitle={`${collection.total} Kanji in Ecosystem`}
+        title="Your Kanji"
+        subtitle={`${collection.total} Kanji`}
         backTo="/home"
         sx={{ zIndex: 20 }}
         backButtonSx={{

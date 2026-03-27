@@ -30,7 +30,24 @@ fun Route.kanjiRoutes(kanjiService: KanjiService, settingsRepository: SettingsRe
         }
 
         post("/add") {
-            call.respond(HttpStatusCode.NotImplemented, mapOf("message" to "Manual kanji add coming soon"))
+            val user = call.principal<AuthUser>()!!
+            val request = call.receive<OnboardingSelectRequest>()
+            kanjiService.saveOnboardingSelections(user.uid, request.selections)
+            call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
+        }
+
+        get("/curriculum") {
+            val user = call.principal<AuthUser>()!!
+            val result = kanjiService.getCurriculumSummary(user.uid)
+            call.respond(result)
+        }
+
+        get("/curriculum/{jlpt}") {
+            val user = call.principal<AuthUser>()!!
+            val jlpt = call.parameters["jlpt"]?.toIntOrNull()
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid JLPT level"))
+            val result = kanjiService.getCurriculumKanji(user.uid, jlpt)
+            call.respond(result)
         }
     }
 

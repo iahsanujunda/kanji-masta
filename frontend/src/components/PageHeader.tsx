@@ -7,19 +7,21 @@ interface Props {
   title: string;
   subtitle?: ReactNode;
   backTo?: string;
+  onBack?: () => void;
   right?: ReactNode;
   sx?: object;
   backButtonSx?: object;
 }
 
-export default function PageHeader({ title, subtitle, backTo, right, sx, backButtonSx }: Props) {
+export default function PageHeader({ title, subtitle, backTo, onBack, right, sx, backButtonSx }: Props) {
   const navigate = useNavigate();
+  const showBack = backTo || onBack;
 
   return (
     <Box sx={{ px: 3, pt: 5, pb: 2, display: "flex", alignItems: "center", gap: 1.5, ...sx }}>
-      {backTo && (
+      {showBack && (
         <IconButton
-          onClick={() => navigate(backTo)}
+          onClick={() => onBack ? onBack() : navigate(backTo!)}
           sx={{
             bgcolor: "action.hover",
             "&:hover": { bgcolor: "action.selected" },

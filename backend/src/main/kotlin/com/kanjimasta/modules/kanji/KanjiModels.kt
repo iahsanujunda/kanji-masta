@@ -72,3 +72,31 @@ data class OnboardingResponse(
 data class OnboardingSelectRequest(
     val selections: List<KanjiSelection>,
 )
+
+@Serializable
+data class CurriculumItem(
+    val jlpt: Int,
+    val title: String,
+    val subtitle: String,
+    val total: Int,
+    val planted: Int,
+)
+
+@Serializable
+data class CurriculumResponse(val curriculums: List<CurriculumItem>)
+
+@Serializable
+data class CurriculumKanjiItem(
+    val kanjiMasterId: String,
+    val character: String,
+    val meanings: List<String> = emptyList(),
+    val userStatus: String,
+)
+
+@Serializable
+data class CurriculumDetailResponse(
+    val jlpt: Int,
+    val title: String,
+    val total: Int,
+    val kanji: List<CurriculumKanjiItem>,
+)

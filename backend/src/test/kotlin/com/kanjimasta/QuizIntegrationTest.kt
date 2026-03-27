@@ -134,21 +134,11 @@ class QuizIntegrationTest {
 
     private fun cleanupTestUser(db: org.ktorm.database.Database, userId: String) {
         db.useConnection { conn ->
-            conn.createStatement().execute(
-                "DELETE FROM quiz_serve WHERE user_id = '$userId'"
-            )
-            conn.createStatement().execute(
-                "DELETE FROM quiz_slot WHERE user_id = '$userId'"
-            )
-            conn.createStatement().execute(
-                "DELETE FROM user_words WHERE user_id = '$userId'"
-            )
-            conn.createStatement().execute(
-                "DELETE FROM user_kanji WHERE user_id = '$userId'"
-            )
-            conn.createStatement().execute(
-                "DELETE FROM user_settings WHERE user_id = '$userId'"
-            )
+            conn.createStatement().execute("DELETE FROM quiz_serve WHERE user_id = '$userId'")
+            conn.createStatement().execute("DELETE FROM quiz_slot WHERE user_id = '$userId'")
+            conn.createStatement().execute("DELETE FROM user_words WHERE user_id = '$userId'")
+            conn.createStatement().execute("DELETE FROM user_kanji WHERE user_id = '$userId'")
+            conn.createStatement().execute("DELETE FROM user_settings WHERE user_id = '$userId'")
         }
     }
 
@@ -367,6 +357,85 @@ class QuizIntegrationTest {
             for ((kanjiId, count) in kanjiCounts) {
                 assertTrue(count <= 2, "Kanji $kanjiId appeared $count times, max is 2")
             }
+        } finally {
+            cleanupTestUser(TestDatabase.db, QUIZ_TEST_USER)
+        }
+    }
+
+    @Test
+    fun `GET quiz slot fills full allowance when enough diverse kanji with words exist`() = testApplication {
+        application { testModule(TestDatabase.db) }
+        cleanupTestUser(TestDatabase.db, QUIZ_TEST_USER)
+        try {
+            // Seed 5 kanji × 2 words each = 10 words with quizzes
+            // With allowance=5 and maxPerKanji=2, this should always produce 5 quizzes
+            // Previously with 2x overfetch this could return fewer due to insufficient word selection
+            seedQuizData(
+                TestDatabase.db,
+                QUIZ_TEST_USER,
+                listOf(
+                    Triple("泳", "エイ", "swim"),
+                    Triple("波", "ハ", "wave"),
+                    Triple("海", "カイ", "sea"),
+                    Triple("湖", "コ", "lake"),
+                    Triple("池", "チ", "pond"),
+                ),
+                wordsPerKanji = 2,
+            )
+
+            val client = jsonClient()
+            val response = client.get("/api/quiz/slot") {
+                header(HttpHeaders.Authorization, "Bearer test-token")
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            val quizzes = body["quizzes"]!!.jsonArray
+
+            // Should fill the full default allowance of 5
+            assertEquals(5, quizzes.size, "Should fill full allowance when enough diverse words exist")
+        } finally {
+            cleanupTestUser(TestDatabase.db, QUIZ_TEST_USER)
+        }
+    }
+
+    @Test
+    fun `GET quiz slot fills allowance of 8 with enough kanji`() = testApplication {
+        application { testModule(TestDatabase.db) }
+        cleanupTestUser(TestDatabase.db, QUIZ_TEST_USER)
+        try {
+            // Seed 8 kanji × 2 words each = 16 words
+            seedQuizData(
+                TestDatabase.db,
+                QUIZ_TEST_USER,
+                listOf(
+                    Triple("鳥", "チョウ", "bird"),
+                    Triple("馬", "バ", "horse"),
+                    Triple("犬", "ケン", "dog"),
+                    Triple("猫", "ビョウ", "cat"),
+                    Triple("虫", "チュウ", "insect"),
+                    Triple("羊", "ヨウ", "sheep"),
+                    Triple("牛", "ギュウ", "cow"),
+                    Triple("豚", "トン", "pig"),
+                ),
+                wordsPerKanji = 2,
+            )
+
+            val client = jsonClient()
+
+            // Trigger app initialization with a dummy request first
+            client.get("/health")
+
+            // NOW override allowance to 8 (after testModule seeded allowance=5)
+            com.kanjimasta.modules.settings.SettingsRepository(TestDatabase.db).upsertSettings(QUIZ_TEST_USER, 8, 6)
+
+            val response = client.get("/api/quiz/slot") {
+                header(HttpHeaders.Authorization, "Bearer test-token")
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+            val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            val quizzes = body["quizzes"]!!.jsonArray
+
+            assertEquals(8, quizzes.size, "Should fill allowance of 8 when 8 kanji × 2 words exist")
         } finally {
             cleanupTestUser(TestDatabase.db, QUIZ_TEST_USER)
         }

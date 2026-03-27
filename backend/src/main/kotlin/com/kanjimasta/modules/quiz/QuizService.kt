@@ -61,14 +61,15 @@ class QuizService(private val quizRepository: QuizRepository) {
         } ?: allowance
         val slotEndsAt = activeSlot?.slotEnd?.toString()
 
-        val fetchLimit = remaining * 2
-
         if (remaining == 0) {
             return SlotResponse(quizzes = emptyList(), remaining = 0, slotEndsAt = slotEndsAt)
         }
 
-        val overdueLimit = (fetchLimit * 0.6).toInt().coerceAtLeast(1)
-        val newLimit = (fetchLimit * 0.2).toInt().coerceAtLeast(1)
+        // Overfetch 4x to account for words without quizzes and diversity filtering
+        val fetchLimit = remaining * 4
+
+        val overdueLimit = (fetchLimit * 0.6).toInt().coerceAtLeast(2)
+        val newLimit = (fetchLimit * 0.2).toInt().coerceAtLeast(2)
 
         val overdueWords = quizRepository.getOverdueWords(userId, overdueLimit)
         val newWords = quizRepository.getNewWords(userId, newLimit)

@@ -117,7 +117,7 @@ export default function Quiz() {
   // --- Loading ---
   if (loading) {
     return (
-      <Box sx={{ minHeight: "100vh", maxWidth: 480, mx: "auto", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <Typography color="text.secondary">Loading quizzes...</Typography>
       </Box>
     );
@@ -126,7 +126,7 @@ export default function Quiz() {
   // --- Finished ---
   if (isFinished) {
     return (
-      <Box sx={{ minHeight: "100vh", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", p: 3, textAlign: "center" }}>
+      <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", p: 3, textAlign: "center" }}>
         <Box sx={{ width: 80, height: 80, bgcolor: "rgba(16, 185, 129, 0.15)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", mb: 3 }}>
           <CheckIcon sx={{ fontSize: 40, color: "#34d399" }} />
         </Box>
@@ -150,7 +150,7 @@ export default function Quiz() {
 
   // --- Active Quiz ---
   return (
-    <Box sx={{ minHeight: "100vh", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }}>
+    <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }}>
       {/* Header */}
       <Box sx={{ px: 3, pt: 5, pb: 2, display: "flex", flexDirection: "column", gap: 2 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

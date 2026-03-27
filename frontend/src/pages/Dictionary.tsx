@@ -82,7 +82,7 @@ export default function Dictionary() {
   return (
     <Box
       sx={{
-        minHeight: "100vh",
+        minHeight: "var(--app-height)",
         maxWidth: 480,
         mx: "auto",
         display: "flex",

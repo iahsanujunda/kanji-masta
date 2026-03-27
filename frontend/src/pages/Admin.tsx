@@ -395,14 +395,14 @@ export default function Admin() {
 
   if (accessDenied) {
     return (
-      <Box sx={{ minHeight: "100vh", bgcolor: "#050508", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <Box sx={{ minHeight: "var(--app-height)", bgcolor: "#050508", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <Typography sx={{ color: "grey.500", fontSize: 16 }}>Access denied. Admin only.</Typography>
       </Box>
     );
   }
 
   return (
-    <Box sx={{ minHeight: "100vh", bgcolor: "#050508", color: "grey.100" }}>
+    <Box sx={{ minHeight: "var(--app-height)", bgcolor: "#050508", color: "grey.100" }}>
       {/* Navbar */}
       <Box component="nav" sx={{ borderBottom: "1px solid", borderColor: "grey.800", bgcolor: "#0a0a0f", position: "sticky", top: 0, zIndex: 30 }}>
         <Box sx={{ maxWidth: 1152, mx: "auto", px: 3, height: 64, display: "flex", alignItems: "center", justifyContent: "space-between" }}>

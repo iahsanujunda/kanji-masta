@@ -270,7 +270,7 @@ export default function Landing() {
   const navigate = useNavigate();
 
   return (
-    <Box sx={{ minHeight: "100vh", bgcolor: "#050508", color: "grey.100", overflowX: "hidden" }}>
+    <Box sx={{ minHeight: "var(--app-height)", bgcolor: "#050508", color: "grey.100", overflowX: "hidden" }}>
 
       {/* Navbar */}
       <Box

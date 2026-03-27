@@ -1,0 +1,6 @@
+:root {
+  /* Dynamic viewport height: adjusts for mobile browser chrome (address bar, bottom nav).
+     Falls back to 100vh for browsers that don't support dvh. */
+  --app-height: 100vh;
+  --app-height: 100dvh;
+}

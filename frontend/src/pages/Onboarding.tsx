@@ -132,7 +132,7 @@ export default function Onboarding() {
   // --- Welcome ---
   if (view === "welcome") {
     return (
-      <Box sx={{ minHeight: "100vh", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", p: 3, textAlign: "center" }}>
+      <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", p: 3, textAlign: "center" }}>
         <Box sx={{ width: 80, height: 80, borderRadius: 3, background: "linear-gradient(135deg, #34d399, #4338ca)", display: "flex", alignItems: "center", justifyContent: "center", mb: 4 }}>
           <SpaIcon sx={{ fontSize: 40, color: "white" }} />
         </Box>
@@ -171,7 +171,7 @@ export default function Onboarding() {
   // --- Photo prompt ---
   if (view === "photo-prompt") {
     return (
-      <Box sx={{ minHeight: "100vh", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", p: 3, textAlign: "center" }}>
+      <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", p: 3, textAlign: "center" }}>
         <Box sx={{ width: 80, height: 80, bgcolor: "rgba(99,102,241,0.15)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", mb: 3 }}>
           <CameraAltIcon sx={{ fontSize: 40, color: "#818cf8" }} />
         </Box>
@@ -214,7 +214,7 @@ export default function Onboarding() {
   // --- Loading ---
   if (view === "loading") {
     return (
-      <Box sx={{ minHeight: "100vh", maxWidth: 480, mx: "auto", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <Typography color="text.secondary">Loading kanji...</Typography>
       </Box>
     );
@@ -227,7 +227,7 @@ export default function Onboarding() {
     const familiarSelections = selections.filter((s) => s.status === "familiar");
 
     return (
-      <Box sx={{ height: "100vh", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", p: 3, overflow: "hidden" }}>
+      <Box sx={{ height: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", p: 3, overflow: "hidden" }}>
         {/* Header stats */}
         <Box sx={{ textAlign: "center", pt: 4, mb: 3 }}>
           <Box sx={{ width: 64, height: 64, bgcolor: "rgba(67, 56, 202, 0.15)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", mx: "auto", mb: 2 }}>
@@ -342,7 +342,7 @@ export default function Onboarding() {
   // --- Finished — summary then redirect ---
   if (view === "finished") {
     return (
-      <Box sx={{ minHeight: "100vh", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", p: 3, textAlign: "center" }}>
+      <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", p: 3, textAlign: "center" }}>
         <Box sx={{ width: 80, height: 80, bgcolor: "rgba(16, 185, 129, 0.15)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", mb: 3 }}>
           <CheckIcon sx={{ fontSize: 40, color: "#34d399" }} />
         </Box>
@@ -372,7 +372,7 @@ export default function Onboarding() {
   const progress = ((currentIndex) / kanji.length) * 100;
 
   return (
-    <Box sx={{ minHeight: "100vh", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", position: "relative" }}>
+    <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", position: "relative" }}>
       {/* Progress */}
       <Box sx={{ px: 3, pt: 5, pb: 2 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1.5 }}>

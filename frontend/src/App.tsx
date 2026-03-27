@@ -21,7 +21,7 @@ const Admin = lazy(() => import("@/pages/Admin"));
 
 function Loading() {
   return (
-    <Box sx={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <Box sx={{ minHeight: "var(--app-height)", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <CircularProgress />
     </Box>
   );

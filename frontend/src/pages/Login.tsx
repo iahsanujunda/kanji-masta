@@ -33,7 +33,7 @@ export default function Login() {
   return (
     <Box
       sx={{
-        minHeight: "100vh",
+        minHeight: "var(--app-height)",
         bgcolor: "#050508",
         display: "flex",
         flexDirection: "column",

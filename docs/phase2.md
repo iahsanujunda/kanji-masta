@@ -1,880 +1,738 @@
-# Kanji Learning App — Phase 2 Iteration Plan
+# Phase 8 — Offline Hunting: Live Hunt Sessions
 
-_Multi-User · Shared Quiz Bank · Invite System · Stack unchanged_
+This phase brings the hunt session — the moment cards enter the platform — fully into the system. Today the upload and review happen in the app, but the window announcement is a WhatsApp message, demand is tracked mentally, and customers who miss the message miss the window entirely.
 
----
+**Why now:** The hunt session is the top of the funnel. Without it, the highest-frequency operator activity generates no structured data, demand signals are invisible, and the WhatsApp group remains the primary product. Bringing the session into the platform also enables scheduled announcements — customers can see upcoming hunts in advance and opt in to be notified when the window opens, replacing the current dependency on catching a WhatsApp message at the right moment.
 
-## Overview
+**Current workflow (unchanged by this phase):**
+1. Operator goes to shop, photographs showcases
+2. Uploads to system via existing ingest flow
+3. System runs Gemini OCR, extracts cards
+4. Operator reviews in `inventory_image_detail` — fixes names, prices
+5. *(currently)* Sends WhatsApp message: "etalase sudah diupload, 30 menit ya"
+6. Customers open gallery, place orders through the system
+7. Operator returns to shop, buys
 
-Phase 2 opens the app to a small trusted group of users. The core learning loop is unchanged — the work is in making data shared where it makes sense, keeping it personal where it doesn't, and adding the invite access layer.
+**What changes:** Steps 5–7 move into the platform. Steps 1–4 are untouched.
 
-**Why this order matters:** shared infrastructure (WordMaster, shared QuizBank) must exist before new users onboard, otherwise their words generate duplicate quiz content. The invite system gates all of this until the schema is ready.
-
-### Phase 2 Iteration Order
-
-| # | Scope | Why This Order |
-|---|-------|----------------|
-| 2.1 | Schema Migration — WordMaster + Shared QuizBank | Foundation — shared quiz reuse depends on this |
-| 2.2 | Invite System | Gates new user access until infrastructure is ready |
-| 2.3 | Per-User Onboarding Flow | First experience for invited users |
-| 2.4 | Settings — Quiz Allowance Slider + Timezone | Small UX improvement, natural fit with multi-user launch |
-| 2.5 | Admin Panel — Core (Cost + Jobs + Invites) | Immediate operational visibility — no new schema needed |
-| 2.6 | Admin Panel — Quiz Telemetry | Requires data collection period before metrics are meaningful |
+**Approach:** Iteration 18 proves the end-to-end loop using existing infrastructure for upload, review, and fulfillment. The only genuinely new surfaces are session lifecycle management, scheduled hunt visibility for customers, notification opt-in, and the live hunt card in the gallery. Iteration 19 adds the mobile pipeline screen, bulk actions, and the multi-tenant foundation.
 
 ---
 
-## Sharing Decision Reference
+# Iteration 18 — Hunt Session MVP
 
-Quick reference for what is shared vs personal across all tables:
+### 1. Database Schema & Migration (Supabase)
 
-| Table | Scope | Notes |
-|-------|-------|-------|
-| `KanjiMaster` | ✅ Shared | Pure reference data — same for everyone |
-| `WordMaster` | ✅ Shared (NEW) | Canonical word list, grows as users encounter new words |
-| `QuizBank` | ✅ Shared (MIGRATED) | Quiz content is universal — sentences work for anyone in Japan |
-| `QuizDistractor` | ✅ Shared (MIGRATED) | Distractor content is word-agnostic |
-| `UserKanji` | ❌ Personal | Each user's learning state per kanji |
-| `UserWords` | ❌ Personal | Each user's relationship to a word — familiarity, progress, source |
-| `QuizGenerationJob` | ❌ Personal queue | Tracks pending generation per user |
-| `QuizServe` | ❌ Personal | Each user's answer history |
-| `QuizSlot` | ❌ Personal | Each user's session |
-| `ChallengeSession` | ❌ Personal | Each user's milestone |
-| `PhotoSession` | ❌ Personal | Each user's photos |
-| `UserSettings` | ❌ Personal | Each user's preferences |
-| `UserInvite` | ❌ Admin | Invite management |
+**A. Hunt sessions table:**
+
+```sql
+CREATE TABLE hunt_sessions (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    operator_id      UUID NOT NULL REFERENCES operators(id),
+    shop_name        TEXT NOT NULL,
+    window_minutes   INT NOT NULL DEFAULT 30,
+    scheduled_for    TIMESTAMPTZ,        -- NULL = unscheduled; set when operator announces in advance
+    opens_at         TIMESTAMPTZ,        -- set when status transitions to OPEN
+    closes_at        TIMESTAMPTZ,        -- set when status transitions to OPEN
+    status           TEXT NOT NULL DEFAULT 'SCHEDULED',
+                     -- SCHEDULED | DRAFT | OPEN | CLOSED | PURCHASING | DONE | ABANDONED
+    notes            TEXT,
+    created_by       UUID NOT NULL REFERENCES auth.users(id),
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE hunt_sessions ENABLE ROW LEVEL SECURITY;
+
+-- Only one OPEN session per operator at a time
+CREATE UNIQUE INDEX idx_hunt_sessions_one_open_per_operator
+    ON hunt_sessions(operator_id)
+    WHERE status = 'OPEN';
+
+CREATE INDEX idx_hunt_sessions_status      ON hunt_sessions(status);
+CREATE INDEX idx_hunt_sessions_operator    ON hunt_sessions(operator_id);
+CREATE INDEX idx_hunt_sessions_scheduled   ON hunt_sessions(scheduled_for)
+    WHERE scheduled_for IS NOT NULL AND status = 'SCHEDULED';
+
+CREATE TRIGGER set_hunt_sessions_updated_at
+    BEFORE UPDATE ON hunt_sessions
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+```
+
+**Status lifecycle:**
+
+```
+SCHEDULED ──→ DRAFT ──→ OPEN ──→ CLOSED ──→ PURCHASING ──→ DONE
+    │            │                                │
+    └────────────┴────────────────────────────────┴──→ ABANDONED
+```
+
+- `SCHEDULED` — operator has announced a future hunt. Customers can see it and opt in to notifications. No images linked yet.
+- `DRAFT` — operator has linked processed showcase images and is ready to open the window. Not yet visible as "live" to customers.
+- `OPEN` — window is active. Customers can request cards. Timer counts down.
+- `CLOSED` — window has expired (auto or manual). No new requests accepted.
+- `PURCHASING` — operator is back at the shop counter executing buys.
+- `DONE` — all cards actioned (secured or sold out). Session complete.
+- `ABANDONED` — session cancelled at any point before DONE.
+
+**B. Junction table — session images:**
+
+Images are processed before a session exists. The session references already-processed images rather than images pointing back to sessions. This keeps the ingest flow unchanged.
+
+```sql
+CREATE TABLE hunt_session_images (
+    hunt_session_id    UUID NOT NULL REFERENCES hunt_sessions(id) ON DELETE CASCADE,
+    inventory_image_id UUID NOT NULL REFERENCES inventory_images(id) ON DELETE CASCADE,
+    added_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (hunt_session_id, inventory_image_id)
+);
+
+CREATE INDEX idx_hunt_session_images_session ON hunt_session_images(hunt_session_id);
+CREATE INDEX idx_hunt_session_images_image   ON hunt_session_images(inventory_image_id);
+```
+
+`inventory_images` table is not modified.
+
+**C. Notification opt-in table:**
+
+```sql
+CREATE TABLE hunt_session_optins (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    hunt_session_id UUID NOT NULL REFERENCES hunt_sessions(id) ON DELETE CASCADE,
+    customer_id     UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    opted_in_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    notified_at     TIMESTAMPTZ,    -- set when HUNT_WINDOW_OPEN notification is sent to this customer
+    UNIQUE (hunt_session_id, customer_id)
+);
+
+CREATE INDEX idx_hunt_optins_session  ON hunt_session_optins(hunt_session_id);
+CREATE INDEX idx_hunt_optins_customer ON hunt_session_optins(customer_id);
+```
+
+**D. Operators seed row:**
+
+```sql
+INSERT INTO operators (id, name, slug, mode, is_active)
+VALUES (gen_random_uuid(), 'Toko Izin Istri', 'tokoizinistri', 'ANCHOR', TRUE);
+```
 
 ---
 
-# Iteration 2.1 — Schema Migration: WordMaster + Shared QuizBank
+### 2. Backend: Hunt Session API (FastAPI)
 
-Migrates quiz content from per-user to shared. After this iteration, quiz rows are generated once per word globally and reused across all users. Personal progress is always tracked per user in `UserWords`.
+New module: `server/modules/hunt/`
 
-### 2.1.1 New and Updated Schema
+**A. Endpoints:**
 
-**`WordMaster`** — NEW. Shared canonical word list. Grows as any user encounters new words. Similar role to `KanjiMaster`.
+| Method | Endpoint | Role | Description |
+|--------|----------|------|-------------|
+| `POST` | `/api/hunt-sessions` | Operator | Create session (SCHEDULED or jump straight to DRAFT) |
+| `GET` | `/api/hunt-sessions` | Operator | List sessions, filterable by `?status=` |
+| `GET` | `/api/hunt-sessions/{id}` | Operator | Session detail with linked images and opt-in count |
+| `POST` | `/api/hunt-sessions/{id}/images` | Operator | Add processed images to session (SCHEDULED or DRAFT) |
+| `DELETE` | `/api/hunt-sessions/{id}/images/{imageId}` | Operator | Remove image from session before window opens |
+| `PATCH` | `/api/hunt-sessions/{id}/ready` | Operator | Transition SCHEDULED → DRAFT (images linked, ready to open) |
+| `PATCH` | `/api/hunt-sessions/{id}/open` | Operator | Transition DRAFT → OPEN (starts window, fires notifications) |
+| `PATCH` | `/api/hunt-sessions/{id}/close` | Operator | Transition OPEN → CLOSED (manual early close) |
+| `PATCH` | `/api/hunt-sessions/{id}/purchasing` | Operator | Transition CLOSED → PURCHASING |
+| `PATCH` | `/api/hunt-sessions/{id}/done` | Operator | Transition PURCHASING → DONE |
+| `PATCH` | `/api/hunt-sessions/{id}/abandon` | Operator | Any status → ABANDONED |
+| `GET` | `/api/hunt-sessions/{id}/demand` | Operator | Buy list grouped by showcase |
+| `GET` | `/api/public/hunt-sessions/upcoming` | None | Scheduled sessions visible to all customers |
+| `POST` | `/api/hunt-sessions/{id}/optin` | Customer | Opt in to window-open notification |
+| `DELETE` | `/api/hunt-sessions/{id}/optin` | Customer | Remove opt-in |
+| `GET` | `/api/hunt-sessions/{id}/optin` | Customer | Check own opt-in status |
 
-```graphql
-type WordMaster @table {
-  id: UUID! @default(expr: "uuidV4()")
-  word: String! @unique
-  reading: String!
-  meanings: [String!]!
-  kanjiIds: [UUID!]!          # constituent KanjiMaster IDs
-  frequency: Int              # derived from encounter count across users
-  createdAt: Timestamp! @default(expr: "request.time")
+**B. Create session:**
+
+`POST /api/hunt-sessions`
+
+```json
+{
+  "shop_name": "Card Secret Akihabara",
+  "window_minutes": 30,
+  "scheduled_for": "2026-04-05T10:00:00+09:00",
+  "notes": "Fokus etalase AR dan SAR"
 }
 ```
 
-**`UserWords`** — UPDATED. Now references `WordMaster` instead of storing word data directly. Familiarity and progress remain personal.
+`scheduled_for` is optional. If omitted, session is created as `DRAFT` directly (operator is ready to open now). If set, session is created as `SCHEDULED` and becomes visible to customers in the upcoming hunts feed.
 
-```graphql
-type UserWords @table {
-  id: UUID! @default(expr: "uuidV4()")
-  userId: String!
-  wordMaster: WordMaster!           # reference to shared word (replaces inline word/reading/meaning)
-  source: WordSource!
-  discoveredViaKanjiId: UUID
-  familiarity: Int! @default(value: 0)
-  currentTier: QuizType! @default(value: "MEANING_RECALL")
-  nextReview: Timestamp
-  unlocked: Boolean! @default(value: false)
-  createdAt: Timestamp! @default(expr: "request.time")
-  # unique constraint: (userId, wordMasterId)
-}
-```
+**C. Open window:**
 
-**`QuizBank`** — UPDATED. `userId` becomes nullable — `null` means global/shared. `word` now references `WordMaster` instead of `UserWords`.
+`PATCH /api/hunt-sessions/{id}/open`
 
-```graphql
-type QuizBank @table {
-  id: UUID! @default(expr: "uuidV4()")
-  userId: String              # null = global shared quiz; set = user-specific override
-  kanji: KanjiMaster!
-  word: WordMaster!           # shared word reference (was UserWords)
-  quizType: QuizType!
-  prompt: String!
-  furigana: String
-  target: String!
-  answer: String!
-  explanation: String
-  servedCount: Int! @default(value: 0)
-  servedAt: Timestamp
-  createdAt: Timestamp! @default(expr: "request.time")
-}
-```
+Logic:
+1. Verify `status = DRAFT`
+2. Verify at least one image is linked via `hunt_session_images`
+3. Verify no other `OPEN` session for this operator — DB unique index enforces, return `409` with clear message if violated
+4. Set `opens_at = now()`, `closes_at = now() + window_minutes * interval '1 minute'`, `status = OPEN`
+5. Notify customers:
+    - **Opted-in customers** (from `hunt_session_optins`): send `HUNT_WINDOW_OPEN` notification, set `notified_at`
+    - **All other operator customers**: send `HUNT_WINDOW_OPEN` notification
+    - Both groups receive the same notification — opt-in just guarantees delivery regardless of other notification settings
+6. Invalidate `gallery_base` cache
+7. Cron auto-close scheduled at `closes_at`
 
-**`QuizDistractor`** — UPDATED. Also shared when `userId = null`.
+**D. Public upcoming sessions endpoint:**
 
-```graphql
-type QuizDistractor @table {
-  id: UUID! @default(expr: "uuidV4()")
-  quiz: QuizBank!
-  userId: String              # null = global shared distractor set
-  distractors: [String!]!
-  generation: Int!
-  trigger: DistractorTrigger!
-  familiarityAtGeneration: Int!
-  servedAt: Timestamp
-  createdAt: Timestamp! @default(expr: "request.time")
-}
-```
+`GET /api/public/hunt-sessions/upcoming`
 
-**`QuizGenerationJob`** — UPDATED. References `WordMaster` instead of `UserWords`.
+Returns sessions with `status = SCHEDULED`, ordered by `scheduled_for` ascending. Only returns sessions where `scheduled_for` is in the future.
 
-```graphql
-type QuizGenerationJob @table {
-  id: UUID! @default(expr: "uuidV4()")
-  userId: String!
-  kanji: KanjiMaster!
-  wordMaster: WordMaster!     # the word to generate quizzes for
-  quiz: QuizBank
-  jobType: JobType! @default(value: "INITIAL")
-  trigger: String
-  status: JobStatus! @default(value: "PENDING")
-  attempts: Int! @default(value: 0)
-  createdAt: Timestamp! @default(expr: "request.time")
-}
-```
-
-**`UserInvite`** — NEW. Manages invite-only access.
-
-```graphql
-enum InviteStatus { PENDING, ACCEPTED, REVOKED }
-
-type UserInvite @table {
-  id: UUID! @default(expr: "uuidV4()")
-  email: String! @unique
-  invitedBy: String!          # userId of admin who sent the invite
-  status: InviteStatus! @default(value: "PENDING")
-  createdAt: Timestamp! @default(expr: "request.time")
-  acceptedAt: Timestamp
-}
-```
-
-### 2.1.2 Word Encounter Flow — Updated
-
-When any user encounters a word (via photo or word discovery), the system now:
-
-1. Check `WordMaster` for the word string — if exists, reuse
-2. If not found — insert new `WordMaster` row
-3. Check `QuizBank` where `wordMasterId = X` and `userId = null` — if quizzes exist, reuse
-4. If no quizzes — enqueue `QuizGenerationJob` (generates global quizzes, `userId = null` on resulting rows)
-5. Always insert personal `UserWords` row linking to `WordMaster`
-
-```kotlin
-fun handleWordEncountered(userId: String, word: String, reading: String,
-                          meaning: String, kanjiIds: List<UUID>, source: WordSource) {
-
-    // 1. Find or create WordMaster
-    val wordMaster = wordMasterRepo.findByWord(word)
-        ?: wordMasterRepo.insert(word, reading, meaning, kanjiIds)
-
-    // 2. Check for existing global quizzes
-    val hasGlobalQuizzes = quizBankRepo.existsGlobal(wordMaster.id)
-
-    // 3. Enqueue generation only if no global quizzes yet
-    if (!hasGlobalQuizzes) {
-        jobRepo.enqueue(
-            userId = userId,
-            wordMasterId = wordMaster.id,
-            kanjiId = primaryKanjiId
-        )
+Response:
+```json
+{
+  "sessions": [
+    {
+      "id": "uuid",
+      "shop_name": "Card Secret Akihabara",
+      "scheduled_for": "2026-04-05T10:00:00+09:00",
+      "window_minutes": 30,
+      "notes": "Fokus etalase AR dan SAR",
+      "optin_count": 14,
+      "viewer_has_opted_in": false
     }
-
-    // 4. Always create personal UserWords row
-    userWordsRepo.insertIfAbsent(
-        userId = userId,
-        wordMasterId = wordMaster.id,
-        source = source
-    )
+  ]
 }
 ```
 
-### 2.1.3 Quiz Generation — Global Output
+`viewer_has_opted_in` is `false` for unauthenticated requests, derived from `hunt_session_optins` for authenticated customers.
 
-The Firebase Function `generate_quizzes` now writes `QuizBank` rows with `userId = null`:
+Cached with TTL 60s. Invalidated when any session transitions into or out of `SCHEDULED`.
 
-```python
-# functions/main.py
+**E. Demand summary:**
 
-def generate_quizzes_for_word(job):
-    word = job["wordMaster"]
-    kanji = job["kanji"]
+`GET /api/hunt-sessions/{id}/demand`
 
-    # Check again in case another user's job already generated these
-    existing = query_global_quizzes(word["id"])
-    if existing:
-        mark_job_done(job["id"])
-        return
-
-    prompt = build_quiz_prompt(word, kanji)
-    response = gemini_client.generate_content(prompt, ...)
-    quizzes = json.loads(response.text)
-
-    for quiz in quizzes:
-        insert_quiz_bank(
-            user_id=None,           # global — shared across all users
-            word_master_id=word["id"],
-            kanji_id=kanji["id"],
-            **quiz
-        )
-        insert_quiz_distractor(
-            user_id=None,           # global
-            quiz_id=new_quiz_id,
-            distractors=quiz["distractors"],
-            generation=1,
-            trigger="INITIAL"
-        )
-```
-
-### 2.1.4 Serve-Time Resolution — Global Quizzes for Personal Users
-
-When `QuizService` selects quizzes for a user's slot, it queries `QuizBank` where either `userId = currentUser` OR `userId = null`. Global quizzes are served to all users. The `QuizServe` row records which user answered — always personal regardless of quiz scope.
-
-```kotlin
-fun getServableQuizzes(userId: String): List<QuizBank> {
-    return quizBankRepo.findForUser(userId)
-    // query: WHERE userId = $userId OR userId IS NULL
-}
-```
-
-### 2.1.5 Data Migration Script
-
-One-time migration for existing data (your personal quizzes from Phase 1):
-
-1. For each unique word string in existing `UserWords` — insert `WordMaster` row
-2. Update existing `UserWords` rows to reference `WordMaster`
-3. Update existing `QuizBank` rows to reference `WordMaster` and set `userId = null`
-4. Update existing `QuizDistractor` rows to set `userId = null`
-5. Update existing `QuizGenerationJob` rows to reference `WordMaster`
-
-```bash
-python scripts/migrate_phase2.py --env prod
-```
-
-### Definition of Done
-
-- [ ] `WordMaster` table added to schema
-- [ ] `UserWords` updated to reference `WordMaster`
-- [ ] `QuizBank.userId` nullable — null = global
-- [ ] `QuizDistractor.userId` nullable — null = global
-- [ ] `QuizGenerationJob` references `WordMaster`
-- [ ] `UserInvite` table added to schema
-- [ ] Word encounter flow checks `WordMaster` before inserting
-- [ ] Quiz generation writes global rows (`userId = null`)
-- [ ] Slot selection queries both global and personal quizzes
-- [ ] `QuizServe` always personal regardless of quiz scope
-- [ ] Migration script runs cleanly on existing data
-- [ ] Verified: two users learning same word share QuizBank rows, track progress independently
-
----
-
-# Iteration 2.2 — Invite System
-
-Gates new user access. You create invites; users sign up via an invite link; Firebase Auth handles identity; Ktor validates invite status on first login.
-
-### 2.2.1 Invite Flow
-
-```
-You (admin):
-  POST /api/admin/invite { email }
-    → insert UserInvite row (status: PENDING)
-    → send email with signup link: https://app.com/signup?invite={id}
-
-New user:
-  Opens signup link
-  → Signs up via Firebase Auth (Google or email/password)
-  → On first authenticated request, Ktor checks UserInvite for their email
-      → PENDING → mark ACCEPTED, create UserSettings row, allow access
-      → no invite / REVOKED → return 403
-
-You (admin):
-  PUT /api/admin/invite/{id}/revoke
-    → set status REVOKED
-    → optionally disable Firebase Auth account
-```
-
-### 2.2.2 Ktor Middleware — Invite Guard
-
-A Ktor plugin that runs on every authenticated request for new users. Checks are cached after first successful validation so it doesn't query on every request:
-
-```kotlin
-fun Application.configureInviteGuard() {
-    intercept(ApplicationCallPipeline.Plugins) {
-        val userId = call.principal<UserPrincipal>()?.uid ?: return@intercept
-        val email = call.principal<UserPrincipal>()?.email ?: return@intercept
-
-        // Check UserSettings — if row exists, user is already onboarded
-        val settings = userSettingsRepo.findByUserId(userId)
-        if (settings != null) return@intercept  // already validated, skip
-
-        // First login — validate invite
-        val invite = inviteRepo.findByEmail(email)
-        if (invite == null || invite.status == InviteStatus.REVOKED) {
-            call.respond(HttpStatusCode.Forbidden, "No valid invite found")
-            finish()
-            return@intercept
+```json
+{
+  "session_id": "uuid",
+  "shop_name": "Card Secret Akihabara",
+  "total_requests": 14,
+  "estimated_value_jpy": 142000,
+  "showcases": [
+    {
+      "inventory_image_id": "uuid",
+      "image_title": "Showcase A",
+      "image_url": "https://...",
+      "items": [
+        {
+          "card_id": "uuid",
+          "card_name": "Latias ex",
+          "price_jpy": 8000,
+          "request_count": 3,
+          "queue_positions": [
+            { "position": 1, "customer_name": "Andi W." },
+            { "position": 2, "customer_name": "Budi S." },
+            { "position": 3, "customer_name": "Citra M." }
+          ],
+          "is_high_value": true
         }
-
-        // Accept invite + create UserSettings in one @transaction mutation
-        inviteRepo.acceptAndCreateSettings(invite.id, userId)
+      ]
     }
-}
-```
-
-### 2.2.3 Admin Endpoints
-
-Simple admin-only endpoints. Protected by checking `userId` against a hardcoded admin list in `AppConfig` — no need for a full role system at this scale.
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/admin/invite` | Create invite, send email |
-| `GET` | `/api/admin/invites` | List all invites with status |
-| `PUT` | `/api/admin/invite/{id}/revoke` | Revoke access |
-
-### 2.2.4 Invite Email
-
-Plain text email via Firebase Extensions (Trigger Email) or a simple SMTP call from a Firebase Function:
-
-```
-Subject: You're invited to Kanji App
-
-[Name] has invited you to join Kanji App —
-a photo-driven kanji learning tool for people living in Japan.
-
-Click to get started:
-https://app.com/signup?invite={inviteId}
-
-This link is personal to you. Do not share it.
-```
-
-### Definition of Done
-
-- [ ] `POST /api/admin/invite` creates `UserInvite` row and sends email
-- [ ] Signup page reads `?invite={id}` and pre-fills email
-- [ ] Firebase Auth signup works (Google + email/password)
-- [ ] First login validates invite → creates `UserSettings` → allows access
-- [ ] Invalid or revoked invite returns 403 with clear message
-- [ ] `GET /api/admin/invites` lists all invites with status
-- [ ] `PUT /api/admin/invite/{id}/revoke` sets status REVOKED
-- [ ] Invite accept + UserSettings creation wrapped in `@transaction`
-
----
-
-# Iteration 2.3 — Per-User Onboarding Flow
-
-The first experience for invited users. They need to seed their known kanji before the app is useful — same as you did in Phase 1, but with a guided first-run flow.
-
-### 2.3.1 Onboarding Steps
-
-```
-1. Welcome screen
-   "Welcome to Kanji App. Let's set up your profile."
-
-2. Known kanji seeding (optional but recommended)
-   "Mark kanji you already know — these won't be quizzed at beginner level."
-   → Searchable grid of KanjiMaster (top 300 by frequency shown first)
-   → Tap to mark familiar
-   → Can skip entirely
-
-3. First photo prompt
-   "Take your first photo — any sign, menu, or notice around you."
-   → Launches camera directly
-
-4. Done → home screen
-```
-
-### 2.3.2 Onboarding State
-
-Tracked via a `onboardingComplete` flag on `UserSettings`:
-
-```graphql
-type UserSettings @table(key: "userId") {
-  userId: String! @unique
-  quizAllowancePerSlot: Int! @default(value: 5)
-  slotDurationHours: Int! @default(value: 6)
-  timezone: String! @default(value: "Asia/Tokyo")
-  onboardingComplete: Boolean! @default(value: false)   # NEW
-  updatedAt: Timestamp! @default(expr: "request.time")
-}
-```
-
-Ktor checks `onboardingComplete` on first load — if false, redirect to onboarding flow. Set to true when user reaches the home screen after step 3 (or skips).
-
-### 2.3.3 Bulk Familiar Kanji Endpoint
-
-Allows seeding many familiar kanji at once from the onboarding grid:
-
-```
-POST /api/kanji/bulk-familiar
-{ "kanjiMasterIds": ["uuid1", "uuid2", ...] }
-```
-
-Inserts `UserKanji` rows with `status = FAMILIAR` for each. No quiz generation jobs — same as marking familiar in the photo selection flow. Wrapped in a single `@transaction` mutation.
-
-### Definition of Done
-
-- [ ] New users see onboarding flow on first login
-- [ ] Known kanji grid shows top 300 by frequency, searchable
-- [ ] Bulk familiar seeding via `POST /api/kanji/bulk-familiar`
-- [ ] First photo prompt launches camera
-- [ ] `onboardingComplete` set to true after first photo or skip
-- [ ] Returning users skip onboarding entirely
-- [ ] Onboarding can be re-triggered from settings ("Re-seed known kanji")
-
----
-
-# Iteration 2.4 — Settings: Quiz Allowance Slider + Timezone
-
-Small UX improvements that make more sense now that multiple users with different habits are using the app.
-
-### 2.4.1 Quiz Allowance Slider
-
-Replace the number input with a slider. Range: 5–15, step 1. Default: 5.
-
-```
-Quiz per session: [5 ——●————————] 15
-                        8
-```
-
-Label updates live as slider moves. Changes take effect from next slot — shown as a note below the slider.
-
-### 2.4.2 Timezone Selection
-
-Previously hardcoded to `Asia/Tokyo`. Now user-selectable for friends who might be elsewhere or traveling. Practical short list — no need for full IANA timezone picker:
-
-| Label | Value |
-|-------|-------|
-| Japan (JST) | Asia/Tokyo |
-| Korea (KST) | Asia/Seoul |
-| Australia EST | Australia/Sydney |
-| UK (GMT/BST) | Europe/London |
-| US East (ET) | America/New_York |
-| US West (PT) | America/Los_Angeles |
-
-Default remains `Asia/Tokyo`.
-
-### 2.4.3 Updated Settings Screen
-
-```
-Quiz Session
-  Quizzes per session
-  [Slider 5–15, current value shown]
-  Changes take effect from your next session.
-
-  Session window
-  [Selector: 3h / 6h / 8h / 12h]
-
-  Timezone
-  [Dropdown: Japan (JST) selected]
-
-Account
-  [Re-seed known kanji]
-  [Sign out]
-```
-
-### Definition of Done
-
-- [ ] Quiz allowance rendered as slider (5–15, step 1)
-- [ ] Live value label updates as slider moves
-- [ ] Timezone selector with 6 options, defaults to Asia/Tokyo
-- [ ] Slot window calculation uses `UserSettings.timezone`
-- [ ] Settings changes persist via `PUT /api/settings`
-- [ ] "Re-seed known kanji" navigates back to onboarding step 2
-
----
-
----
-
-# Iteration 2.5 — Admin Panel: Core (Cost + Jobs + Invites)
-
-A single `/admin` route within the existing React app. Protected by admin `userId` check in Ktor middleware. Built with existing MUI components — no separate frontend, no separate deployment.
-
-Firebase Console already covers table inspection, function logs, and Auth management. This iteration covers what Console doesn't: aggregated cost, job retry, and invite management. Quiz telemetry is a separate iteration (2.6) because it requires a data collection period before metrics are meaningful.
-
-### 2.5.1 Admin Guard (Ktor)
-
-```kotlin
-// core/auth/AdminGuard.kt
-fun ApplicationCall.requireAdmin() {
-    val userId = principal<UserPrincipal>()?.uid
-    if (userId != AppConfig.adminUserId) {
-        respond(HttpStatusCode.Forbidden, "Admin only")
-        finish()
-    }
-}
-```
-
-`AppConfig.adminUserId` is your Firebase UID, set as an environment variable. No role table needed at this scale.
-
-### 2.5.2 Schema — Add costMicrodollars to Job Tables
-
-`PhotoSession` already has `costMicrodollars`. Add to the remaining AI-call tables:
-
-```graphql
-type QuizGenerationJob @table {
-  # ... existing fields
-  costMicrodollars: Int64    # NEW — populated by Firebase Function on completion
-}
-
-type ChallengeSession @table {
-  # ... existing fields
-  costMicrodollars: Int64    # NEW — populated by generate_challenge Function
-}
-```
-
-Firebase Functions already call `extract_cost(response.usage_metadata)` — just write the value back to the job/session row on completion.
-
-### 2.5.3 Admin Endpoints
-
-```
-GET  /api/admin/cost              → aggregated spend by user + by day + total
-GET  /api/admin/jobs              → QuizGenerationJob rows filtered by status
-POST /api/admin/jobs/{id}/retry   → reset status to PENDING, attempts to 0
-GET  /api/admin/quizzes           → QuizBank rows, filterable by kanji/word
-DELETE /api/admin/quizzes/{id}    → delete a bad quiz row + its distractors
-GET  /api/admin/invites           → all UserInvite rows with status
-POST /api/admin/invite            → create invite, send email
-PUT  /api/admin/invite/{id}/revoke → set status REVOKED
-```
-
-**GET /api/admin/cost response:**
-
-```json
-{
-  "totalMicrodollars": 12450000,
-  "totalDollars": "12.45",
-  "byUser": [
-    {
-      "userId": "abc123",
-      "displayName": "Wife",
-      "totalMicrodollars": 4200000,
-      "breakdown": {
-        "photoMicrodollars": 1200000,
-        "quizGenMicrodollars": 2400000,
-        "challengeMicrodollars": 600000
-      }
-    }
-  ],
-  "byDay": [
-    { "date": "2026-03-24", "totalMicrodollars": 1200000 }
   ]
 }
 ```
 
-**GET /api/admin/jobs response:**
+`is_high_value`: `true` when `price_jpy` exceeds the threshold in `app_settings` (default ¥5,000). High-value items require an explicit confirmation checkbox in the UI before "Secure" becomes active.
 
+**F. Auto-close cron:**
+
+Add to `scheduler.py`:
+```python
+async def close_expired_hunt_sessions():
+    """Close OPEN sessions whose closes_at has passed."""
+    db.hunt_sessions.update(
+        {"status": "CLOSED"},
+        {"status": "OPEN", "closes_at": {"lt": now()}}
+    )
+```
+Runs every 60 seconds. Same pattern as `expire_stale_public_images`.
+Cron endpoint: `POST /api/cron/close-expired-hunt-sessions` (service token auth).
+
+**G. Gallery API — inject active and upcoming sessions:**
+
+`GET /api/public/gallery`
+
+Add to response envelope:
 ```json
 {
-  "jobs": [
-    {
-      "id": "uuid",
-      "status": "FAILED",
-      "attempts": 3,
-      "kanji": "電",
-      "word": "電車",
-      "userId": "abc123",
-      "createdAt": "2026-03-24T..."
-    }
-  ],
-  "counts": {
-    "PENDING": 2,
-    "PROCESSING": 0,
-    "DONE": 284,
-    "FAILED": 3
-  }
+  "active_hunt": {
+    "id": "uuid",
+    "shop_name": "Card Secret Akihabara",
+    "status": "OPEN",
+    "closes_at": "2026-04-05T10:30:00+09:00",
+    "window_minutes": 30,
+    "image_ids": ["uuid1", "uuid2"]
+  },
+  "upcoming_hunt": {
+    "id": "uuid",
+    "shop_name": "Radio Kaikan (2F)",
+    "scheduled_for": "2026-04-07T14:00:00+09:00",
+    "window_minutes": 45,
+    "optin_count": 8,
+    "viewer_has_opted_in": false
+  },
+  "batches": [...]
 }
 ```
 
-### 2.5.4 React UI — /admin Route
+`active_hunt` is `null` when no OPEN session. `upcoming_hunt` is the next SCHEDULED session, `null` if none. At most one of each is returned. Both are injected as distinct cards in the gallery feed.
 
-Three tabs in this iteration. The Telemetry tab is added in iteration 2.6 once there is sufficient data.
+**H. Notification templates:**
 
-**Cost tab:**
+Add to `translations` table:
 
-```
-Total spend: $12.45
+| namespace | key | lang | value |
+|-----------|-----|------|-------|
+| `notifications.HUNT_WINDOW_OPEN` | `title` | `id` | `Hunting live sekarang!` |
+| `notifications.HUNT_WINDOW_OPEN` | `message` | `id` | `{{shop_name}} — {{window_minutes}} menit tersisa untuk request kartu` |
+| `notifications.HUNT_WINDOW_OPEN` | `title` | `en` | `Live hunt is open!` |
+| `notifications.HUNT_WINDOW_OPEN` | `message` | `en` | `{{shop_name}} — {{window_minutes}} minutes left to request cards` |
+| `notifications.HUNT_SCHEDULED` | `title` | `id` | `Hunting dijadwalkan!` |
+| `notifications.HUNT_SCHEDULED` | `message` | `id` | `{{shop_name}} akan hunting pada {{scheduled_date}}. Mau diingatkan?` |
+| `notifications.HUNT_SCHEDULED` | `title` | `en` | `Hunt session scheduled` |
+| `notifications.HUNT_SCHEDULED` | `message` | `en` | `{{shop_name}} hunting on {{scheduled_date}}. Want a reminder?` |
 
-By user:
-  Wife          $4.20   [photo: $1.20 | quizgen: $2.40 | challenge: $0.60]
-  Friend 1      $3.80
-  Friend 2      $2.10
-  You           $2.35
-
-Daily spend (last 14 days):
-  [simple bar chart using MUI]
-```
-
-**Jobs tab:**
-
-```
-Status counts:  PENDING: 2  |  FAILED: 3  |  DONE: 284
-
-Failed jobs:
-  電 / 電車    Friend 1    3 attempts    [Retry]
-  話 / 会話    Wife        3 attempts    [Retry]
-  急 / 急行    You         3 attempts    [Retry]
-
-[ Retry all failed ]
-```
-
-**Invites tab:**
-
-```
-[ + New Invite ]
-
-Email                  Status    Invited by    Actions
-friend@email.com       ACCEPTED  You           —
-new@email.com          PENDING   You           [Revoke]
-old@email.com          REVOKED   You           —
-```
-
-### 2.5.5 Data Connect @transaction — Job Retry
-
-Resetting a failed job is a two-step write — reset status AND reset attempts:
-
-```graphql
-mutation RetryJob($jobId: UUID!) @transaction {
-  quizGenerationJob_update(id: $jobId, data: {
-    status: PENDING
-    attempts: 0
-  })
-}
-```
-
-Single mutation, naturally atomic — no `@transaction` strictly needed here but consistent with the pattern.
-
-### Definition of Done
-
-- [ ] `costMicrodollars` added to `QuizGenerationJob` and `ChallengeSession` schema
-- [ ] Firebase Functions write cost to job/session row on completion
-- [ ] `/admin` route protected by `requireAdmin()` middleware
-- [ ] `GET /api/admin/cost` returns total + per-user + per-day breakdown
-- [ ] `GET /api/admin/jobs` returns job list with status counts
-- [ ] `POST /api/admin/jobs/{id}/retry` resets failed job to PENDING
-- [ ] `GET /api/admin/quizzes` returns quiz rows, searchable by kanji/word
-- [ ] `DELETE /api/admin/quizzes/{id}` removes quiz + associated distractors
-- [ ] Invite CRUD works via admin endpoints
-- [ ] Cost tab shows per-user breakdown with source split (photo/quizgen/challenge)
-- [ ] Jobs tab shows failed jobs with individual and bulk retry
-- [ ] Invites tab shows all invites with revoke action
-- [ ] Admin page not linked from main nav — access via direct URL only
+`HUNT_SCHEDULED` is sent to all operator customers when a new SCHEDULED session is created, giving them a chance to opt in before the window opens.
 
 ---
 
-# Iteration 2.6 — Admin Panel: Quiz Telemetry
+### 3. Frontend: Operator — Session Management
 
-Adds a Telemetry tab to the existing `/admin` page. Ship only after `QuizServe.answeredInMs` has accumulated at least a week of real data from iteration 2.5 being live.
+**File:** `client/app/routes/operator/hunting_queue.tsx`
 
-**Why separate from 2.5:** win rate and avg answer time are meaningless on day one. Shipping the instrumentation in 2.5 and the UI in 2.6 means the dashboard is built on real signal, not empty tables.
+Add **"Hunt Sessions"** tab alongside existing tabs (Waiting, Check Condition, Cancel Requests, Wishlists).
 
-### 2.6.1 Schema — Telemetry Fields
+**Session list:**
 
-```graphql
-type QuizServe @table {
-  # ... existing fields
-  answeredInMs: Int          # NEW — how long user took to answer, sent by frontend
-}
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Card Secret Akihabara      [OPEN]    14:22 remaining         │
+│ Started 10:02  ·  30 min window  ·  14 requests             │
+│                                          [View Demand List]  │
+├──────────────────────────────────────────────────────────────┤
+│ Radio Kaikan (2F)          [SCHEDULED]  Sat 5 Apr · 10:00   │
+│ 45 min window  ·  8 opted in  ·  "Fokus etalase AR"        │
+│                              [Link Images]  [Edit]  [Cancel] │
+├──────────────────────────────────────────────────────────────┤
+│ Surugaya Akihabara         [DONE]   2026-03-26              │
+│ 23 cards secured  ·  4 sold out                             │
+│                                              [View Session]  │
+└──────────────────────────────────────────────────────────────┘
+```
 
-type QuizBank @table {
-  # ... existing fields
-  winRate: Float             # NEW — cached, updated by daily cron
-  avgAnswerMs: Int           # NEW — cached, updated by daily cron
-}
+Status chip colours: `OPEN` → error (red, pulsing), `SCHEDULED` → info (blue), `DRAFT` → warning (amber), `CLOSED` → default, `PURCHASING` → warning, `DONE` → success, `ABANDONED` → default muted.
 
-enum FlagType { IMPOSSIBLE, TOO_EASY, SLOW_BURN }
+**"+ New Session" button** opens a dialog. Two paths:
 
-type QuizFlag @table {
-  id: UUID! @default(expr: "uuidV4()")
-  quiz: QuizBank!
-  flagType: FlagType!
-  flagReason: String!
-  detectedAt: Timestamp! @default(expr: "request.time")
-  resolvedAt: Timestamp
-  resolvedBy: String
+*Path A — Schedule in advance:*
+- Shop name (text input or autocomplete from `source_shops`)
+- Date and time (`scheduled_for`) — date picker + time picker
+- Window duration — segmented: 15 / 30 / 45 / 60 min
+- Notes — optional free text ("Fokus etalase AR dan SAR")
+- Creates `SCHEDULED` session → system sends `HUNT_SCHEDULED` notification to all customers
+
+*Path B — Open now (skip scheduling):*
+- Toggle: "Buka langsung sekarang"
+- Same fields minus date/time
+- Creates `DRAFT` session → operator immediately links images and opens window
+
+**"Link Images" action (SCHEDULED sessions):**
+
+Opens image picker: filtered to `inventory_images` with `processing_status = COMPLETED` from the last 7 days, not already linked to another active session. Operator selects one or more showcases → `POST /api/hunt-sessions/{id}/images` for each.
+
+Once images are linked, session transitions to `DRAFT` via `PATCH /api/hunt-sessions/{id}/ready`. "Link Images" button becomes "Open Window →".
+
+**Session detail — demand list:**
+
+Rendered for `CLOSED` and `PURCHASING` sessions. Collapsible accordion per showcase. Each card item:
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ Latias ex                      3 requests    ¥8,000      │
+│ [!] High value — confirm condition before securing        │
+│ Queue: Andi W. (1)  ·  Budi S. (2)  ·  Citra M. (3)    │
+│                                                          │
+│  [ ] I've checked the condition                          │
+│  [✓ Secure (3)]    [Partial...]    [✗ Sold Out]         │
+└──────────────────────────────────────────────────────────┘
+```
+
+High-value items (`is_high_value: true`) lock the Secure button behind a confirmation checkbox. Checkbox is per-card, unchecked by default on page load.
+
+"Secure (N)" calls `POST /api/operator/hunting/{requestId}/secured` sequentially for each queue position. Bulk endpoint deferred to Iteration 19.
+
+---
+
+### 4. Frontend: Customer — Gallery & Notifications
+
+**Files:** `landing.tsx`, `portal/inventory.tsx`, `public_inventory_detail.tsx`
+
+**A. Active hunt card (OPEN session)**
+
+Injected at position 0 in the gallery feed when `active_hunt` is non-null in the gallery response. Distinct visual treatment — matches the dark live hunt card from the prototype.
+
+Contents:
+- "SEDANG LIVE" badge with animated pulse dot
+- Shop name
+- Countdown — derived from `closes_at`, recalculates every 60 seconds in JS
+- "GABUNG HUNTING" button → navigates to gallery filtered by `active_hunt.image_ids`
+
+After window closes: card transitions to "Window closed" state. No countdown. "Lihat kartu →" links to showcase images without a request button.
+
+**B. Upcoming hunt card (SCHEDULED session)**
+
+Injected at position 1 (below active if present, or position 0 if no active session) when `upcoming_hunt` is non-null.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  UPCOMING HUNT                                           │
+│  Card Secret Akihabara                                   │
+│  Sabtu, 5 April · 10:00 WIB  ·  30 menit window        │
+│  "Fokus etalase AR dan SAR"                             │
+│                                                         │
+│  14 orang mau diingatkan                               │
+│                                                         │
+│  [🔔 Ingatkan saya]                                     │
+└─────────────────────────────────────────────────────────┘
+```
+
+"Ingatkan saya" / "Notify me":
+- Unauthenticated: prompts login, then returns to this action
+- Authenticated, not opted in: calls `POST /api/hunt-sessions/{id}/optin` → button becomes "✓ Akan diingatkan" (dismissible)
+- Authenticated, opted in: button shows "✓ Akan diingatkan" with an × to remove opt-in (`DELETE /api/hunt-sessions/{id}/optin`)
+
+`optin_count` updates optimistically on click (no refetch needed for the number).
+
+**C. Countdown chip on individual gallery cards**
+
+When a card's parent image belongs to the active hunt session:
+
+```
+┌──────────────────────────────┐
+│ [Card image]                 │
+│ Latias ex         ¥8,000    │
+│ [🕐 22 menit tersisa]        │  ← red chip, hidden after closes_at
+│ [Request Card]               │
+└──────────────────────────────┘
+```
+
+**D. Window-closed card state**
+
+After window expires:
+- Request button replaced with muted "Window closed" label
+- "Tambah ke wishlist →" CTA appears, pre-filling card name and `price_jpy`
+- Calls existing `POST /api/storefront/wishlists`
+
+**E. Notifications**
+
+`HUNT_WINDOW_OPEN` and `HUNT_SCHEDULED` both route through the existing `notifications` table → Supabase Realtime → `useNotifications` hook → bell badge. No frontend changes needed for delivery. Notification body includes deep link via `action_url`.
+
+---
+
+### Files to Create
+
+| File | Description |
+|------|-------------|
+| `supabase/migrations/XXXXXX_hunt_sessions.sql` | `hunt_sessions`, `hunt_session_images`, `hunt_session_optins` tables + indexes + trigger |
+| `server/modules/hunt/__init__.py` | Module init |
+| `server/modules/hunt/router.py` | All hunt session endpoints |
+
+### Files to Modify
+
+| File | Change |
+|------|--------|
+| `server/main.py` | Register hunt router |
+| `server/modules/public_statement/router.py` | Inject `active_hunt` + `upcoming_hunt` into `GET /api/public/gallery` response |
+| `server/core/scheduler.py` | Add `close_expired_hunt_sessions()` cron |
+| `server/core/notifications.py` | Register `HUNT_WINDOW_OPEN` and `HUNT_SCHEDULED` notification types |
+| `client/app/routes/operator/hunting_queue.tsx` | Hunt Sessions tab, session list, new session dialog, image picker |
+| `client/app/routes/landing.tsx` | Active hunt card + upcoming hunt card injection |
+| `client/app/routes/portal/inventory.tsx` | Same injections for authenticated portal view |
+| `client/app/routes/public_inventory_detail.tsx` | Countdown chip, window-closed card state, wishlist CTA |
+| `translations` table | `HUNT_WINDOW_OPEN` and `HUNT_SCHEDULED` templates (id + en) |
+
+### Definition of Done
+
+* [ ] Migration: `hunt_sessions` table with all statuses, unique index on single OPEN per operator, `updated_at` trigger
+* [ ] Migration: `hunt_session_images` junction table
+* [ ] Migration: `hunt_session_optins` table with unique constraint on (session, customer)
+* [ ] FastAPI: `POST /api/hunt-sessions` — creates SCHEDULED (with `scheduled_for`) or DRAFT (without), sends `HUNT_SCHEDULED` notification when SCHEDULED
+* [ ] FastAPI: `POST /api/hunt-sessions/{id}/images` — links processed images to session
+* [ ] FastAPI: `PATCH /api/hunt-sessions/{id}/ready` — SCHEDULED → DRAFT
+* [ ] FastAPI: `PATCH /api/hunt-sessions/{id}/open` — sets window times, notifies opted-in customers first then all others, returns 409 if another session already OPEN, validates at least one image is linked
+* [ ] FastAPI: `PATCH /api/hunt-sessions/{id}/close` — OPEN → CLOSED
+* [ ] FastAPI: Cron `close_expired_hunt_sessions` closes sessions past `closes_at`
+* [ ] FastAPI: `GET /api/public/hunt-sessions/upcoming` — future SCHEDULED sessions with opt-in count
+* [ ] FastAPI: `POST /api/hunt-sessions/{id}/optin` — idempotent, authenticated customers only
+* [ ] FastAPI: `DELETE /api/hunt-sessions/{id}/optin` — remove opt-in
+* [ ] FastAPI: `GET /api/hunt-sessions/{id}/demand` — buy list grouped by showcase with `is_high_value` flag
+* [ ] FastAPI: `GET /api/public/gallery` includes `active_hunt` and `upcoming_hunt` in response envelope
+* [ ] Operator UI: Hunt Sessions tab with session list and correct status chips
+* [ ] Operator UI: New session dialog — Path A (scheduled) and Path B (open now)
+* [ ] Operator UI: `HUNT_SCHEDULED` notification sent when scheduled session created
+* [ ] Operator UI: Image picker for linking processed showcases to session
+* [ ] Operator UI: Session transitions SCHEDULED → DRAFT → OPEN via UI actions
+* [ ] Operator UI: Demand list grouped by showcase, high-value confirmation checkbox, secured/sold-out actions
+* [ ] Customer UI: Active hunt card at position 0 in gallery when OPEN session exists
+* [ ] Customer UI: Upcoming hunt card in gallery when SCHEDULED session exists
+* [ ] Customer UI: "Ingatkan saya" opt-in button — login gate for unauthenticated, toggle for authenticated
+* [ ] Customer UI: Opt-in count updates optimistically
+* [ ] Customer UI: Countdown chip on gallery cards during active window
+* [ ] Customer UI: Window-closed card state with wishlist CTA
+* [ ] Customer UI: `HUNT_WINDOW_OPEN` and `HUNT_SCHEDULED` appear in notification dropdown with deep links
+* [ ] Verified: scheduled path — create scheduled session → customers see upcoming card + opt in → link images → open window → opted-in customers notified → customers request → operator views demand → secure/sold-out → done
+* [ ] Verified: direct path — create draft session → link images → open window immediately → rest of flow same
+
+---
+
+# Iteration 19 — Mobile Pipeline + Scale Hardening
+
+Adds the mobile-optimised pipeline screen for in-shop use, bulk fulfillment actions, image compression, gallery discovery improvements, and the `operator_id` migration that makes the system multi-tenant ready.
+
+### 1. Database Schema & Migration (Supabase)
+
+**A. `operator_id` on core tables:**
+
+```sql
+-- Seed anchor operator first (done in Iteration 18)
+-- Backfill all existing rows
+UPDATE customers        SET operator_id = (SELECT id FROM operators WHERE slug = 'tokoizinistri');
+UPDATE orders           SET operator_id = (SELECT id FROM operators WHERE slug = 'tokoizinistri');
+UPDATE invoices         SET operator_id = (SELECT id FROM operators WHERE slug = 'tokoizinistri');
+UPDATE inventory_images SET operator_id = (SELECT id FROM operators WHERE slug = 'tokoizinistri');
+UPDATE hunt_sessions    SET operator_id = (SELECT id FROM operators WHERE slug = 'tokoizinistri');
+
+-- Apply NOT NULL
+ALTER TABLE customers        ALTER COLUMN operator_id SET NOT NULL;
+ALTER TABLE orders           ALTER COLUMN operator_id SET NOT NULL;
+ALTER TABLE invoices         ALTER COLUMN operator_id SET NOT NULL;
+ALTER TABLE inventory_images ALTER COLUMN operator_id SET NOT NULL;
+
+-- Row-level security
+CREATE POLICY "operator_isolation" ON customers
+    USING (operator_id = (SELECT operator_id FROM profiles WHERE id = auth.uid()));
+-- Same pattern on orders, invoices, inventory_images, hunt_sessions
+```
+
+**B. Card condition field (LP support):**
+
+```sql
+ALTER TABLE cards
+    ADD COLUMN condition TEXT NOT NULL DEFAULT 'NM';
+    -- NM | LP | MP | HP | DMG
+```
+
+Existing `PATCH /api/cards/{id}` accepts this — add `condition` to the validated payload fields.
+
+**C. Shop purchase limits:**
+
+```sql
+ALTER TABLE hunt_sessions
+    ADD COLUMN default_shop_limit INT;  -- null = no limit known
+
+CREATE TABLE hunt_session_card_limits (
+    hunt_session_id UUID NOT NULL REFERENCES hunt_sessions(id) ON DELETE CASCADE,
+    card_id         UUID NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+    max_purchasable INT NOT NULL,
+    PRIMARY KEY (hunt_session_id, card_id)
+);
+```
+
+### 2. Backend: Bulk Actions & Improvements
+
+**A. Bulk secure:**
+
+`POST /api/hunt-sessions/{id}/bulk-secure`
+
+```json
+{
+  "actions": [
+    { "card_id": "uuid", "quantity_secured": 2 },
+    { "card_id": "uuid", "quantity_secured": 0 }
+  ]
 }
 ```
 
-**Frontend — send timing on quiz result:**
+`quantity_secured = 0` → sold-out all queue positions for that card.
+`quantity_secured > 0` → create orders for positions 1→N, sold-out N+1 onward.
+All actions in a single DB transaction. Partial success not allowed.
 
+Response:
+```json
+{ "secured": 5, "sold_out": 3, "notifications_sent": 8 }
+```
+
+**B. Buy list share image:**
+
+`POST /api/hunt-sessions/{id}/summary`
+
+Generates a shareable image of the demand list grouped by showcase. Same PIL/AWT approach as the existing `POST /api/inventory-image/{id}/summary-image`. Returns image URL. Operator shares to WhatsApp via native share sheet.
+
+**C. Gallery single image — add navigation and wishlist context:**
+
+`GET /api/public/gallery/{id}` additions:
+
+```json
+{
+  "prev_image_id": "uuid | null",
+  "next_image_id": "uuid | null",
+  "hunt_session": { "status": "OPEN", "closes_at": "..." }
+}
+```
+
+Per-card user overlay (authenticated only):
+```json
+{ "wishlist_match": true }
+```
+
+`wishlist_match` is `true` when any active wishlist entry for this customer fuzzy-matches `card.name` using the same Jaccard token similarity as `MetaDataMatcher` (threshold 0.6).
+
+### 3. Frontend: Mobile Hunt Pipeline Screen
+
+**File:** `client/app/routes/operator/hunt_pipeline.tsx`
+**Route:** `/operator/hunt/{sessionId}`
+
+Purpose-built for phone-in-hand in-shop use. Linked from the Hunt Sessions tab via "Pipeline View" per session. Runs alongside the desktop flow — operators can use either.
+
+**Sticky progress header:**
+```
+1. Setup   2. Upload & Review   3. Live   4. Buy List
+━━━━━━━━━━░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+```
+Active step = yellow, completed = green, future = slate.
+
+**Stage 1 — Setup**
+
+Fields: shop name, window duration (15/30/45/60), optional shop purchase limit ("max lembar per judul di toko ini"), LP mode toggle ("aktifkan field kondisi LP saat review kartu").
+
+Creates or updates the session.
+
+**Stage 2 — Upload & Review**
+
+Image compression applied before upload:
 ```typescript
-const shownAt = Date.now()
-
-await postQuizResult({
-  quizId,
-  correct,
-  answeredInMs: Date.now() - shownAt
-})
+import imageCompression from 'browser-image-compression';
+const compressed = await imageCompression(file, {
+  maxSizeMB: 1,
+  maxWidthOrHeight: 1920,
+  useWebWorker: true,
+});
 ```
 
-**Daily cron — update cached aggregates:**
+Also applied to `arrivals_upload.tsx` — same change, different file.
 
-```python
-def update_quiz_telemetry():
-    quizzes = query_all_quiz_banks()
-    for quiz in quizzes:
-        serves = query_quiz_serves(quiz["id"])
-        if not serves:
-            continue
-        win_rate = sum(1 for s in serves if s["correct"]) / len(serves)
-        avg_ms = sum(s["answeredInMs"] for s in serves if s["answeredInMs"]) / len(serves)
-        update_quiz_bank(quiz["id"], win_rate=round(win_rate, 3), avg_answer_ms=int(avg_ms))
+Per-file progress:
+```
+showcase_A.jpg   ████████████████  Done ✓
+showcase_B.jpg   ████████░░░░░░░░  Uploading…
+showcase_C.jpg   ░░░░░░░░░░░░░░░░  Queued
+showcase_D.jpg   ████░░░░░░░░░░░░  FAILED  [Retry ↺]
 ```
 
-### 2.6.2 Flagging Rules
+State per file: `QUEUED → COMPRESSING → UPLOADING → PROCESSING → DONE | FAILED`
 
-Daily cron writes `QuizFlag` rows for quizzes crossing these thresholds. Minimum `servedCount >= 10` before any flag is raised.
+Failed files show retry button — retries only that file.
 
-| Flag | Condition | Meaning |
-|------|-----------|---------|
-| `IMPOSSIBLE` | `winRate < 0.15` AND `servedCount >= 10` | Likely bad distractors or ambiguous answer |
-| `TOO_EASY` | `winRate == 1.0` AND `avgAnswerMs < 2000` AND `servedCount >= 10` | Options too obvious |
-| `SLOW_BURN` | `avgAnswerMs > 10000` AND `servedCount >= 10` | Confusing prompt or distractors too similar |
+Card review list after upload: editable name, editable price, condition toggle (NM / LP / MP) with price-override field for LP and MP. Calls existing `PATCH /api/cards/{id}`.
 
-```python
-def flag_quizzes():
-    quizzes = query_quizbanks_with_sufficient_data(min_served=10)
-    for quiz in quizzes:
-        existing = {f["flagType"] for f in query_active_flags(quiz["id"])}
+**Stage 3 — Live**
 
-        if quiz["winRate"] < 0.15 and "IMPOSSIBLE" not in existing:
-            insert_flag(quiz["id"], "IMPOSSIBLE", "< 15% success rate")
-
-        if quiz["winRate"] == 1.0 and quiz["avgAnswerMs"] < 2000 and "TOO_EASY" not in existing:
-            insert_flag(quiz["id"], "TOO_EASY", "100% win rate + avg < 2s")
-
-        if quiz["avgAnswerMs"] > 10000 and "SLOW_BURN" not in existing:
-            insert_flag(quiz["id"], "SLOW_BURN", "avg answer time > 10s")
-```
-
-### 2.6.3 New Admin Endpoints
+Circular countdown timer. Live stats polled every 30s from `GET /api/hunt-sessions/{id}/demand`:
 
 ```
-GET  /api/admin/telemetry/macro        → win rate by quiz type across all users
-GET  /api/admin/telemetry/vault        → top quizzes by servedCount
-GET  /api/admin/telemetry/flags        → active QuizFlag rows with quiz preview data
-POST /api/admin/quizzes/{id}/regenerate → delete quiz + distractors, enqueue new job
-PUT  /api/admin/flags/{id}/resolve     → mark flag resolved without deleting quiz
+┌──────────────┐   ┌──────────────┐
+│      14      │   │   ¥142,000   │
+│   REQUESTS   │   │    POTENSI   │
+└──────────────┘   └──────────────┘
 ```
 
-**GET /api/admin/telemetry/macro response:**
+"Close Window Early" → `PATCH /api/hunt-sessions/{id}/close` → advance to Stage 4.
 
-```json
-{
-  "byType": [
-    { "quizType": "MEANING_RECALL",      "avgWinRate": 0.94, "avgAnswerMs": 2100 },
-    { "quizType": "READING_RECOGNITION", "avgWinRate": 0.88, "avgAnswerMs": 2800 },
-    { "quizType": "REVERSE_READING",     "avgWinRate": 0.71, "avgAnswerMs": 3400 },
-    { "quizType": "BOLD_WORD_MEANING",   "avgWinRate": 0.82, "avgAnswerMs": 3900 },
-    { "quizType": "FILL_IN_THE_BLANK",   "avgWinRate": 0.64, "avgAnswerMs": 5200 }
-  ]
-}
+**Stage 4 — Buy List**
+
+Grouped by showcase. Per card:
+```
+┌────────────────────────────────────────────────────┐
+│ Latias ex                     3 reqs    ¥8,000     │
+│ Shop limit: 2  ·  Andi (1)  ·  Budi (2)  ·  +1   │
+│  [✓ Secure 2 of 3]   [Partial ▾]   [✗ Sold Out]  │
+└────────────────────────────────────────────────────┘
 ```
 
-**GET /api/admin/telemetry/flags response:**
+Default "Secure N" = min(requests, shop_limit). "Partial" opens inline number picker. "Sold Out" fires sold-out for all positions.
 
-```json
-{
-  "flags": [
-    {
-      "id": "uuid",
-      "flagType": "IMPOSSIBLE",
-      "flagReason": "< 15% success rate",
-      "quiz": {
-        "id": "uuid",
-        "word": "電気",
-        "quizType": "MEANING_RECALL",
-        "prompt": "電気",
-        "answer": "electricity",
-        "winRate": 0.12,
-        "avgAnswerMs": 4200,
-        "servedCount": 45
-      }
-    }
-  ]
-}
+Calls `POST /api/hunt-sessions/{id}/bulk-secure` with all actions in one request.
+
+"Finish & Notify" at bottom → `DONE` status → fires `REQUEST_SECURED` and `REQUEST_SOLD_OUT` notifications via existing types.
+
+"Share Buy List" → `POST /api/hunt-sessions/{id}/summary` → `navigator.share()`.
+
+### 4. Frontend: Gallery Discovery Improvements
+
+**File:** `client/app/routes/public_inventory_detail.tsx`
+
+**Prev / next showcase navigation:**
 ```
+← Showcase A     Showcase B     Showcase C →
+```
+Left/right arrow keys. Swipe gesture: `touchstart`/`touchend` delta > 50px. Uses `prev_image_id`/`next_image_id` from the updated API response — no extra calls.
 
-### 2.6.4 React UI — Telemetry Tab
+**Viewed marking:**
+On mount: write `imageId` to `localStorage['viewed_gallery_images']` (JSON array, max 200 entries, FIFO eviction). Portal inventory grid shows a "Sudah dilihat" chip on viewed images.
 
-Added as a fourth tab to `/admin`.
+**Wishlist filter toggle:**
+Filter button above card grid: "Tampilkan wishlist saya saja". Hides cards where `wishlist_match = false`. Matched cards get a wishlist badge in their corner. State persists in URL param `?wishlist_only=true`.
 
-**Macro health row** — one stat card per quiz type, color-coded: green ≥ 80%, amber 60–79%, red < 60%.
+**Jump-to-match banner:**
+When `wishlist_match = true` cards exist and filter is off:
+```
+┌──────────────────────────────────────┐
+│  ★  2 kartu cocok wishlist kamu  ↓  │
+└──────────────────────────────────────┘
+```
+Taps scroll to first match. Dismissed with ×. Dismissal saved to localStorage per image — doesn't reappear on revisit.
 
-**Flagged quizzes triage** — inbox-style list. Each row: quiz, flag type badge, win rate, avg time, serve count. Actions: Preview (modal of quiz card as user sees it), Regenerate (delete + re-enqueue), Dismiss (resolve without action).
+### Files to Create
 
-**The Vault** — top quizzes by `servedCount`. Searchable by kanji or word. Shows win rate, avg answer time, reuse count alongside each entry.
+| File | Description |
+|------|-------------|
+| `supabase/migrations/XXXXXX_operator_id_migration.sql` | Backfill + NOT NULL + RLS policies |
+| `supabase/migrations/XXXXXX_card_condition.sql` | `cards.condition`, `hunt_session_card_limits` |
+| `client/app/routes/operator/hunt_pipeline.tsx` | Mobile pipeline screen |
 
-**Preview modal** — renders the quiz card exactly as the user sees it. Shared between triage and vault.
+### Files to Modify
+
+| File | Change |
+|------|--------|
+| `server/modules/hunt/router.py` | Add bulk-secure, summary endpoints |
+| `server/modules/public_statement/router.py` | Add `prev_image_id`, `next_image_id`, `wishlist_match` to single gallery image response |
+| `server/modules/inventory/router.py` | Add `condition` to `PATCH /api/cards/{id}` |
+| `client/app/routes/operator/arrivals_upload.tsx` | Add image compression |
+| `client/app/routes/public_inventory_detail.tsx` | Prev/next nav, viewed marking, wishlist badge, jump-to-match banner |
+| `client/app/routes/portal/inventory.tsx` | Wishlist filter toggle, viewed chip on grid |
+| `client/package.json` | Add `browser-image-compression` |
 
 ### Definition of Done
 
-- [ ] `QuizServe.answeredInMs` added to schema
-- [ ] `QuizBank.winRate` and `QuizBank.avgAnswerMs` cached fields added
-- [ ] `QuizFlag` table and `FlagType` enum added to schema
-- [ ] Frontend sends `answeredInMs` on every `POST /api/quiz/result`
-- [ ] Daily cron updates `winRate` and `avgAnswerMs` on `QuizBank`
-- [ ] Daily flagging cron writes flags for IMPOSSIBLE, TOO_EASY, SLOW_BURN
-- [ ] Minimum `servedCount >= 10` before any flag is raised
-- [ ] `GET /api/admin/telemetry/macro` returns win rate + avg time by quiz type
-- [ ] `GET /api/admin/telemetry/vault` returns top quizzes by serve count
-- [ ] `GET /api/admin/telemetry/flags` returns active flags with full quiz data
-- [ ] `POST /api/admin/quizzes/{id}/regenerate` deletes quiz + enqueues new job
-- [ ] `PUT /api/admin/flags/{id}/resolve` marks flag resolved
-- [ ] Telemetry tab added to `/admin` — macro health, triage inbox, vault
-- [ ] Preview modal renders quiz card as user would see it
-- [ ] Flag badges color-coded: red = impossible, blue = too easy, amber = slow burn
-- [ ] Ship only after at least 7 days of `answeredInMs` data
-
----
-
-# Appendix — Phase 2 Architecture Notes
-
-### What changed from Phase 1
-
-**New tables:** `WordMaster`, `UserInvite`, `QuizFlag` (2.6)
-
-**Modified tables:**
-- `UserWords` — references `WordMaster` instead of storing word data inline
-- `QuizBank` — `userId` nullable, `word` references `WordMaster`
-- `QuizDistractor` — `userId` nullable
-- `QuizGenerationJob` — references `WordMaster`
-- `UserSettings` — adds `onboardingComplete`, `timezone`
-
-**New endpoints (2.5):**
-- `POST /api/admin/invite`
-- `GET /api/admin/invites`
-- `PUT /api/admin/invite/{id}/revoke`
-- `POST /api/kanji/bulk-familiar`
-- `GET /api/admin/cost`
-- `GET /api/admin/jobs`
-- `POST /api/admin/jobs/{id}/retry`
-- `GET /api/admin/quizzes`
-- `DELETE /api/admin/quizzes/{id}`
-
-**New endpoints (2.6):**
-- `GET /api/admin/telemetry/macro`
-- `GET /api/admin/telemetry/vault`
-- `GET /api/admin/telemetry/flags`
-- `POST /api/admin/quizzes/{id}/regenerate`
-- `PUT /api/admin/flags/{id}/resolve`
-
-**New Firebase Function:** none — existing `generate_quizzes` updated to write global rows.
-
-### API Cost Model
-
-Flat $5/user contribution, trust-based. No automated billing or usage enforcement in Phase 2. Cost is tracked per operation via `costMicrodollars` fields on `PhotoSession`, `QuizGenerationJob`, and `ChallengeSession` — visible in the admin panel. If spend exceeds $5/user/month consistently, revisit in Phase 3.
-
-### Shared Quiz Reuse — Expected Impact
-
-After a small group uses the app for a few weeks, the shared `QuizBank` will cover most common daily-life vocabulary. Gemini generation calls will reduce significantly — new calls only trigger for words no one in the group has encountered yet. The first user to encounter a word pays the generation cost; everyone after reuses for free.
-
-### Key Design Decisions
-
-**WordMaster grows organically** — no pre-seeded word dictionary. Words enter `WordMaster` the first time any user encounters them via photo or word discovery. The shared bank reflects real vocabulary from real daily life in Japan, not an academic corpus.
-
-**Global quizzes, personal progress** — `QuizBank` rows with `userId = null` are the canonical quiz content. Personal `QuizServe` rows track who answered what. This separation means a user can be deleted cleanly (remove all personal rows) without affecting the shared quiz content.
-
-**Invite acceptance is atomic** — `UserInvite` status update and `UserSettings` creation happen in a single `@transaction` mutation. A failure in either step leaves the user in a clean state — they can retry signup without corrupting invite state.
-
-**No role system** — admin access is a hardcoded `userId` check in `AppConfig`. At this scale (5–10 users) a full RBAC system is unnecessary overhead.
+* [ ] Migration: `operator_id` backfilled on all core tables, NOT NULL applied, RLS policies enforced
+* [ ] Migration: `cards.condition` column, `hunt_session_card_limits` table
+* [ ] FastAPI: `POST /api/hunt-sessions/{id}/bulk-secure` — single transaction, returns counts
+* [ ] FastAPI: `POST /api/hunt-sessions/{id}/summary` — generates shareable demand image
+* [ ] FastAPI: `GET /api/public/gallery/{id}` returns `prev_image_id`, `next_image_id`, `wishlist_match` per card
+* [ ] FastAPI: `PATCH /api/cards/{id}` accepts `condition` field
+* [ ] Mobile pipeline: all 4 stages working end-to-end
+* [ ] Mobile pipeline: per-file compression + progress + partial retry in Stage 2
+* [ ] Mobile pipeline: condition toggle + tax label in Stage 2 card review
+* [ ] Mobile pipeline: bulk secure with shop limit awareness in Stage 4
+* [ ] Mobile pipeline: "Finish & Notify" fires all pending notifications
+* [ ] Mobile pipeline: "Share Buy List" calls summary endpoint, opens native share sheet
+* [ ] Image compression also applied to `arrivals_upload.tsx`
+* [ ] Gallery: prev/next with keyboard + swipe
+* [ ] Gallery: viewed chip on portal inventory grid
+* [ ] Gallery: wishlist filter toggle + matched card badge
+* [ ] Gallery: jump-to-match banner, dismissible, persists per image in localStorage
+* [ ] RLS verified: operator A cannot read operator B's data
+* [ ] Verified end-to-end mobile: scheduled session on desktop → customer opts in → images linked → window opens on mobile → customer requests → operator uses mobile buy list → bulk secure → done

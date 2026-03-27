@@ -101,7 +101,7 @@ export default function Home() {
   return (
     <Box
       sx={{
-        minHeight: "100vh",
+        minHeight: "var(--app-height)",
         maxWidth: 480,
         mx: "auto",
         display: "flex",
@@ -111,7 +111,7 @@ export default function Home() {
     >
       <PageHeader
         title={greeting}
-        subtitle={!loading && streak > 0 ? <span style={{ color: "#34d399", fontWeight: 600 }}>You are on {streak} day streak</span> : undefined}
+        subtitle={!loading && streak > 0 ? <span style={{ color: "#ff9800", fontWeight: 600 }}>You are on {streak} day streak</span> : undefined}
         right={
           <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
             <Chip

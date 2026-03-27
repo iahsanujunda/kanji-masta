@@ -35,19 +35,22 @@ interface Selection {
   status: "learning" | "familiar";
 }
 
-type View = "welcome" | "loading" | "deck" | "batch-done" | "photo-prompt" | "finished";
+type View = "welcome" | "loading" | "deck" | "saving" | "batch-done" | "photo-prompt" | "finished";
 
 export default function Onboarding() {
   const navigate = useNavigate();
   const [kanji, setKanji] = useState<OnboardingKanji[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [selections, setSelections] = useState<Selection[]>([]);
+  const [batchSelections, setBatchSelections] = useState<Selection[]>([]);
   const [view, setView] = useState<View>("welcome");
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [animating, setAnimating] = useState(false);
   const [slideIn, setSlideIn] = useState(true);
-  const [allSeenKanji, setAllSeenKanji] = useState<Map<string, OnboardingKanji>>(new Map());
+
+  // Cumulative counts across all saved batches
+  const [totalLearning, setTotalLearning] = useState(0);
+  const [totalFamiliar, setTotalFamiliar] = useState(0);
 
   const loadBatch = useCallback(async (newOffset: number) => {
     setView("loading");
@@ -57,12 +60,8 @@ export default function Onboarding() {
       );
       setKanji(data.kanji);
       setHasMore(data.hasMore);
-      setAllSeenKanji((prev) => {
-        const next = new Map(prev);
-        for (const k of data.kanji) next.set(k.kanjiMasterId, k);
-        return next;
-      });
       setCurrentIndex(0);
+      setBatchSelections([]);
       setSlideIn(true);
       setView(data.kanji.length > 0 ? "deck" : "finished");
     } catch {
@@ -74,10 +73,29 @@ export default function Onboarding() {
     loadBatch(0);
   }, [loadBatch]);
 
+  const saveBatch = useCallback(async (selections: Selection[]) => {
+    if (selections.length === 0) return;
+    setView("saving");
+    try {
+      await apiFetch("/api/onboarding/select", {
+        method: "POST",
+        body: JSON.stringify({ selections }),
+      });
+    } catch {
+      // Continue anyway — selections may be partially saved
+    }
+    const batchLearning = selections.filter((s) => s.status === "learning").length;
+    const batchFamiliar = selections.filter((s) => s.status === "familiar").length;
+    setTotalLearning((prev) => prev + batchLearning);
+    setTotalFamiliar((prev) => prev + batchFamiliar);
+    setView("batch-done");
+  }, []);
+
   const handleDecision = useCallback((status: "learning" | "familiar") => {
     if (animating) return;
     const current = kanji[currentIndex];
-    setSelections((prev) => [...prev, { kanjiMasterId: current.kanjiMasterId, status }]);
+    const newSelections = [...batchSelections, { kanjiMasterId: current.kanjiMasterId, status }];
+    setBatchSelections(newSelections);
 
     // Animate out
     setAnimating(true);
@@ -90,10 +108,11 @@ export default function Onboarding() {
         setAnimating(false);
       } else {
         setAnimating(false);
-        setView("batch-done");
+        // Batch complete — save immediately
+        saveBatch(newSelections);
       }
     }, 300);
-  }, [animating, kanji, currentIndex]);
+  }, [animating, kanji, currentIndex, batchSelections, saveBatch]);
 
   const handleAddMore = useCallback(() => {
     const newOffset = offset + 10;
@@ -109,25 +128,9 @@ export default function Onboarding() {
     }
   }, []);
 
-  const handleFinish = useCallback(async () => {
-    setView("loading");
-    try {
-      await apiFetch("/api/onboarding/select", {
-        method: "POST",
-        body: JSON.stringify({ selections }),
-      });
-    } catch {
-      // Continue anyway
-    }
-    setView("photo-prompt");
-  }, [selections]);
-
-  const handleRemoveSelection = useCallback((kanjiMasterId: string) => {
-    setSelections((prev) => prev.filter((s) => s.kanjiMasterId !== kanjiMasterId));
-  }, []);
-
-  const learningCount = selections.filter((s) => s.status === "learning").length;
-  const familiarCount = selections.filter((s) => s.status === "familiar").length;
+  const allLearning = totalLearning;
+  const allFamiliar = totalFamiliar;
+  const allTotal = allLearning + allFamiliar;
 
   // --- Welcome ---
   if (view === "welcome") {
@@ -211,104 +214,38 @@ export default function Onboarding() {
     );
   }
 
-  // --- Loading ---
-  if (view === "loading") {
+  // --- Loading / Saving ---
+  if (view === "loading" || view === "saving") {
     return (
       <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <Typography color="text.secondary">Loading kanji...</Typography>
+        <Typography color="text.secondary">
+          {view === "saving" ? "Saving your selections..." : "Loading kanji..."}
+        </Typography>
       </Box>
     );
   }
 
   // --- Batch done — ask to continue or finish ---
   if (view === "batch-done") {
-    // Build display list from selections + kanji data we've seen
-    const learningSelections = selections.filter((s) => s.status === "learning");
-    const familiarSelections = selections.filter((s) => s.status === "familiar");
-
     return (
-      <Box sx={{ height: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", p: 3, overflow: "hidden" }}>
-        {/* Header stats */}
-        <Box sx={{ textAlign: "center", pt: 4, mb: 3 }}>
-          <Box sx={{ width: 64, height: 64, bgcolor: "rgba(67, 56, 202, 0.15)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", mx: "auto", mb: 2 }}>
-            <SpaIcon sx={{ fontSize: 32, color: "#818cf8" }} />
-          </Box>
-          <Typography variant="h5" fontWeight="bold" sx={{ mb: 0.5 }}>
-            {selections.length} kanji reviewed
-          </Typography>
-          <Typography color="text.secondary">
-            {learningCount > 0 && <><strong>{learningCount}</strong> to learn</>}
-            {learningCount > 0 && familiarCount > 0 && " · "}
-            {familiarCount > 0 && <><strong>{familiarCount}</strong> already known</>}
-          </Typography>
+      <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", p: 3, textAlign: "center" }}>
+        <Box sx={{ width: 64, height: 64, bgcolor: "rgba(67, 56, 202, 0.15)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", mb: 3 }}>
+          <CheckIcon sx={{ fontSize: 32, color: "#818cf8" }} />
         </Box>
-
-        {/* Selection list */}
-        <Box sx={{ flex: 1, overflow: "auto", mb: 2 }}>
-          {learningSelections.length > 0 && (
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="caption" sx={{ color: "#818cf8", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, px: 1 }}>
-                Want to Learn ({learningSelections.length})
-              </Typography>
-              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mt: 1 }}>
-                {learningSelections.map((s) => {
-                  const k = allSeenKanji.get(s.kanjiMasterId);
-                  return (
-                    <Box
-                      key={s.kanjiMasterId}
-                      onClick={() => handleRemoveSelection(s.kanjiMasterId)}
-                      sx={{
-                        bgcolor: "rgba(67, 56, 202, 0.15)",
-                        border: "1px solid rgba(99, 102, 241, 0.3)",
-                        borderRadius: 2,
-                        px: 1.5, py: 0.75,
-                        display: "flex", alignItems: "center", gap: 0.75,
-                        cursor: "pointer",
-                        "&:hover": { bgcolor: "rgba(67, 56, 202, 0.25)" },
-                      }}
-                    >
-                      <Typography sx={{ fontSize: "1.1rem" }}>{k?.character || "?"}</Typography>
-                      <Typography variant="caption" sx={{ color: "grey.400" }}>✕</Typography>
-                    </Box>
-                  );
-                })}
-              </Box>
-            </Box>
-          )}
-          {familiarSelections.length > 0 && (
-            <Box>
-              <Typography variant="caption" sx={{ color: "#34d399", fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, px: 1 }}>
-                Already Know ({familiarSelections.length})
-              </Typography>
-              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mt: 1 }}>
-                {familiarSelections.map((s) => {
-                  const k = allSeenKanji.get(s.kanjiMasterId);
-                  return (
-                    <Box
-                      key={s.kanjiMasterId}
-                      onClick={() => handleRemoveSelection(s.kanjiMasterId)}
-                      sx={{
-                        bgcolor: "rgba(16, 185, 129, 0.1)",
-                        border: "1px solid rgba(16, 185, 129, 0.2)",
-                        borderRadius: 2,
-                        px: 1.5, py: 0.75,
-                        display: "flex", alignItems: "center", gap: 0.75,
-                        cursor: "pointer",
-                        "&:hover": { bgcolor: "rgba(16, 185, 129, 0.2)" },
-                      }}
-                    >
-                      <Typography sx={{ fontSize: "1.1rem" }}>{k?.character || "?"}</Typography>
-                      <Typography variant="caption" sx={{ color: "grey.400" }}>✕</Typography>
-                    </Box>
-                  );
-                })}
-              </Box>
-            </Box>
-          )}
-        </Box>
+        <Typography variant="h5" fontWeight="bold" sx={{ mb: 0.5 }}>
+          {allTotal} kanji reviewed
+        </Typography>
+        <Typography color="text.secondary" sx={{ mb: 4 }}>
+          {allLearning > 0 && <><strong>{allLearning}</strong> to learn</>}
+          {allLearning > 0 && allFamiliar > 0 && " · "}
+          {allFamiliar > 0 && <><strong>{allFamiliar}</strong> already known</>}
+        </Typography>
+        <Typography variant="caption" color="text.disabled" sx={{ mb: 4 }}>
+          Progress saved automatically
+        </Typography>
 
         {/* Action buttons */}
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, pb: 2 }}>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, width: "100%", maxWidth: 320 }}>
           {hasMore && (
             <Button
               fullWidth
@@ -322,7 +259,7 @@ export default function Onboarding() {
           <Button
             fullWidth
             variant={hasMore ? "outlined" : "contained"}
-            onClick={handleFinish}
+            onClick={() => setView("photo-prompt")}
             sx={{
               py: 1.5,
               borderRadius: 3,
@@ -332,14 +269,14 @@ export default function Onboarding() {
                 : { bgcolor: "#4338ca", "&:hover": { bgcolor: "#3730a3" } }),
             }}
           >
-            Start learning
+            {allLearning > 0 ? "Start learning" : "Done"}
           </Button>
         </Box>
       </Box>
     );
   }
 
-  // --- Finished — summary then redirect ---
+  // --- Finished — no more kanji available ---
   if (view === "finished") {
     return (
       <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", p: 3, textAlign: "center" }}>
@@ -350,8 +287,8 @@ export default function Onboarding() {
           You're all set!
         </Typography>
         <Typography color="text.secondary" sx={{ mb: 4 }}>
-          {learningCount > 0
-            ? `${learningCount} kanji planted. Quizzes are being prepared.`
+          {allLearning > 0
+            ? `${allLearning} kanji planted. Quizzes are being prepared.`
             : "Capture a photo to start learning kanji."}
         </Typography>
         <Button

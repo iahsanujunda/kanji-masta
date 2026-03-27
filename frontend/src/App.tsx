@@ -18,6 +18,7 @@ const Onboarding = lazy(() => import("@/pages/Onboarding"));
 const Signup = lazy(() => import("@/pages/Signup"));
 const Landing = lazy(() => import("@/pages/Landing"));
 const Admin = lazy(() => import("@/pages/Admin"));
+const InsightDetail = lazy(() => import("@/pages/InsightDetail"));
 
 function Loading() {
   return (
@@ -122,6 +123,14 @@ export default function App() {
           element={
             <ProtectedRoute user={user} isLoading={isLoading}>
               <Admin />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/insights/:id"
+          element={
+            <ProtectedRoute user={user} isLoading={isLoading}>
+              <InsightDetail />
             </ProtectedRoute>
           }
         />

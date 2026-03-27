@@ -16,6 +16,7 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
 import TranslateIcon from "@mui/icons-material/Translate";
+import LightbulbOutlinedIcon from "@mui/icons-material/LightbulbOutlined";
 import SpaIcon from "@mui/icons-material/Spa";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
@@ -23,6 +24,7 @@ import PageHeader from "@/components/PageHeader";
 import { apiFetch } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import { formatTimeLeft, timeAgo } from "@/lib/format";
+import { getTodayLesson, isLessonCompleted } from "@/lib/insights";
 
 interface RecentScanItem {
   sessionId: string;
@@ -85,6 +87,14 @@ export default function Home() {
       return () => clearTimeout(timer);
     }
   }, [location.state]);
+
+  const todayLesson = getTodayLesson();
+  const [lessonCompleted, setLessonCompleted] = useState(() => isLessonCompleted(todayLesson.id));
+
+  // Refresh completion state when returning from lesson detail
+  useEffect(() => {
+    setLessonCompleted(isLessonCompleted(todayLesson.id));
+  }, [location.key, todayLesson.id]);
 
   const streak = summary?.streak ?? 0;
   const kanjiLearning = summary?.kanjiLearning ?? 0;
@@ -275,6 +285,39 @@ export default function Home() {
             </Button>
           </Paper>
         )}
+
+        {/* Daily insight card */}
+        <Paper
+          variant="outlined"
+          onClick={() => navigate(`/insights/${todayLesson.id}`)}
+          sx={{ borderRadius: 4, p: 2.5, cursor: "pointer", "&:hover": { bgcolor: "action.hover" } }}
+        >
+          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 1.5 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <LightbulbOutlinedIcon sx={{ fontSize: 18, color: todayLesson.accentColor }} />
+              <Typography variant="caption" sx={{ fontWeight: 700, color: "text.disabled", letterSpacing: 1.5, textTransform: "uppercase" }}>
+                Today's Lesson
+              </Typography>
+            </Box>
+            {lessonCompleted ? (
+              <CheckCircleIcon sx={{ fontSize: 20, color: "#10b981" }} />
+            ) : (
+              <Box sx={{ px: 1.5, py: 0.5, borderRadius: 1.5, bgcolor: todayLesson.accentBg, border: "1px solid", borderColor: `${todayLesson.accentColor}4D` }}>
+                <Typography variant="caption" sx={{ fontWeight: 700, color: todayLesson.accentColor }}>
+                  {todayLesson.readTime}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+          <Typography fontWeight="bold" sx={{ mb: lessonCompleted ? 0 : 0.75, color: lessonCompleted ? "text.disabled" : "text.primary" }}>
+            {todayLesson.title}
+          </Typography>
+          {!lessonCompleted && (
+            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+              {todayLesson.teaser}
+            </Typography>
+          )}
+        </Paper>
 
         {/* Kanji stats card */}
         <Paper

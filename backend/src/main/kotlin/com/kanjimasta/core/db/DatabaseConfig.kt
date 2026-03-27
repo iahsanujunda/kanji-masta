@@ -37,10 +37,15 @@ fun connectDatabase(environment: ApplicationEnvironment): Database {
     val jdbcUrl = toJdbcUrl(url)
     log.info("Connecting to database: {}", jdbcUrl.substringBefore("?").replace(Regex("://[^@]+@"), "://***@"))
 
+    // Disable server-side prepared statements to avoid "prepared statement already exists"
+    // errors with Supabase's connection pooler (PgBouncer)
+    val separator = if ("?" in jdbcUrl) "&" else "?"
+    val finalJdbcUrl = "$jdbcUrl${separator}prepareThreshold=0"
+
     val config = HikariConfig().apply {
-        this.jdbcUrl = jdbcUrl
-        maximumPoolSize = 10
-        minimumIdle = 2
+        this.jdbcUrl = finalJdbcUrl
+        maximumPoolSize = 7
+        minimumIdle = 1
         idleTimeout = 60_000
         connectionTimeout = 10_000
         maxLifetime = 300_000

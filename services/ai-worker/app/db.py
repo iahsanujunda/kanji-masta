@@ -19,7 +19,7 @@ def init_pool():
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:
         raise RuntimeError("DATABASE_URL not set")
-    _pool = psycopg2.pool.ThreadedConnectionPool(1, 10, dsn=dsn)
+    _pool = psycopg2.pool.ThreadedConnectionPool(1, 5, dsn=dsn)
 
 
 def get_pool() -> psycopg2.pool.ThreadedConnectionPool:

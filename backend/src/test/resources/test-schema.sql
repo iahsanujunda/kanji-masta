@@ -218,3 +218,17 @@ CREATE TABLE user_invite (
     created_at  timestamptz NOT NULL DEFAULT now(),
     accepted_at timestamptz
 );
+
+-- RPC: accept invite and create user settings (called by auth trigger + backend)
+CREATE OR REPLACE FUNCTION accept_invite_for_user(p_email text, p_user_id text)
+RETURNS void AS $$
+BEGIN
+    UPDATE user_invite
+    SET status = 'ACCEPTED', accepted_at = now()
+    WHERE email = p_email AND status = 'PENDING';
+
+    INSERT INTO user_settings (user_id)
+    VALUES (p_user_id)
+    ON CONFLICT (user_id) DO NOTHING;
+END;
+$$ LANGUAGE plpgsql;

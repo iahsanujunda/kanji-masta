@@ -65,7 +65,7 @@ fun Application.module() {
     val adminUserId = environment.config.propertyOrNull("admin.userId")?.getString() ?: ""
     val resendClient = ResendClient(httpClient, resendApiKey)
     val inviteRepository = InviteRepository(database)
-    val inviteService = InviteService(inviteRepository, settingsRepository, resendClient)
+    val inviteService = InviteService(inviteRepository, resendClient)
     val adminRepository = AdminRepository(database)
     val adminService = AdminService(adminRepository)
     val internalService = InternalService(database)

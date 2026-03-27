@@ -48,8 +48,6 @@ fun Application.configureRouting(
         internalRoutes(internalService, internalKey)
 
         authenticate("supabase") {
-            installInviteGuard(inviteService, settingsRepository)
-
             photoRoutes(photoService)
             kanjiRoutes(kanjiService, settingsRepository)
             quizRoutes(quizService)

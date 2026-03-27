@@ -143,6 +143,164 @@ class InviteIntegrationTest {
         }
     }
 
+    // --- RPC: accept_invite_for_user ---
+
+    @Test
+    fun `RPC accept_invite_for_user transitions PENDING invite to ACCEPTED and creates settings`() {
+        val testEmail = "rpc-accept@example.com"
+        val testUserId = "rpc-test-user-1"
+        cleanupInvites(TestDatabase.db, testEmail)
+        TestDatabase.db.useConnection { conn ->
+            conn.createStatement().execute("DELETE FROM user_settings WHERE user_id = '$testUserId'")
+        }
+
+        try {
+            // Seed a PENDING invite
+            TestDatabase.db.useConnection { conn ->
+                conn.prepareStatement(
+                    "INSERT INTO user_invite (code, email, invited_by, status) VALUES ('RPCtest001', ?, ?, 'PENDING')"
+                ).apply {
+                    setString(1, testEmail)
+                    setString(2, TEST_USER_ID)
+                    executeUpdate()
+                }
+            }
+
+            // Call the RPC
+            TestDatabase.db.useConnection { conn ->
+                conn.prepareStatement("SELECT accept_invite_for_user(?, ?)").apply {
+                    setString(1, testEmail)
+                    setString(2, testUserId)
+                    execute()
+                }
+            }
+
+            // Verify invite is ACCEPTED
+            val inviteStatus = TestDatabase.db.from(UserInviteTable)
+                .select(UserInviteTable.status, UserInviteTable.acceptedAt)
+                .where { UserInviteTable.email eq testEmail }
+                .map { it[UserInviteTable.status] to it[UserInviteTable.acceptedAt] }
+                .first()
+            assertEquals(com.kanjimasta.core.db.InviteStatus.ACCEPTED, inviteStatus.first)
+            assertNotNull(inviteStatus.second, "accepted_at should be set")
+
+            // Verify user_settings was created
+            val hasSettings = TestDatabase.db.from(com.kanjimasta.core.db.UserSettingsTable)
+                .select()
+                .where { com.kanjimasta.core.db.UserSettingsTable.userId eq testUserId }
+                .totalRecordsInAllPages
+            assertEquals(1, hasSettings, "user_settings row should be created")
+        } finally {
+            cleanupInvites(TestDatabase.db, testEmail)
+            TestDatabase.db.useConnection { conn ->
+                conn.createStatement().execute("DELETE FROM user_settings WHERE user_id = '$testUserId'")
+            }
+        }
+    }
+
+    @Test
+    fun `RPC accept_invite_for_user does not change REVOKED invite`() {
+        val testEmail = "rpc-revoked@example.com"
+        val testUserId = "rpc-test-user-2"
+        cleanupInvites(TestDatabase.db, testEmail)
+
+        try {
+            // Seed a REVOKED invite
+            TestDatabase.db.useConnection { conn ->
+                conn.prepareStatement(
+                    "INSERT INTO user_invite (code, email, invited_by, status) VALUES ('RPCtest002', ?, ?, 'REVOKED')"
+                ).apply {
+                    setString(1, testEmail)
+                    setString(2, TEST_USER_ID)
+                    executeUpdate()
+                }
+            }
+
+            // Call the RPC
+            TestDatabase.db.useConnection { conn ->
+                conn.prepareStatement("SELECT accept_invite_for_user(?, ?)").apply {
+                    setString(1, testEmail)
+                    setString(2, testUserId)
+                    execute()
+                }
+            }
+
+            // Verify invite is still REVOKED
+            val inviteStatus = TestDatabase.db.from(UserInviteTable)
+                .select(UserInviteTable.status)
+                .where { UserInviteTable.email eq testEmail }
+                .map { it[UserInviteTable.status] }
+                .first()
+            assertEquals(com.kanjimasta.core.db.InviteStatus.REVOKED, inviteStatus, "REVOKED invite should not change")
+
+            // Settings should still be created (user signed up legitimately even if invite was later revoked)
+            val hasSettings = TestDatabase.db.from(com.kanjimasta.core.db.UserSettingsTable)
+                .select()
+                .where { com.kanjimasta.core.db.UserSettingsTable.userId eq testUserId }
+                .totalRecordsInAllPages
+            assertEquals(1, hasSettings, "user_settings should still be created")
+        } finally {
+            cleanupInvites(TestDatabase.db, testEmail)
+            TestDatabase.db.useConnection { conn ->
+                conn.createStatement().execute("DELETE FROM user_settings WHERE user_id = '$testUserId'")
+            }
+        }
+    }
+
+    @Test
+    fun `RPC accept_invite_for_user is idempotent`() {
+        val testEmail = "rpc-idempotent@example.com"
+        val testUserId = "rpc-test-user-3"
+        cleanupInvites(TestDatabase.db, testEmail)
+        TestDatabase.db.useConnection { conn ->
+            conn.createStatement().execute("DELETE FROM user_settings WHERE user_id = '$testUserId'")
+        }
+
+        try {
+            // Seed a PENDING invite
+            TestDatabase.db.useConnection { conn ->
+                conn.prepareStatement(
+                    "INSERT INTO user_invite (code, email, invited_by, status) VALUES ('RPCtest003', ?, ?, 'PENDING')"
+                ).apply {
+                    setString(1, testEmail)
+                    setString(2, TEST_USER_ID)
+                    executeUpdate()
+                }
+            }
+
+            // Call the RPC twice
+            repeat(2) {
+                TestDatabase.db.useConnection { conn ->
+                    conn.prepareStatement("SELECT accept_invite_for_user(?, ?)").apply {
+                        setString(1, testEmail)
+                        setString(2, testUserId)
+                        execute()
+                    }
+                }
+            }
+
+            // Verify invite is ACCEPTED (not duplicated or errored)
+            val inviteStatus = TestDatabase.db.from(UserInviteTable)
+                .select(UserInviteTable.status)
+                .where { UserInviteTable.email eq testEmail }
+                .map { it[UserInviteTable.status] }
+                .first()
+            assertEquals(com.kanjimasta.core.db.InviteStatus.ACCEPTED, inviteStatus)
+
+            // Verify only 1 settings row
+            val settingsCount = TestDatabase.db.from(com.kanjimasta.core.db.UserSettingsTable)
+                .select()
+                .where { com.kanjimasta.core.db.UserSettingsTable.userId eq testUserId }
+                .totalRecordsInAllPages
+            assertEquals(1, settingsCount, "Should have exactly 1 settings row after 2 calls")
+        } finally {
+            cleanupInvites(TestDatabase.db, testEmail)
+            TestDatabase.db.useConnection { conn ->
+                conn.createStatement().execute("DELETE FROM user_settings WHERE user_id = '$testUserId'")
+            }
+        }
+    }
+
     // --- Public Endpoint ---
 
     @Test

@@ -2,7 +2,6 @@ package com.kanjimasta.modules.invite
 
 import com.kanjimasta.core.db.InviteStatus
 import com.kanjimasta.core.email.ResendClient
-import com.kanjimasta.modules.settings.SettingsRepository
 import org.slf4j.LoggerFactory
 import java.util.UUID
 
@@ -10,7 +9,6 @@ private val logger = LoggerFactory.getLogger("com.kanjimasta.modules.invite.Invi
 
 class InviteService(
     private val inviteRepository: InviteRepository,
-    private val settingsRepository: SettingsRepository,
     private val resendClient: ResendClient,
 ) {
     suspend fun createInvite(email: String, adminUserId: String, sendEmail: Boolean = false): InviteResponse {
@@ -38,25 +36,6 @@ class InviteService(
     fun getInviteDetails(code: String): InviteDetailsResponse? {
         val invite = inviteRepository.findByCode(code) ?: return null
         return InviteDetailsResponse(email = invite.email, status = invite.status.name)
-    }
-
-    fun validateAndAcceptInvite(email: String?, userId: String): Boolean {
-        if (email.isNullOrBlank()) return false
-
-        val invite = inviteRepository.findByEmail(email) ?: return false
-        if (invite.status == InviteStatus.REVOKED) return false
-
-        if (invite.status == InviteStatus.PENDING) {
-            inviteRepository.accept(invite.id)
-        }
-
-        // Ensure settings row exists (idempotent)
-        if (!settingsRepository.hasSettings(userId)) {
-            settingsRepository.upsertSettings(userId, 5, 6)
-        }
-
-        logger.info("Invite validated for email={} userId={} status={}", email, userId, invite.status)
-        return true
     }
 
     private fun toResponse(row: InviteRow) = InviteResponse(

@@ -27,13 +27,13 @@ down: ## Stop app services
 	docker compose down
 
 supabase-start: ## Start local Supabase (PostgreSQL on port 54322)
-	supabase start
+	npx supabase start
 
 supabase-stop: ## Stop local Supabase
-	supabase stop
+	npx supabase stop
 
 supabase-reset: ## Reset Supabase DB (reapply migrations + seed)
-	supabase db reset
+	npx supabase db reset
 
 ai-worker: ## Start AI worker (quiz gen, photo analysis, word discovery)
 	cd services/ai-worker && \
@@ -112,7 +112,7 @@ _mark-deploy = python3 -c "import json; f=open('$(DEPLOY_STATE)'); d=json.load(f
 
 deploy-db: ## Apply pending Supabase migrations to production
 	test -n "$(PROD_SUPABASE_DB_URI)"
-	supabase db push --db-url "$(shell echo '$(PROD_SUPABASE_DB_URI)' | sed 's|^jdbc:||')" --include-all
+	npx supabase db push --db-url "$(shell echo '$(PROD_SUPABASE_DB_URI)' | sed 's|^jdbc:||')" --include-all
 
 deploy-frontend: ## Build + deploy frontend to GCS (Cloudflare CDN)
 	cd frontend && npm run build

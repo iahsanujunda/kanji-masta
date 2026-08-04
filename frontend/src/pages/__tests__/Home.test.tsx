@@ -30,6 +30,18 @@ const activeSummary = {
   onboardingComplete: true,
 };
 
+const populatedCollectionWithStaleOnboarding = {
+  kanjiLearning: 28,
+  kanjiFamiliar: 107,
+  wordCount: 107,
+  streak: 0,
+  slotRemaining: 5,
+  slotTotal: 5,
+  slotEndsAt: null,
+  sessionState: "READY",
+  onboardingComplete: false,
+};
+
 describe("Home", () => {
   beforeEach(() => {
     mockApiFetch.mockReset();
@@ -80,5 +92,36 @@ describe("Home", () => {
     await waitFor(() => {
       expect(screen.getByText("25 saved words")).toBeInTheDocument();
     });
+  });
+
+  it("shows a ready session when the collection has content even if onboarding state is stale", async () => {
+    mockApiFetch.mockResolvedValue(populatedCollectionWithStaleOnboarding);
+    renderWithProviders(<Home />);
+
+    await waitFor(() => {
+      expect(screen.getByText("28 learning")).toBeInTheDocument();
+      expect(screen.getByText("107 familiar")).toBeInTheDocument();
+      expect(screen.getByText("107 saved words")).toBeInTheDocument();
+      expect(screen.getByText("Ready to quiz")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Start Session" })).toBeInTheDocument();
+      expect(screen.queryByText("Plant Your First Seeds")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows a retryable error instead of an empty collection when the summary request fails", async () => {
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === "/api/user/summary") return Promise.reject(new Error("Internal Server Error"));
+      return Promise.resolve({ sessions: [] });
+    });
+    renderWithProviders(<Home />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("Couldn't load your progress");
+      expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+      expect(screen.queryByText("Plant Your First Seeds")).not.toBeInTheDocument();
+      expect(screen.queryByText("0 learning")).not.toBeInTheDocument();
+      expect(screen.queryByText("0 familiar")).not.toBeInTheDocument();
+      expect(screen.queryByText("0 saved words")).not.toBeInTheDocument();
+    }, { timeout: 2500 });
   });
 });

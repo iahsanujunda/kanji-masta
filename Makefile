@@ -6,7 +6,7 @@ OPENROUTER_SITE_URL ?= https://shuukanhq.com
 OPENROUTER_APP_NAME ?= Kanji Masta
 OPENROUTER_REASONING_EFFORT ?= medium
 
-.PHONY: dev up down backend frontend seed clean build check
+.PHONY: dev up down backend frontend seed clean build check deploy-db
 
 # --- Local Development ---
 
@@ -110,6 +110,10 @@ ARTIFACT_REGISTRY = asia-east1-docker.pkg.dev/kanji-masta
 
 _mark-deploy = python3 -c "import json; f=open('$(DEPLOY_STATE)'); d=json.load(f); f.close(); d['$(1)']={'commit':'$(COMMIT)','deployedAt':'$(TIMESTAMP)'}; f=open('$(DEPLOY_STATE)','w'); json.dump(d,f,indent=2); f.close(); print('  Marked $(1) deployed at $(COMMIT)')"
 
+deploy-db: ## Apply pending Supabase migrations to production
+	test -n "$(PROD_SUPABASE_DB_URI)"
+	supabase db push --db-url "$(shell echo '$(PROD_SUPABASE_DB_URI)' | sed 's|^jdbc:||')" --include-all
+
 deploy-frontend: ## Build + deploy frontend to GCS (Cloudflare CDN)
 	cd frontend && npm run build
 	gcloud storage rsync --recursive --delete-unmatched-destination-objects frontend/dist $(GCS_BUCKET)
@@ -139,6 +143,7 @@ deploy-ai-worker: ## Build + deploy AI worker to Cloud Run
 	@$(call _mark-deploy,ai-worker)
 
 deploy-all: ## Deploy all services
+	$(MAKE) deploy-db
 	$(MAKE) deploy-ai-worker
 	$(MAKE) deploy-backend
 	$(MAKE) deploy-frontend

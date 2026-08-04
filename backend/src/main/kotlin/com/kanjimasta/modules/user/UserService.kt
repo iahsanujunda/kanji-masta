@@ -48,7 +48,8 @@ class UserService(
             slotTotal = allowance,
             slotEndsAt = slotEndsAt,
             sessionState = sessionState,
-            onboardingComplete = settingsRepository.getSettings(userId).onboardingComplete,
+            onboardingComplete = settingsRepository.getSettings(userId).onboardingComplete ||
+                learning + familiar > 0 || wordCount > 0,
         )
     }
 }

@@ -1,14 +1,14 @@
 {
   "frontend": {
-    "commit": "03d1984",
-    "deployedAt": "2026-03-27T18:36:20Z"
+    "commit": "4fe8f15",
+    "deployedAt": "2026-08-04T05:09:10Z"
   },
   "backend": {
-    "commit": "03d1984",
-    "deployedAt": "2026-03-27T18:34:40Z"
+    "commit": "3ca15b0",
+    "deployedAt": "2026-08-04T04:21:34Z"
   },
   "ai-worker": {
-    "commit": "060db15",
-    "deployedAt": "2026-03-27T11:58:17Z"
+    "commit": "4fe8f15",
+    "deployedAt": "2026-08-04T05:31:02Z"
   }
 }

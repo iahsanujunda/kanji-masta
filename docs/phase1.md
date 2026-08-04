@@ -467,6 +467,7 @@ Each card displays the enriched data:
 - [ ] `cd functions && pip install -r requirements.txt` installs without errors
 - [ ] `cd backend && ./gradlew build` compiles without errors
 - [ ] `cd frontend && npx tsc --noEmit` type-checks without errors
+- [ ] `cd frontend && npm run test:e2e` passes the Firefox mobile browser flows against the fake API
 - [ ] KanjiMaster seed data present in Data Connect emulator
 - [ ] `GEMINI_API_KEY` set in `functions/.env` (real key needed even with emulators)
 - [ ] Create test user in Auth emulator UI (http://localhost:4000)

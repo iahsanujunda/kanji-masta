@@ -79,6 +79,9 @@ test-ai-worker: ## Run AI worker tests
 test-frontend: ## Run frontend unit tests
 	cd frontend && npx vitest run
 
+test-frontend-e2e: ## Run frontend browser tests (Playwright + fake API)
+	cd frontend && npm run test:e2e
+
 test-frontend-watch: ## Run frontend tests in watch mode
 	cd frontend && npx vitest
 

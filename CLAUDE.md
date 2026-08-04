@@ -5,7 +5,7 @@
 Commits MUST follow [Conventional Commits](https://www.conventionalcommits.org/) — enforced by commitlint:
 `feat:`, `fix:`, `docs:`, `refactor:`, `perf:`, `chore:`, `deploy:`, `style:`, `test:`
 
-Max header: 100 chars. Always include `Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>`.
+Max header: 100 chars.
 
 ## Code Patterns
 

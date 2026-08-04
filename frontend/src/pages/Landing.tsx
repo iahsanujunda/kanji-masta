@@ -1,431 +1,254 @@
-import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Box, Button, Typography } from "@mui/material";
-import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
-import CameraAltIcon from "@mui/icons-material/CameraAlt";
-import PsychologyIcon from "@mui/icons-material/Psychology";
-import SpaIcon from "@mui/icons-material/Spa";
-import CheckIcon from "@mui/icons-material/Check";
-import StarOutlineIcon from "@mui/icons-material/StarOutline";
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
+import CameraAltOutlinedIcon from "@mui/icons-material/CameraAltOutlined";
+import BookmarkAddOutlinedIcon from "@mui/icons-material/BookmarkAddOutlined";
+import LightbulbOutlinedIcon from "@mui/icons-material/LightbulbOutlined";
+import CollectionTree from "@/components/CollectionTree";
+import productLoopDesktop from "@/assets/landing-product-loop-desktop.svg";
+import productLoopMobile from "@/assets/landing-product-loop-mobile.svg";
 
-function LeafIcon({ size = 20, color = "white" }: { size?: number; color?: string }) {
+const PAGE_WIDTH = 1180;
+
+const LEARNING_STEPS = [
+  {
+    number: "01",
+    title: "Notice it",
+    copy: "Point Shuukan at a menu, station sign, or screen. It finds the Japanese already living in your day.",
+    icon: <CameraAltOutlinedIcon />,
+  },
+  {
+    number: "02",
+    title: "Keep it",
+    copy: "Choose the words that matter to you. Context and reading stay attached, so they never become anonymous cards.",
+    icon: <BookmarkAddOutlinedIcon />,
+  },
+  {
+    number: "03",
+    title: "Recall it",
+    copy: "A few focused prompts return later. Each answer moves the kanji through the roots, trunk, and canopy.",
+    icon: <LightbulbOutlinedIcon />,
+  },
+];
+
+function LeafMark({ size = 22, color = "#f4f7f5" }: { size?: number; color?: string }) {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/>
-      <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M19.8 3.3C14.1 4 8.1 6.8 6.7 11.6c-1.1 3.8 1.4 7.3 5.2 7.3 5.6 0 9-5.5 7.9-15.6Z" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4 21c2.4-5.4 6.8-8.8 12.3-11.2" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
 }
 
-// --- Phone Screen Mockups ---
-
-function HomeScreen() {
+function Brand() {
   return (
-    <Box sx={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", pt: 5, pb: 2.5, px: 2, background: "linear-gradient(to bottom, #1a1a24, #0a0a0f)" }}>
-      <Box sx={{ mb: 2 }}>
-        <Typography sx={{ fontSize: 10, color: "grey.600" }}>Good morning</Typography>
-        <Typography sx={{ fontSize: 16, fontWeight: 700, color: "white" }}>Yuki</Typography>
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
+      <Box sx={{ width: 34, height: 34, borderRadius: "11px", bgcolor: "#133a2b", border: "1px solid #28664e", display: "grid", placeItems: "center" }}>
+        <LeafMark size={19} />
       </Box>
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
-        <Box sx={{ bgcolor: "rgba(249,115,22,0.2)", color: "#fb923c", fontSize: 10, fontWeight: 700, px: 1, py: 0.5, borderRadius: "9999px" }}>7 day streak</Box>
-      </Box>
-      <Box sx={{ bgcolor: "rgba(67,56,202,0.2)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 3, p: 1.5, mb: 1.5 }}>
-        <Typography sx={{ fontSize: 10, color: "#a5b4fc", fontWeight: 700, mb: 0.5 }}>Daily Quiz</Typography>
-        <Typography sx={{ fontSize: 12, color: "white", fontWeight: 700 }}>5 quizzes ready</Typography>
-        <Box sx={{ width: "100%", bgcolor: "grey.800", borderRadius: "9999px", height: 5, mt: 1 }}>
-          <Box sx={{ bgcolor: "#6366f1", height: 5, borderRadius: "9999px", width: "0%" }} />
-        </Box>
-      </Box>
-      <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, mb: 1.5 }}>
-        <Box sx={{ bgcolor: "#0f0f16", border: "1px solid", borderColor: "grey.800", borderRadius: 2, p: 1.5 }}>
-          <Typography sx={{ fontSize: 10, color: "grey.600" }}>Kanji</Typography>
-          <Typography sx={{ fontSize: 16, fontWeight: 700, color: "white" }}>42</Typography>
-          <Typography sx={{ fontSize: 9, color: "#34d399" }}>28 learning</Typography>
-        </Box>
-        <Box sx={{ bgcolor: "#0f0f16", border: "1px solid", borderColor: "grey.800", borderRadius: 2, p: 1.5 }}>
-          <Typography sx={{ fontSize: 10, color: "grey.600" }}>Words</Typography>
-          <Typography sx={{ fontSize: 16, fontWeight: 700, color: "white" }}>87</Typography>
-          <Typography sx={{ fontSize: 9, color: "#818cf8" }}>12 new</Typography>
-        </Box>
-      </Box>
-      <Box sx={{ mt: "auto" }}>
-        <Box sx={{ width: "100%", bgcolor: "grey.100", color: "black", borderRadius: 3, py: 1.5, fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 1 }}>
-          <CameraAltIcon sx={{ fontSize: 14 }} /> Capture Kanji
-        </Box>
-      </Box>
+      <Typography sx={{ color: "#f2f5f3", fontSize: 19, fontWeight: 750, letterSpacing: "-0.035em" }}>
+        Shuukan
+      </Typography>
     </Box>
   );
 }
 
-function CollectionScreen() {
+function ProductMockup() {
   return (
-    <Box sx={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", pt: 5, pb: 2.5, px: 2, background: "linear-gradient(to bottom, #1a1a24, #0a0a0f)" }}>
-      <Box sx={{ mb: 1.5 }}>
-        <Typography sx={{ fontSize: 16, fontWeight: 700, color: "white" }}>Your Tree</Typography>
-        <Typography sx={{ fontSize: 10, color: "#34d399" }}>42 kanji growing</Typography>
-      </Box>
-      <Box sx={{ flex: 1, position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <svg viewBox="0 0 200 280" style={{ width: "100%", height: "100%" }}>
-          <polygon points="92,260 88,160 112,160 108,260" fill="#754127" />
-          <polygon points="95,180 85,160 115,160 105,180" fill="#8B5E3C" />
-          <ellipse cx="100" cy="265" rx="45" ry="12" fill="#6b21a8" opacity="0.3" />
-          <polygon points="40,170 100,70 160,170" fill="#2d4a1b" />
-          <polygon points="55,140 100,50 145,140" fill="#3a6024" />
-          <polygon points="65,110 100,30 135,110" fill="#4a7a2e" />
-          <circle cx="100" cy="50" r="3" fill="#a8e870"><animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite" /></circle>
-          <circle cx="75" cy="120" r="3" fill="#a8e870"><animate attributeName="opacity" values="1;0.4;1" dur="2s" begin="0.5s" repeatCount="indefinite" /></circle>
-          <circle cx="125" cy="130" r="3" fill="#a8e870"><animate attributeName="opacity" values="1;0.4;1" dur="2s" begin="1s" repeatCount="indefinite" /></circle>
-          <circle cx="90" cy="90" r="2.5" fill="#818cf8"><animate attributeName="opacity" values="1;0.4;1" dur="2s" begin="0.3s" repeatCount="indefinite" /></circle>
-          <circle cx="110" cy="100" r="2.5" fill="#818cf8"><animate attributeName="opacity" values="1;0.4;1" dur="2s" begin="0.7s" repeatCount="indefinite" /></circle>
-        </svg>
-        <Box sx={{ position: "absolute", top: 16, right: 8, bgcolor: "rgba(16,185,129,0.2)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 1.5, px: 1, py: 0.5 }}>
-          <Typography sx={{ fontSize: 8, color: "#34d399", fontWeight: 700 }}>Canopy 8</Typography>
-        </Box>
-        <Box sx={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", bgcolor: "rgba(99,102,241,0.2)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 1.5, px: 1, py: 0.5 }}>
-          <Typography sx={{ fontSize: 8, color: "#818cf8", fontWeight: 700 }}>Trunk 22</Typography>
-        </Box>
-        <Box sx={{ position: "absolute", bottom: 24, right: 8, bgcolor: "rgba(147,51,234,0.2)", border: "1px solid rgba(147,51,234,0.3)", borderRadius: 1.5, px: 1, py: 0.5 }}>
-          <Typography sx={{ fontSize: 8, color: "#a78bfa", fontWeight: 700 }}>Roots 12</Typography>
-        </Box>
-      </Box>
+    <Box
+      component="figure"
+      sx={{
+        m: 0,
+        width: "100%",
+        position: "relative",
+        isolation: "isolate",
+        "&::before": {
+          content: '""',
+          position: "absolute",
+          inset: "13% 7% 9% 10%",
+          borderRadius: "50%",
+          bgcolor: "rgba(26, 91, 65, 0.24)",
+          filter: "blur(70px)",
+          zIndex: -1,
+        },
+      }}
+    >
+      <picture>
+        <source media="(min-width: 700px)" srcSet={productLoopDesktop} />
+        <Box
+          component="img"
+          src={productLoopMobile}
+          alt="Nakano Station becomes a saved word, a short recall prompt, and visible tree progress in Shuukan"
+          fetchPriority="high"
+          sx={{
+            display: "block",
+            width: "100%",
+            height: "auto",
+            maxHeight: { xs: 630, md: 720 },
+            objectFit: "contain",
+            transform: { xs: "translateX(1.5%)", md: "none" },
+            transition: "transform 600ms cubic-bezier(0.16, 1, 0.3, 1)",
+            "@media (hover: hover)": { "&:hover": { transform: "translate3d(0, -6px, 0)" } },
+            "@media (prefers-reduced-motion: reduce)": { transition: "none" },
+          }}
+        />
+      </picture>
+      <Typography component="figcaption" sx={{ textAlign: "center", color: "#68746e", fontSize: 11, mt: { xs: -1, md: -3 }, letterSpacing: "0.04em" }}>
+        One sighting. Kept in context. Recalled in minutes.
+      </Typography>
     </Box>
   );
 }
-
-function CaptureScreen() {
-  return (
-    <Box sx={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", pt: 5, pb: 2.5, px: 2, background: "linear-gradient(to bottom, #1a1a24, #0a0a0f)" }}>
-      <Box sx={{ mb: 1.5 }}>
-        <Typography sx={{ fontSize: 16, fontWeight: 700, color: "white" }}>Found Kanji</Typography>
-        <Typography sx={{ fontSize: 10, color: "grey.500" }}>3 detected</Typography>
-      </Box>
-      <Box sx={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", gap: 1.5 }}>
-        {/* Kanji card */}
-        <Box sx={{ bgcolor: "#0f0f16", border: "1px solid", borderColor: "grey.800", borderRadius: 2, p: 1.5, position: "relative" }}>
-          <Box sx={{ position: "absolute", top: 0, right: 0, bgcolor: "#4338ca", px: 1, py: 0.25, borderBottomLeftRadius: 8 }}>
-            <Typography sx={{ fontSize: 7, color: "white", fontWeight: 700 }}>Recommended</Typography>
-          </Box>
-          <Box sx={{ display: "flex", gap: 1.5, mb: 1.5 }}>
-            <Box sx={{ bgcolor: "grey.900", border: "1px solid", borderColor: "grey.800", borderRadius: 1.5, width: 48, height: 48, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <Typography sx={{ fontSize: 28 }}>電</Typography>
-            </Box>
-            <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
-              <Typography sx={{ fontSize: 9, color: "#818cf8", fontWeight: 700, letterSpacing: 1 }}>デン</Typography>
-              <Typography sx={{ fontSize: 12, fontWeight: 700, color: "white" }}>Electricity</Typography>
-              <Box sx={{ bgcolor: "rgba(0,0,0,0.3)", border: "1px solid", borderColor: "grey.800", borderRadius: 0.5, px: 0.75, py: 0.25, mt: 0.25, display: "inline-block" }}>
-                <Typography component="span" sx={{ fontSize: 9, color: "grey.400" }}>電車 </Typography>
-                <Typography component="span" sx={{ fontSize: 8, color: "grey.600" }}>(train)</Typography>
-              </Box>
-            </Box>
-          </Box>
-          <Box sx={{ display: "flex", gap: 1 }}>
-            <Box sx={{ flex: 1, bgcolor: "grey.900", border: "2px solid transparent", color: "grey.500", borderRadius: 1.5, py: 1, fontSize: 10, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 0.5 }}>
-              <CheckIcon sx={{ fontSize: 12 }} /> Already Know
-            </Box>
-            <Box sx={{ flex: 1, bgcolor: "#4338ca", border: "2px solid #818cf8", color: "white", borderRadius: 1.5, py: 1, fontSize: 10, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 0.5, boxShadow: "0 0 10px rgba(79,70,229,0.4)" }}>
-              <StarOutlineIcon sx={{ fontSize: 12 }} /> Want to Learn
-            </Box>
-          </Box>
-        </Box>
-        {/* Second card peek */}
-        <Box sx={{ bgcolor: "#0f0f16", border: "1px solid", borderColor: "grey.800", borderRadius: 2, p: 1.5 }}>
-          <Box sx={{ display: "flex", gap: 1.5 }}>
-            <Box sx={{ bgcolor: "grey.900", border: "1px solid", borderColor: "grey.800", borderRadius: 1.5, width: 48, height: 48, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <Typography sx={{ fontSize: 28 }}>車</Typography>
-            </Box>
-            <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
-              <Typography sx={{ fontSize: 9, color: "#818cf8", fontWeight: 700, letterSpacing: 1 }}>シャ</Typography>
-              <Typography sx={{ fontSize: 12, fontWeight: 700, color: "white" }}>Vehicle</Typography>
-            </Box>
-          </Box>
-        </Box>
-      </Box>
-    </Box>
-  );
-}
-
-function QuizScreen() {
-  return (
-    <Box sx={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", pt: 5, pb: 2.5, px: 2, background: "linear-gradient(to bottom, #1a1a24, #0a0a0f)" }}>
-      <Box sx={{ width: "100%", bgcolor: "grey.800", borderRadius: "9999px", height: 5, mb: 3 }}>
-        <Box sx={{ bgcolor: "#6366f1", height: 5, borderRadius: "9999px", width: "40%" }} />
-      </Box>
-      <Typography sx={{ fontSize: 10, color: "grey.600", mb: 0.5, textAlign: "center" }}>What does this word mean?</Typography>
-      <Box sx={{ textAlign: "center", mb: 3 }}>
-        <Typography sx={{ fontSize: 28, fontWeight: 700, color: "white", mb: 0.5 }}>電車</Typography>
-        <Typography sx={{ fontSize: 12, color: "#818cf8" }}>でんしゃ</Typography>
-      </Box>
-      <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, flex: 1 }}>
-        {["Electricity", "Train", "Lightning", "Battery"].map((opt, i) => (
-          <Box
-            key={opt}
-            sx={{
-              width: "100%",
-              bgcolor: i === 1 ? "rgba(67,56,202,0.2)" : "#0f0f16",
-              border: i === 1 ? "2px solid #6366f1" : "1px solid",
-              borderColor: i === 1 ? "#6366f1" : "grey.800",
-              borderRadius: 2,
-              p: 1.5,
-              fontSize: 12,
-              color: i === 1 ? "white" : "grey.400",
-              fontWeight: i === 1 ? 600 : 400,
-            }}
-          >
-            {opt}
-          </Box>
-        ))}
-      </Box>
-      <Box sx={{ mt: "auto", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <Typography sx={{ fontSize: 10, color: "grey.600" }}>2 of 5</Typography>
-        <Box sx={{ display: "flex", gap: 0.5 }}>
-          {[true, true, false, false, false].map((done, i) => (
-            <Box key={i} sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: done ? "#34d399" : "grey.800" }} />
-          ))}
-        </Box>
-      </Box>
-    </Box>
-  );
-}
-
-const SCREENS = [
-  { component: HomeScreen, label: "Home" },
-  { component: CollectionScreen, label: "Collection" },
-  { component: CaptureScreen, label: "Capture" },
-  { component: QuizScreen, label: "Quiz" },
-];
-
-function PhoneCarousel() {
-  const [active, setActive] = useState(0);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setActive((prev) => (prev + 1) % SCREENS.length);
-    }, 4000);
-    return () => clearInterval(timer);
-  }, []);
-
-  return (
-    <Box sx={{ position: "relative", mx: "auto", width: "100%", maxWidth: { xs: 280, lg: 340 } }}>
-      {/* Phone frame */}
-      <Box sx={{ position: "relative", borderRadius: "2.5rem", bgcolor: "#0a0a0f", border: "6px solid", borderColor: "grey.800", boxShadow: 24, overflow: "hidden", aspectRatio: "9/19", zIndex: 1 }}>
-        {SCREENS.map(({ component: Screen }, i) => (
-          <Box key={i} sx={{ position: "absolute", inset: 0, transition: "opacity 0.7s", opacity: active === i ? 1 : 0, pointerEvents: active === i ? "auto" : "none" }}>
-            <Screen />
-          </Box>
-        ))}
-      </Box>
-
-      {/* Dot indicators */}
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 1, mt: 3 }}>
-        {SCREENS.map(({ label }, i) => (
-          <Box
-            key={i}
-            component="button"
-            onClick={() => setActive(i)}
-            title={label}
-            sx={{
-              transition: "all 0.3s",
-              borderRadius: "9999px",
-              border: "none",
-              cursor: "pointer",
-              width: active === i ? 32 : 10,
-              height: 10,
-              bgcolor: active === i ? "#34d399" : "grey.800",
-              "&:hover": { bgcolor: active === i ? "#34d399" : "grey.700" },
-            }}
-          />
-        ))}
-      </Box>
-      <Typography sx={{ textAlign: "center", fontSize: 11, color: "grey.600", mt: 1, fontWeight: 500 }}>{SCREENS[active].label}</Typography>
-    </Box>
-  );
-}
-
-// --- Feature Card ---
-
-const FEATURES = [
-  {
-    icon: <CameraAltIcon sx={{ fontSize: 28, color: "#818cf8" }} />,
-    iconBg: "rgba(99,102,241,0.1)",
-    title: "1. Text-Based Camera",
-    desc: "See a word you don't know? Snap it. Our AI extracts the characters, translates the context, and creates a learning card instantly.",
-  },
-  {
-    icon: <PsychologyIcon sx={{ fontSize: 28, color: "#34d399" }} />,
-    iconBg: "rgba(16,185,129,0.1)",
-    title: "2. Frictionless Triage",
-    desc: 'A rapid-fire swipe interface lets you instantly categorize new words as "Already Know" or "Want to Learn" without overthinking it.',
-  },
-  {
-    icon: <SpaIcon sx={{ fontSize: 28, color: "#a78bfa" }} />,
-    iconBg: "rgba(147,51,234,0.1)",
-    title: "3. Grow Your Ecosystem",
-    desc: "Watch your vocabulary physically grow. Words move from seeds in the roots, up the trunk, to glowing fruits in the canopy as you master them.",
-  },
-];
-
-// --- Main Landing Page ---
 
 export default function Landing() {
   const navigate = useNavigate();
 
   return (
-    <Box sx={{ minHeight: "var(--app-height)", bgcolor: "#050508", color: "grey.100", overflowX: "hidden" }}>
-
-      {/* Navbar */}
+    <Box sx={{ minHeight: "100dvh", bgcolor: "#080b0a", color: "#f2f5f3", overflowX: "clip", fontFamily: '"Avenir Next", "Segoe UI", "Noto Sans JP", sans-serif' }}>
       <Box
-        component="nav"
+        component="header"
         sx={{
-          position: "fixed", top: 0, width: "100%", zIndex: 50,
-          bgcolor: "rgba(5,5,8,0.8)", backdropFilter: "blur(12px)",
-          borderBottom: "1px solid", borderColor: "rgba(75,85,99,0.5)",
+          position: "fixed",
+          inset: "0 0 auto",
+          zIndex: 10,
+          bgcolor: "rgba(8, 11, 10, 0.86)",
+          backdropFilter: "blur(18px)",
+          borderBottom: "1px solid rgba(104, 121, 112, 0.18)",
         }}
       >
-        <Box sx={{ maxWidth: 1152, mx: "auto", px: 3, height: 80, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <Box sx={{ width: 32, height: 32, borderRadius: 1.5, background: "linear-gradient(135deg, #34d399, #4338ca)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <LeafIcon size={20} />
-            </Box>
-            <Typography sx={{ fontSize: 20, fontWeight: 700, letterSpacing: -0.5, color: "white" }}>Shuukan</Typography>
-          </Box>
-          {/* Mobile nav */}
-          <Box sx={{ display: { xs: "flex", md: "none" }, alignItems: "center", gap: 1 }}>
-            <Button onClick={() => navigate("/login")} size="small" sx={{ color: "grey.400", textTransform: "none", fontWeight: 500, fontSize: 13, minWidth: 0 }}>
-              Log In
+        <Box component="nav" aria-label="Public navigation" sx={{ maxWidth: PAGE_WIDTH, height: 72, mx: "auto", px: { xs: 2.25, sm: 4 }, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <Brand />
+          <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 0.5, sm: 1.25 } }}>
+            <Button onClick={() => navigate("/login")} sx={{ minHeight: 44, minWidth: { xs: 64, sm: 84 }, color: "#aab5af", textTransform: "none", fontWeight: 650, borderRadius: 2.5, "&:hover": { color: "#f2f5f3", bgcolor: "rgba(255,255,255,0.04)" } }}>
+              Log in
             </Button>
-            <Button
-              onClick={() => navigate("/signup")}
-              size="small"
-              sx={{
-                bgcolor: "white", color: "black", px: 2, py: 0.75, borderRadius: "9999px",
-                textTransform: "none", fontWeight: 600, fontSize: 12,
-                "&:hover": { bgcolor: "grey.200" },
-              }}
-            >
-              Sign Up
-            </Button>
-          </Box>
-          {/* Desktop nav */}
-          <Box sx={{ display: { xs: "none", md: "flex" }, alignItems: "center", gap: 4 }}>
-            <Button onClick={() => navigate("/login")} sx={{ color: "white", textTransform: "none", fontWeight: 500, "&:hover": { color: "#34d399" } }}>
-              Log In
-            </Button>
-            <Button
-              onClick={() => navigate("/signup")}
-              sx={{
-                bgcolor: "white", color: "black", px: 2.5, py: 1, borderRadius: "9999px",
-                textTransform: "none", fontWeight: 600,
-                "&:hover": { bgcolor: "grey.200" },
-              }}
-            >
-              Get Early Access
+            <Button onClick={() => navigate("/signup")} sx={{ minHeight: 44, bgcolor: "#dfe9e4", color: "#0b100d", px: { xs: 2, sm: 2.75 }, borderRadius: 2.5, textTransform: "none", fontWeight: 800, "&:hover": { bgcolor: "#f0f5f2", transform: "translateY(-1px)" }, "&:active": { transform: "scale(0.98)" } }}>
+              Start collecting
             </Button>
           </Box>
         </Box>
       </Box>
 
-      {/* Hero */}
-      <Box component="section" sx={{ position: "relative", pt: { xs: 20, lg: 24 }, pb: { xs: 10, lg: 16 }, px: 3 }}>
-        {/* Glows */}
-        <Box sx={{ position: "absolute", top: 80, left: "50%", transform: "translateX(-50%)", width: 800, height: 400, bgcolor: "rgba(16,185,129,0.15)", filter: "blur(120px)", borderRadius: "50%", pointerEvents: "none" }} />
-        <Box sx={{ position: "absolute", top: 160, right: 0, width: 400, height: 400, bgcolor: "rgba(67,56,202,0.15)", filter: "blur(120px)", borderRadius: "50%", pointerEvents: "none" }} />
-
-        <Box sx={{ maxWidth: 1152, mx: "auto", display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: { xs: 6, lg: 4 }, alignItems: "center", position: "relative", zIndex: 1 }}>
-          {/* Copy */}
-          <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-            <Box sx={{ display: "inline-flex", alignItems: "center", gap: 1, px: 1.5, py: 0.75, borderRadius: "9999px", bgcolor: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)", color: "#a5b4fc", fontSize: 13, fontWeight: 700, mb: 3 }}>
-              <AutoAwesomeIcon sx={{ fontSize: 16 }} /> The Anti-Anki App
-            </Box>
-            <Typography
-              variant="h1"
-              sx={{
-                fontSize: { xs: 40, lg: 56 }, fontWeight: 900, letterSpacing: -1, lineHeight: 1.1, mb: 3,
-                background: "linear-gradient(to bottom, white, #9ca3af)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-              }}
-            >
-              Don't study Japanese.{" "}
-              <Box component="br" sx={{ display: { xs: "none", sm: "block" } }} />
-              <Box component="span" sx={{ WebkitTextFillColor: "#34d399" }}>Live it.</Box>
-            </Typography>
-            <Typography sx={{ fontSize: { xs: 16, lg: 18 }, color: "grey.500", lineHeight: 1.7, mb: 5, maxWidth: 520 }}>
-              Snap photos of menus, signs, and screens. Shuukan extracts the characters, tests your recall in bite-sized daily slots, and grows your personal language ecosystem.
-            </Typography>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-              <Button
-                onClick={() => navigate("/signup")}
-                sx={{
-                  bgcolor: "#10b981", color: "black", fontSize: 16, fontWeight: 700, px: 4, py: 2, borderRadius: "9999px",
-                  textTransform: "none",
-                  boxShadow: "0 0 30px rgba(16,185,129,0.3)",
-                  "&:hover": { bgcolor: "#34d399" },
-                }}
-              >
-                Get Early Access
-              </Button>
-              <Typography sx={{ fontSize: 14, color: "grey.600" }}>
-                or{" "}
-                <Box
-                  component="span"
-                  onClick={() => navigate("/login")}
-                  sx={{ color: "grey.400", cursor: "pointer", textDecoration: "underline", "&:hover": { color: "white" } }}
-                >
-                  Log In
-                </Box>
-              </Typography>
-            </Box>
-            <Typography sx={{ mt: 2, fontSize: 11, color: "grey.600", fontWeight: 500 }}>Free forever for early adopters. No hidden subscriptions.</Typography>
-          </Box>
-
-          {/* Phone */}
-          <PhoneCarousel />
-        </Box>
-      </Box>
-
-      {/* Features Grid */}
-      <Box component="section" sx={{ py: { xs: 10, lg: 12 }, bgcolor: "#0a0a0f", borderTop: "1px solid", borderColor: "grey.900" }}>
-        <Box sx={{ maxWidth: 1152, mx: "auto", px: 3 }}>
-          <Box sx={{ textAlign: "center", mb: 8 }}>
-            <Typography sx={{ fontSize: { xs: 24, lg: 40 }, fontWeight: 700, color: "white", mb: 2 }}>A workflow built for real life.</Typography>
-            <Typography sx={{ color: "grey.500", maxWidth: 640, mx: "auto", fontSize: { xs: 14, lg: 16 } }}>No spreadsheets. No massive flashcard decks. Shuukan turns the world around you into a personalized curriculum.</Typography>
-          </Box>
-          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr 1fr" }, gap: 3 }}>
-            {FEATURES.map((f) => (
-              <Box key={f.title} sx={{ bgcolor: "#0f0f16", border: "1px solid", borderColor: "grey.800", borderRadius: 4, p: 4, "&:hover": { bgcolor: "#14141e" }, transition: "background-color 0.2s" }}>
-                <Box sx={{ width: 56, height: 56, bgcolor: f.iconBg, borderRadius: 3, display: "flex", alignItems: "center", justifyContent: "center", mb: 3 }}>
-                  {f.icon}
-                </Box>
-                <Typography sx={{ fontSize: 18, fontWeight: 700, color: "white", mb: 1.5 }}>{f.title}</Typography>
-                <Typography sx={{ color: "grey.500", lineHeight: 1.7, fontSize: 13 }}>{f.desc}</Typography>
+      <Box component="main">
+        <Box component="section" sx={{ position: "relative", minHeight: { lg: "min(900px, 100dvh)" }, pt: { xs: 14, md: 17 }, pb: { xs: 8, md: 12 }, px: { xs: 2.25, sm: 4 } }}>
+          <Box sx={{ maxWidth: PAGE_WIDTH, mx: "auto", display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr)", lg: "0.82fr 1.18fr" }, alignItems: "center", gap: { xs: 5, md: 7, lg: 3 } }}>
+            <Box sx={{ position: "relative", zIndex: 1, maxWidth: { xs: 640, lg: 520 } }}>
+              <Box sx={{ display: "inline-flex", alignItems: "center", gap: 1, mb: 3.5, color: "#8dd9b8", fontSize: 12, fontWeight: 800, letterSpacing: "0.11em", textTransform: "uppercase" }}>
+                <Box sx={{ width: 24, height: 1, bgcolor: "#47b884" }} />
+                Japanese from your real life
               </Box>
-            ))}
+              <Typography component="h1" sx={{ m: 0, maxWidth: 560, fontSize: "clamp(2.75rem, 7.2vw, 4.9rem)", lineHeight: 0.98, letterSpacing: "-0.062em", fontWeight: 760, color: "#f4f7f5" }}>
+                Keep the Japanese you notice.
+              </Typography>
+              <Typography sx={{ mt: 3.5, maxWidth: 520, color: "#9aa59f", fontSize: "clamp(1rem, 1.6vw, 1.2rem)", lineHeight: 1.65 }}>
+                Turn signs, menus, and everyday discoveries into a small learning habit. Shuukan remembers where a word came from, then brings it back when you have a minute.
+              </Typography>
+              <Box sx={{ mt: 4.5, display: "flex", alignItems: { xs: "stretch", sm: "center" }, flexDirection: { xs: "column", sm: "row" }, gap: 1.5 }}>
+                <Button
+                  onClick={() => navigate("/signup")}
+                  endIcon={<ArrowForwardRoundedIcon />}
+                  sx={{ minHeight: 52, bgcolor: "#3dbb83", color: "#07100c", px: 3.25, borderRadius: 2.5, textTransform: "none", fontSize: 16, fontWeight: 850, justifyContent: "space-between", "&:hover": { bgcolor: "#64cfa0", transform: "translateY(-1px)" }, "&:active": { transform: "scale(0.98)" } }}
+                >
+                  Start collecting
+                </Button>
+                <Button onClick={() => navigate("/login")} sx={{ minHeight: 52, color: "#aeb8b3", px: 2.5, borderRadius: 2.5, textTransform: "none", fontSize: 15, fontWeight: 700, "&:hover": { color: "#f2f5f3", bgcolor: "rgba(255,255,255,0.04)" } }}>
+                  I already have an account
+                </Button>
+              </Box>
+              <Typography sx={{ mt: 2.25, color: "#68746e", fontSize: 12.5 }}>
+                Free while Shuukan is in early access. No card required.
+              </Typography>
+            </Box>
+
+            <ProductMockup />
+          </Box>
+        </Box>
+
+        <Box component="section" aria-labelledby="learning-loop-title" sx={{ bgcolor: "#0c100e", borderBlock: "1px solid #18201c", py: { xs: 9, md: 14 }, px: { xs: 2.25, sm: 4 } }}>
+          <Box sx={{ maxWidth: PAGE_WIDTH, mx: "auto", display: "grid", gridTemplateColumns: { xs: "1fr", md: "0.72fr 1.28fr" }, gap: { xs: 5.5, md: 10, lg: 15 } }}>
+            <Box>
+              <Typography sx={{ color: "#6ec99f", fontSize: 12, fontWeight: 800, letterSpacing: "0.13em", textTransform: "uppercase", mb: 2 }}>The learning loop</Typography>
+              <Typography id="learning-loop-title" component="h2" sx={{ fontSize: "clamp(2rem, 4.5vw, 3.5rem)", lineHeight: 1.05, letterSpacing: "-0.045em", fontWeight: 740, maxWidth: 420 }}>
+                Your surroundings become the syllabus.
+              </Typography>
+              <Typography sx={{ mt: 2.5, color: "#8c9892", lineHeight: 1.7, maxWidth: 440 }}>
+                No blank deck to configure and no pile of generic vocabulary. Every item starts with something you chose to understand.
+              </Typography>
+            </Box>
+
+            <Box sx={{ borderTop: "1px solid #2a332f" }}>
+              {LEARNING_STEPS.map((step) => (
+                <Box key={step.number} sx={{ display: "grid", gridTemplateColumns: { xs: "42px minmax(0, 1fr)", sm: "58px 0.62fr 1.38fr" }, gap: { xs: 2, sm: 3 }, alignItems: "start", py: { xs: 3.5, sm: 4 }, borderBottom: "1px solid #2a332f" }}>
+                  <Box sx={{ width: 42, height: 42, border: "1px solid #334039", borderRadius: "50%", color: "#75d0a7", display: "grid", placeItems: "center", "& svg": { fontSize: 20 } }}>{step.icon}</Box>
+                  <Box>
+                    <Typography sx={{ color: "#59655f", fontSize: 10, fontWeight: 800, letterSpacing: "0.16em", mb: 0.75 }}>{step.number}</Typography>
+                    <Typography sx={{ color: "#edf2ef", fontSize: 20, fontWeight: 750, letterSpacing: "-0.02em" }}>{step.title}</Typography>
+                  </Box>
+                  <Typography sx={{ gridColumn: { xs: "2", sm: "auto" }, color: "#929e98", fontSize: 14.5, lineHeight: 1.65, maxWidth: 470 }}>{step.copy}</Typography>
+                </Box>
+              ))}
+            </Box>
+          </Box>
+        </Box>
+
+        <Box component="section" sx={{ py: { xs: 9, md: 15 }, px: { xs: 2.25, sm: 4 }, position: "relative" }}>
+          <Box sx={{ maxWidth: PAGE_WIDTH, mx: "auto", display: "grid", gridTemplateColumns: { xs: "1fr", md: "1.08fr 0.92fr" }, alignItems: "center", gap: { xs: 5, md: 8 } }}>
+            <Box sx={{ minHeight: { xs: 410, sm: 500 }, position: "relative", order: { xs: 2, md: 1 }, overflow: "hidden", borderRadius: { xs: 4, md: 6 }, bgcolor: "#0c100e", border: "1px solid #222b27" }}>
+              <Box sx={{ position: "absolute", inset: { xs: "-8% -20% -10%", sm: "-4% 2% -8%" }, opacity: 0.88 }}>
+                <CollectionTree hoveredZone={null} />
+              </Box>
+              <Box sx={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(12,16,14,0.04), rgba(12,16,14,0.78))" }} />
+              <Box sx={{ position: "absolute", left: { xs: 20, sm: 30 }, right: { xs: 20, sm: 30 }, bottom: { xs: 20, sm: 28 }, display: "flex", justifyContent: "space-between", alignItems: "end", gap: 2 }}>
+                <Box>
+                  <Typography sx={{ color: "#80d4ae", fontSize: 11, fontWeight: 800, letterSpacing: "0.13em", textTransform: "uppercase" }}>Your collection</Typography>
+                  <Typography sx={{ mt: 0.8, color: "#eef3f0", fontSize: { xs: 19, sm: 24 }, fontWeight: 750 }}>A map of what is sticking</Typography>
+                </Box>
+                <Typography sx={{ color: "#8e9a94", fontSize: 12, textAlign: "right", display: { xs: "none", sm: "block" } }}>Roots → trunk → canopy</Typography>
+              </Box>
+            </Box>
+
+            <Box sx={{ order: { xs: 1, md: 2 }, pl: { md: 3 } }}>
+              <Typography sx={{ color: "#6ec99f", fontSize: 12, fontWeight: 800, letterSpacing: "0.13em", textTransform: "uppercase", mb: 2 }}>Progress with shape</Typography>
+              <Typography component="h2" sx={{ fontSize: "clamp(2rem, 4.4vw, 3.65rem)", lineHeight: 1.05, letterSpacing: "-0.05em", fontWeight: 740, maxWidth: 500 }}>
+                Watch familiarity take root.
+              </Typography>
+              <Typography sx={{ mt: 3, color: "#929e98", lineHeight: 1.75, maxWidth: 500 }}>
+                Shuukan’s tree is not decoration. New kanji begin at the roots, move through the trunk as recall strengthens, and reach the canopy when they become familiar.
+              </Typography>
+              <Box sx={{ mt: 4, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", borderBlock: "1px solid #27302c" }}>
+                {[["Roots", "New"], ["Trunk", "Growing"], ["Canopy", "Familiar"]].map(([zone, state], index) => (
+                  <Box key={zone} sx={{ py: 2.25, px: { xs: 1, sm: 2 }, borderLeft: index ? "1px solid #27302c" : "none" }}>
+                    <Typography sx={{ color: "#e9eeeb", fontSize: { xs: 13, sm: 15 }, fontWeight: 750 }}>{zone}</Typography>
+                    <Typography sx={{ mt: 0.5, color: "#6f7c75", fontSize: { xs: 10, sm: 12 } }}>{state}</Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+
+        <Box component="section" sx={{ px: { xs: 2.25, sm: 4 }, pb: { xs: 9, md: 14 } }}>
+          <Box sx={{ maxWidth: PAGE_WIDTH, mx: "auto", bgcolor: "#dfe9e4", color: "#0b100d", borderRadius: { xs: 4, md: 6 }, p: { xs: 3.5, sm: 6, md: 8 }, display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr auto" }, alignItems: "end", gap: 4 }}>
+            <Box>
+              <Typography sx={{ color: "#39755b", fontSize: 11, fontWeight: 850, letterSpacing: "0.13em", textTransform: "uppercase", mb: 2 }}>Start with one thing you saw today</Typography>
+              <Typography component="h2" sx={{ maxWidth: 720, fontSize: "clamp(2rem, 5vw, 4rem)", lineHeight: 1.03, letterSpacing: "-0.055em", fontWeight: 780 }}>
+                Build a Japanese habit that belongs to your life.
+              </Typography>
+            </Box>
+            <Button onClick={() => navigate("/signup")} endIcon={<ArrowForwardRoundedIcon />} sx={{ minHeight: 54, bgcolor: "#0d1712", color: "#eef4f0", px: 3.5, borderRadius: 2.5, textTransform: "none", fontSize: 15, fontWeight: 800, justifyContent: "space-between", "&:hover": { bgcolor: "#19291f", transform: "translateY(-1px)" }, "&:active": { transform: "scale(0.98)" } }}>
+              Start collecting
+            </Button>
           </Box>
         </Box>
       </Box>
 
-      {/* Footer CTA */}
-      <Box component="footer" sx={{ borderTop: "1px solid", borderColor: "grey.900", bgcolor: "#050508", pt: 10, pb: 5, px: 3, textAlign: "center" }}>
-        <Typography sx={{ fontSize: { xs: 24, lg: 32 }, fontWeight: 700, color: "white", mb: 3 }}>Ready to plant your first seed?</Typography>
-        <Button
-          onClick={() => navigate("/signup")}
-          sx={{
-            bgcolor: "white", color: "black", fontSize: 16, fontWeight: 700, px: 5, py: 2, borderRadius: "9999px",
-            textTransform: "none", mb: 8,
-            "&:hover": { bgcolor: "grey.200" },
-          }}
-        >
-          Get Early Access
-        </Button>
-        <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, alignItems: "center", justifyContent: "space-between", maxWidth: 1152, mx: "auto", pt: 4, borderTop: "1px solid", borderColor: "grey.900" }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: { xs: 2, md: 0 } }}>
-            <LeafIcon size={16} color="#616161" />
-            <Typography sx={{ fontSize: 12, color: "grey.600", fontWeight: 500 }}>&copy; 2026 Shuukan App. All rights reserved.</Typography>
-          </Box>
-          <Box sx={{ display: "flex", gap: 3 }}>
-            {["Privacy", "Terms", "Twitter"].map((link) => (
-              <Typography key={link} component="a" href="#" sx={{ fontSize: 12, color: "grey.600", fontWeight: 500, textDecoration: "none", "&:hover": { color: "grey.300" } }}>
-                {link}
-              </Typography>
-            ))}
+      <Box component="footer" sx={{ borderTop: "1px solid #1c2521", px: { xs: 2.25, sm: 4 }, py: 4 }}>
+        <Box sx={{ maxWidth: PAGE_WIDTH, mx: "auto", display: "flex", flexDirection: { xs: "column", sm: "row" }, alignItems: { xs: "flex-start", sm: "center" }, justifyContent: "space-between", gap: 3 }}>
+          <Brand />
+          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+            <Typography component="a" href="#" sx={{ color: "#728078", fontSize: 12, textDecoration: "none", "&:hover": { color: "#b8c2bd" } }}>Privacy</Typography>
+            <Typography component="a" href="#" sx={{ color: "#728078", fontSize: 12, textDecoration: "none", "&:hover": { color: "#b8c2bd" } }}>Terms</Typography>
+            <Typography sx={{ color: "#56625c", fontSize: 12 }}>© 2026 Shuukan</Typography>
           </Box>
         </Box>
       </Box>

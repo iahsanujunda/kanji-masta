@@ -15,7 +15,7 @@ test("protected pages redirect visitors without a Supabase session", async ({ pa
   await page.goto("/home");
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: /Don't study Japanese/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Keep the Japanese you notice." })).toBeVisible();
 });
 
 test("authenticated learners see their dashboard and can open the collection", async ({ page }) => {

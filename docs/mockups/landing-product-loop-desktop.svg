@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 720" role="img" aria-labelledby="title desc">
+  <title id="title">Shuukan product learning loop desktop mockup</title>
+  <desc id="desc">A photographed station sign becomes a saved Japanese word, a short recall prompt, and visible tree progress.</desc>
+  <defs>
+    <linearGradient id="scene" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#26352f"/>
+      <stop offset="0.52" stop-color="#18221f"/>
+      <stop offset="1" stop-color="#0d1211"/>
+    </linearGradient>
+    <linearGradient id="tree-trunk" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#a05a31"/><stop offset="1" stop-color="#4d2115"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="20" stdDeviation="24" flood-color="#020403" flood-opacity=".5"/>
+    </filter>
+    <clipPath id="camera-clip"><rect x="42" y="24" width="526" height="672" rx="40"/></clipPath>
+  </defs>
+
+  <path d="M68 642C212 686 372 697 537 665C690 636 829 564 902 446" fill="none" stroke="#1d3b31" stroke-width="1.5" stroke-dasharray="3 12"/>
+  <circle cx="896" cy="444" r="5" fill="#3fbf8a"/>
+
+  <g filter="url(#shadow)">
+    <rect x="32" y="14" width="546" height="692" rx="49" fill="#16181d" stroke="#353940" stroke-width="2"/>
+    <rect x="42" y="24" width="526" height="672" rx="40" fill="#080b0a"/>
+    <g clip-path="url(#camera-clip)">
+      <rect x="42" y="24" width="526" height="672" fill="#080b0a"/>
+      <text x="72" y="62" fill="#f2f4f3" font-family="system-ui, sans-serif" font-size="13" font-weight="700">9:41</text>
+      <rect x="285" y="38" width="68" height="17" rx="8.5" fill="#020403"/>
+      <path d="M499 47h17M504 42v10M524 42h19v10h-19z" fill="none" stroke="#c4cbc8" stroke-width="2"/>
+
+      <rect x="58" y="78" width="494" height="298" rx="24" fill="url(#scene)"/>
+      <path d="M58 130L188 78H322L552 174V78H58Z" fill="#3a443f" opacity=".58"/>
+      <path d="M65 94L208 176M172 78L303 174M313 78L405 170M445 78L531 143" stroke="#68716d" stroke-width="4" opacity=".55"/>
+      <rect x="93" y="146" width="420" height="137" rx="7" fill="#e7e7df" transform="rotate(2 303 214)"/>
+      <path d="M96 231L510 245L510 271L95 258Z" fill="#218450"/>
+      <path d="M322 239L355 240L355 267L322 266Z" fill="#dbd632"/>
+      <text x="134" y="220" fill="#161817" font-family="system-ui, sans-serif" font-size="58" font-weight="800" transform="rotate(2 134 220)">中 野</text>
+      <text x="376" y="208" fill="#272b29" font-family="system-ui, sans-serif" font-size="18" font-weight="700" transform="rotate(2 376 208)">なかの</text>
+      <text x="129" y="255" fill="#f7fbf9" font-family="system-ui, sans-serif" font-size="21" font-weight="700" transform="rotate(2 129 255)">東中野</text>
+      <text x="372" y="273" fill="#181b19" font-family="system-ui, sans-serif" font-size="25" font-weight="700" transform="rotate(2 372 273)">Nakano</text>
+      <path d="M104 158v-18h27M483 159v-18h-27M104 259v18h27M483 261v18h-27" fill="none" stroke="#64d9a6" stroke-width="4" stroke-linecap="round"/>
+      <rect x="78" y="310" width="139" height="40" rx="20" fill="#07130e" fill-opacity=".88" stroke="#2a7658"/>
+      <circle cx="99" cy="330" r="5" fill="#3fbf8a"/>
+      <text x="113" y="335" fill="#bdebd8" font-family="system-ui, sans-serif" font-size="13" font-weight="700">2 words detected</text>
+
+      <text x="70" y="421" fill="#8b9691" font-family="system-ui, sans-serif" font-size="12" font-weight="700" letter-spacing="1.8">FOUND NEAR NAKANO STATION</text>
+      <text x="70" y="455" fill="#f4f7f5" font-family="system-ui, sans-serif" font-size="23" font-weight="750">Keep what matters</text>
+      <rect x="70" y="478" width="470" height="119" rx="19" fill="#101512" stroke="#28312d"/>
+      <rect x="88" y="497" width="81" height="81" rx="15" fill="#18201c" stroke="#334039"/>
+      <text x="105" y="557" fill="#f2f5f3" font-family="system-ui, sans-serif" font-size="53" font-weight="600">中</text>
+      <text x="188" y="516" fill="#69d3a5" font-family="system-ui, sans-serif" font-size="12" font-weight="800" letter-spacing="2">ナカ</text>
+      <text x="188" y="546" fill="#eef2f0" font-family="system-ui, sans-serif" font-size="22" font-weight="750">middle · inside</text>
+      <text x="188" y="570" fill="#8d9993" font-family="system-ui, sans-serif" font-size="13">中野 · Nakano</text>
+      <rect x="420" y="517" width="97" height="42" rx="21" fill="#36b981"/>
+      <text x="442" y="543" fill="#07100c" font-family="system-ui, sans-serif" font-size="13" font-weight="800">Keep</text>
+      <rect x="70" y="621" width="470" height="52" rx="18" fill="#e5eee9"/>
+      <text x="223" y="653" fill="#0b100e" font-family="system-ui, sans-serif" font-size="15" font-weight="800">Save 2 words</text>
+    </g>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="603" y="55" width="304" height="170" rx="25" fill="#111613" stroke="#303a35"/>
+    <text x="629" y="86" fill="#6b7771" font-family="system-ui, sans-serif" font-size="11" font-weight="800" letter-spacing="1.8">SAVED FROM YOUR DAY</text>
+    <rect x="629" y="104" width="74" height="74" rx="16" fill="#1a241f"/>
+    <text x="646" y="158" fill="#f4f7f5" font-family="system-ui, sans-serif" font-size="44" font-weight="600">中</text>
+    <text x="721" y="126" fill="#66d2a3" font-family="system-ui, sans-serif" font-size="11" font-weight="800" letter-spacing="1.6">NAKA</text>
+    <text x="721" y="153" fill="#f4f7f5" font-family="system-ui, sans-serif" font-size="18" font-weight="750">middle · inside</text>
+    <text x="721" y="178" fill="#86918c" font-family="system-ui, sans-serif" font-size="12">Nakano Station · today</text>
+    <path d="M630 198h251" stroke="#28312d"/>
+    <circle cx="642" cy="211" r="4" fill="#3fbf8a"/>
+    <text x="654" y="215" fill="#a7b2ad" font-family="system-ui, sans-serif" font-size="11">Added to tonight's recall</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="625" y="260" width="296" height="285" rx="27" fill="#0d120f" stroke="#303a35"/>
+    <text x="650" y="292" fill="#6f7b75" font-family="system-ui, sans-serif" font-size="11" font-weight="800" letter-spacing="1.7">EVENING RECALL · 2 OF 6</text>
+    <rect x="650" y="310" width="246" height="4" rx="2" fill="#26302b"/>
+    <rect x="650" y="310" width="88" height="4" rx="2" fill="#43be89"/>
+    <text x="650" y="356" fill="#9aa59f" font-family="system-ui, sans-serif" font-size="12">Which reading belongs to 中?</text>
+    <text x="650" y="410" fill="#f5f7f6" font-family="system-ui, sans-serif" font-size="56" font-weight="650">中</text>
+    <rect x="650" y="438" width="116" height="47" rx="14" fill="#17201c" stroke="#334039"/>
+    <text x="684" y="467" fill="#aab4af" font-family="system-ui, sans-serif" font-size="14" font-weight="700">うち</text>
+    <rect x="778" y="438" width="118" height="47" rx="14" fill="#163126" stroke="#49c691" stroke-width="2"/>
+    <text x="812" y="467" fill="#d6f5e7" font-family="system-ui, sans-serif" font-size="14" font-weight="800">なか</text>
+    <rect x="650" y="497" width="246" height="29" rx="14.5" fill="#e3ece7"/>
+    <text x="738" y="516" fill="#0a100d" font-family="system-ui, sans-serif" font-size="12" font-weight="800">Check answer</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="510" y="574" width="347" height="105" rx="24" fill="#111613" stroke="#303a35"/>
+    <g transform="translate(528 587) scale(.14)">
+      <path d="M176 500L183 379L199 315L207 346L204 487Z" fill="url(#tree-trunk)"/>
+      <path d="M29 258L45 179L38 139L108 42L181 8L245 44L328 76L400 151L379 203L294 225L226 235L151 246L79 250Z" fill="#315b32"/>
+      <path d="M108 42L181 8L204 36L165 61Z" fill="#77904a"/><path d="M165 61L254 79L190 128L158 125Z" fill="#5f7f41"/>
+      <path d="M190 128L298 143L253 207L180 172Z" fill="#486f38"/><path d="M45 179L109 122L121 184L79 250Z" fill="#3a6537"/>
+    </g>
+    <text x="604" y="607" fill="#67d3a4" font-family="system-ui, sans-serif" font-size="11" font-weight="800" letter-spacing="1.5">YOUR TREE GREW</text>
+    <text x="604" y="637" fill="#f2f5f3" font-family="system-ui, sans-serif" font-size="21" font-weight="750">中 moved into the trunk</text>
+    <text x="604" y="658" fill="#829089" font-family="system-ui, sans-serif" font-size="12">Progress you can see, not a deck count.</text>
+  </g>
+</svg>

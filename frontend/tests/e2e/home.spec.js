@@ -25,7 +25,7 @@ test("authenticated learners see their dashboard and can open the collection", a
   await expect(page.getByText(/You are on 12 day streak/)).toBeVisible();
   await expect(page.getByText("4 learning", { exact: true })).toBeVisible();
   await expect(page.getByText("2 familiar", { exact: true })).toBeVisible();
-  await expect(page.getByText("6 words learned", { exact: true })).toBeVisible();
+  await expect(page.getByText("6 saved words", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Capture Japanese" })).toBeVisible();
   await expectNoHorizontalOverflow(page);
 

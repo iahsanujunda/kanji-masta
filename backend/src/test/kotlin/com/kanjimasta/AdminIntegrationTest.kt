@@ -13,7 +13,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-class AdminIntegrationTest {
+class AdminIntegrationTest : com.kanjimasta.support.PersistenceTest() {
 
     private fun seedCostData(db: org.ktorm.database.Database) {
         // Clean first

@@ -9,7 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class UserIntegrationTest {
+class UserIntegrationTest : com.kanjimasta.support.PersistenceTest() {
 
     @Test
     fun `GET user summary returns valid response`() = testApplication {

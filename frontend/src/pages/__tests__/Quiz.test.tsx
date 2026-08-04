@@ -3,10 +3,19 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Quiz from "../Quiz";
 import { renderWithProviders } from "@/test/mocks";
+import { ApiError } from "@/lib/api";
 
 const mockApiFetch = vi.fn();
 vi.mock("@/lib/api", () => ({
-  ApiError: class ApiError extends Error { status = 500; body = null; },
+  ApiError: class ApiError extends Error {
+    status: number;
+    body: unknown;
+    constructor(status: number, body: unknown) {
+      super(`API error: ${status}`);
+      this.status = status;
+      this.body = body;
+    }
+  },
   apiFetch: (...args: unknown[]) => mockApiFetch(...args),
 }));
 
@@ -62,6 +71,42 @@ describe("Quiz Phase 3 session", () => {
     expect(request.cardId).toBe("card-intro");
     expect(request.expectedVersion).toBe(0);
     expect(request.submissionId).toBeTruthy();
+  });
+
+  it("keeps the current card and retries a failed command with the same submission id", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce({ session: session(introCard) })
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ feedback: { type: "INTRODUCED" }, session: session(quizCard) });
+    renderWithProviders(<Quiz />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Got it" }));
+
+    expect(await screen.findByText("Couldn’t save that turn. Your answer has not been lost.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Got it" })).toBeEnabled();
+    const firstCommand = JSON.parse(mockApiFetch.mock.calls[1][1].body);
+
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => expect(screen.getByText("bus")).toBeInTheDocument());
+    const retryCommand = JSON.parse(mockApiFetch.mock.calls[2][1].body);
+    expect(mockApiFetch.mock.calls[2][0]).toBe(mockApiFetch.mock.calls[1][0]);
+    expect(retryCommand).toEqual(firstCommand);
+    expect(retryCommand.submissionId).toBeTruthy();
+  });
+
+  it("replaces stale local state with the authoritative conflict snapshot", async () => {
+    const advancedSession = { ...session(quizCard), version: 4 };
+    mockApiFetch
+      .mockResolvedValueOnce({ session: session(introCard) })
+      .mockRejectedValueOnce(new ApiError(409, { code: "SESSION_ADVANCED", session: advancedSession }));
+    renderWithProviders(<Quiz />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Got it" }));
+
+    expect(await screen.findByText("bus")).toBeInTheDocument();
+    expect(screen.queryByText("Couldn’t save that turn. Your answer has not been lost.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
   });
 
   it("uses neutral feedback for a missed learning step", async () => {

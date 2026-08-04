@@ -1,9 +1,29 @@
 """Unit tests for the database query layer."""
 import uuid
 
+import psycopg2
 import psycopg2.extras
+import pytest
 
 from app import db
+
+
+def test_database_uses_phase3_failure_count_constraint(db_conn):
+    word_master_id = str(uuid.uuid4())
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO word_master (id, word, reading) VALUES (%s, %s, 'schema')",
+            (word_master_id, f"schema-{word_master_id[:8]}"),
+        )
+        with pytest.raises(psycopg2.errors.CheckViolation):
+            cur.execute(
+                """
+                INSERT INTO user_words (
+                    user_id, word_master_id, consecutive_failures
+                ) VALUES ('schema-test-user', %s, -1)
+                """,
+                (word_master_id,),
+            )
 
 
 def test_get_user_known_kanji_empty(client, db_conn):

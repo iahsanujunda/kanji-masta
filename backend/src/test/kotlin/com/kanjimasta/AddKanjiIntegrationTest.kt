@@ -12,7 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class AddKanjiIntegrationTest {
+class AddKanjiIntegrationTest : com.kanjimasta.support.PersistenceTest() {
 
     private fun cleanupTestUser(db: org.ktorm.database.Database, userId: String) {
         db.useConnection { conn ->
@@ -132,9 +132,6 @@ class AddKanjiIntegrationTest {
             }
             assertEquals(HttpStatusCode.OK, response.status)
 
-            // Wait for async processWordsForKanji to complete
-            Thread.sleep(500)
-
             // Verify user_kanji was created
             val userKanjiCount = TestDatabase.db.from(UserKanjiTable)
                 .select()
@@ -179,9 +176,6 @@ class AddKanjiIntegrationTest {
                 setBody("""{"selections":[{"kanjiMasterId":"$kanjiId","status":"learning"}]}""")
             }
             assertEquals(HttpStatusCode.OK, response.status)
-
-            // Wait for async processWordsForKanji to complete
-            Thread.sleep(500)
 
             // Verify user_kanji was created
             val userKanjiCount = TestDatabase.db.from(UserKanjiTable)
@@ -236,8 +230,6 @@ class AddKanjiIntegrationTest {
                 setBody("""{"selections":[{"kanjiMasterId":"$kanjiId","status":"learning"}]}""")
             }
             assertEquals(HttpStatusCode.OK, resp1.status)
-            Thread.sleep(500)
-
             // Verify first user got no job enqueued (global quizzes exist)
             val jobs1 = TestDatabase.db.from(QuizGenerationJobTable)
                 .select()
@@ -272,6 +264,7 @@ class AddKanjiIntegrationTest {
     @Test
     fun `GET curriculum returns JLPT levels with progress`() = testApplication {
         application { testModule(TestDatabase.db) }
+        seedKanjiWithWordsAndQuizzes(TestDatabase.db, "礎", "foundation")
         val client = jsonClient()
         val response = client.get("/api/kanji/curriculum") {
             header(HttpHeaders.Authorization, "Bearer test-token")
@@ -294,6 +287,7 @@ class AddKanjiIntegrationTest {
     @Test
     fun `GET curriculum detail returns kanji with user status`() = testApplication {
         application { testModule(TestDatabase.db) }
+        seedKanjiWithWordsAndQuizzes(TestDatabase.db, "標", "mark")
         val client = jsonClient()
         val response = client.get("/api/kanji/curriculum/5") {
             header(HttpHeaders.Authorization, "Bearer test-token")
@@ -390,8 +384,6 @@ class AddKanjiIntegrationTest {
             }
             assertEquals(HttpStatusCode.OK, response.status)
 
-            Thread.sleep(500)
-
             val userKanji = TestDatabase.db.from(UserKanjiTable)
                 .select(UserKanjiTable.familiarity, UserKanjiTable.currentTier)
                 .where { (UserKanjiTable.userId eq TEST_USER_ID) and (UserKanjiTable.kanjiId eq kanjiId) }
@@ -459,8 +451,6 @@ class AddKanjiIntegrationTest {
                 setBody("""{"selections":[$selections]}""")
             }
             assertEquals(HttpStatusCode.OK, response.status)
-
-            Thread.sleep(500)
 
             val insertedCount = TestDatabase.db.from(UserKanjiTable)
                 .select()

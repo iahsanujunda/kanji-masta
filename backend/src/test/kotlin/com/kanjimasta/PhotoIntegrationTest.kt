@@ -9,7 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class PhotoIntegrationTest {
+class PhotoIntegrationTest : com.kanjimasta.support.PersistenceTest() {
 
     @Test
     fun `POST photo analyze creates session`() = testApplication {

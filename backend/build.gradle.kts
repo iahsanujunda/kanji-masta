@@ -58,11 +58,17 @@ dependencies {
     // Testing
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.kotlin.test)
+    testImplementation(libs.ktor.client.mock)
     testImplementation(libs.ktor.client.content.negotiation)
     testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.docker.java.transport)
+    testImplementation("io.mockk:mockk:1.13.13")
 }
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    systemProperty(
+        "kanjimasta.migrations.dir",
+        rootProject.projectDir.resolve("../supabase/migrations").canonicalPath,
+    )
 }

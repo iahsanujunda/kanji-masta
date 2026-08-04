@@ -521,6 +521,7 @@ class QuizRepository(private val db: Database) {
             QuizServeTable.correct,
         )
         .where { QuizServeTable.slotId eq UUID.fromString(slotId) }
+        .orderBy(QuizSessionCardTable.position.asc())
         .map {
             SummaryRow(
                 cardId = it[QuizSessionCardTable.id].toString(),

@@ -12,7 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class OnboardingIntegrationTest {
+class OnboardingIntegrationTest : com.kanjimasta.support.PersistenceTest() {
 
     private fun cleanupTestUser(db: org.ktorm.database.Database, userId: String) {
         db.useConnection { conn ->
@@ -104,6 +104,19 @@ class OnboardingIntegrationTest {
                 .map { it[UserKanjiTable.kanjiId] }
             val distinctCount = totalUserKanji.toSet().size
             assertEquals(totalUserKanji.size, distinctCount, "No duplicates should exist")
+
+            val materializedJobs = TestDatabase.db.from(QuizGenerationJobTable)
+                .select()
+                .where {
+                    (QuizGenerationJobTable.userId eq TEST_USER_ID) and
+                        (QuizGenerationJobTable.kanjiId inList batch2Ids)
+                }
+                .totalRecordsInAllPages
+            assertEquals(
+                batch2Ids.size,
+                materializedJobs,
+                "Learning work must be persisted before the command returns",
+            )
         } finally {
             cleanupTestUser(TestDatabase.db, TEST_USER_ID)
         }

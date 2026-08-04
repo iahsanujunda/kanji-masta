@@ -12,7 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class InternalIntegrationTest {
+class InternalIntegrationTest : com.kanjimasta.support.PersistenceTest() {
 
     @Test
     fun `POST internal photo-result updates session and records cost`() = testApplication {

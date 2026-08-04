@@ -11,7 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class KanjiIntegrationTest {
+class KanjiIntegrationTest : com.kanjimasta.support.PersistenceTest() {
 
     private fun seedKanji(db: org.ktorm.database.Database) {
         // Insert test kanji if not already present

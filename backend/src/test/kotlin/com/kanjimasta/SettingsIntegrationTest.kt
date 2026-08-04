@@ -9,7 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class SettingsIntegrationTest {
+class SettingsIntegrationTest : com.kanjimasta.support.PersistenceTest() {
 
     @Test
     fun `GET settings returns valid response`() = testApplication {

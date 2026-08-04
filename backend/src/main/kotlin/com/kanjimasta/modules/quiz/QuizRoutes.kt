@@ -9,6 +9,7 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import java.util.UUID
 
 fun Route.quizRoutes(quizService: QuizService) {
     route("/api/quiz") {
@@ -26,6 +27,9 @@ fun Route.quizRoutes(quizService: QuizService) {
             get("/{slotId}") {
                 val user = call.principal<AuthUser>()!!
                 val slotId = call.parameters["slotId"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+                if (!slotId.isUuid()) {
+                    return@get call.respond(HttpStatusCode.BadRequest)
+                }
                 val response = quizService.getSession(user.uid, slotId)
                     ?: return@get call.respond(HttpStatusCode.NotFound)
                 call.respond(response)
@@ -34,18 +38,21 @@ fun Route.quizRoutes(quizService: QuizService) {
             post("/{slotId}/introduction") {
                 val user = call.principal<AuthUser>()!!
                 val slotId = call.parameters["slotId"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+                if (!slotId.isUuid()) return@post call.respond(HttpStatusCode.BadRequest)
                 respondCommand(quizService.acknowledgeIntroduction(user.uid, slotId, call.receive()))
             }
 
             post("/{slotId}/answer") {
                 val user = call.principal<AuthUser>()!!
                 val slotId = call.parameters["slotId"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+                if (!slotId.isUuid()) return@post call.respond(HttpStatusCode.BadRequest)
                 respondCommand(quizService.answer(user.uid, slotId, call.receive()))
             }
 
             post("/{slotId}/exit") {
                 val user = call.principal<AuthUser>()!!
                 val slotId = call.parameters["slotId"] ?: return@post call.respond(HttpStatusCode.BadRequest)
+                if (!slotId.isUuid()) return@post call.respond(HttpStatusCode.BadRequest)
                 val response = quizService.exit(user.uid, slotId)
                     ?: return@post call.respond(HttpStatusCode.NotFound)
                 call.respond(response)
@@ -53,6 +60,8 @@ fun Route.quizRoutes(quizService: QuizService) {
         }
     }
 }
+
+private fun String.isUuid(): Boolean = runCatching { UUID.fromString(this) }.isSuccess
 
 private suspend fun io.ktor.server.routing.RoutingContext.respondCommand(result: SessionCommandResult) {
     when (result) {

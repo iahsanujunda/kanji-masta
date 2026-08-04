@@ -18,7 +18,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-class QuizIntegrationTest {
+class QuizIntegrationTest : com.kanjimasta.support.PersistenceTest() {
     @AfterTest
     fun cleanupSeededUser() {
         clean(TestDatabase.db)

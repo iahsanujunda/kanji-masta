@@ -12,7 +12,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-class InviteIntegrationTest {
+class InviteIntegrationTest : com.kanjimasta.support.PersistenceTest() {
 
     private fun cleanupInvites(db: org.ktorm.database.Database, email: String) {
         db.delete(UserInviteTable) { it.email eq email }

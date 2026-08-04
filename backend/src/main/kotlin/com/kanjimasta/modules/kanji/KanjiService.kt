@@ -42,10 +42,7 @@ class KanjiService(
         photoRepository.updateSessionStatus(request.sessionId, "INGESTED")
 
         if (learningKanjiIds.isNotEmpty()) {
-            val sessionId = request.sessionId
-            scope.launch {
-                processWordsForKanji(userId, sessionId, learningKanjiIds)
-            }
+            processWordsForKanji(userId, request.sessionId, learningKanjiIds)
         }
     }
 
@@ -110,9 +107,7 @@ class KanjiService(
         }
 
         if (learningIds.isNotEmpty()) {
-            scope.launch {
-                processWordsForKanji(userId, null, learningIds)
-            }
+            processWordsForKanji(userId, null, learningIds)
         }
     }
 

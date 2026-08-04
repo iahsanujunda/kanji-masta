@@ -4,6 +4,7 @@ import uuid
 from unittest.mock import MagicMock, patch
 
 import psycopg2.extras
+from app.ai_client import AIResult
 
 
 def test_health(client):
@@ -12,7 +13,7 @@ def test_health(client):
     assert resp.json() == {"status": "ok"}
 
 
-def test_analyze_photo(client, db_conn, mock_gemini):
+def test_analyze_photo(client, db_conn, mock_ai_client):
     # Create a photo session
     session_id = str(uuid.uuid4())
     with db_conn.cursor() as cur:
@@ -54,12 +55,12 @@ def test_analyze_photo(client, db_conn, mock_gemini):
     assert row["cost_microdollars"] > 0
 
 
-def test_generate_quizzes_no_jobs(client, mock_gemini):
+def test_generate_quizzes_no_jobs(client, mock_ai_client):
     resp = client.post("/generate-quizzes", json={})
     assert resp.status_code == 200
 
 
-def test_generate_quizzes_processes_job(client, db_conn, seed_kanji, mock_gemini):
+def test_generate_quizzes_processes_job(client, db_conn, seed_kanji, mock_ai_client):
     # Set up mock to return quiz JSON
     quiz_response = json.dumps([
         {"quiz_type": "meaning_recall", "prompt": "電", "target": "電", "answer": "electricity",
@@ -73,7 +74,11 @@ def test_generate_quizzes_processes_job(client, db_conn, seed_kanji, mock_gemini
         {"quiz_type": "fill_in_the_blank", "prompt": "＿＿乗り換えどこ？", "target": "電車", "answer": "電車",
          "distractors": ["急行", "地下鉄", "バス停"], "furigana": "でんしゃ", "explanation": "test"},
     ])
-    mock_gemini.models.generate_content.return_value.text = quiz_response
+    mock_ai_client.generate_quizzes.return_value = AIResult(
+        data=json.loads(quiz_response),
+        cost_microdollars=100,
+        model="test-model",
+    )
 
     # Seed a pending job
     with db_conn.cursor() as cur:
@@ -100,7 +105,7 @@ def test_generate_quizzes_processes_job(client, db_conn, seed_kanji, mock_gemini
         assert cur.fetchone()[0] == 5
 
 
-def test_cron_generate_quizzes(client, mock_gemini):
+def test_cron_generate_quizzes(client, mock_ai_client):
     resp = client.post("/cron/generate-quizzes")
     assert resp.status_code == 200
 
@@ -110,12 +115,15 @@ def test_cron_check_regen_empty(client):
     assert resp.status_code == 200
 
 
-def test_discover_words(client, db_conn, seed_kanji, mock_gemini):
-    # Mock Gemini to return word discovery results
-    mock_gemini.models.generate_content.return_value.text = json.dumps([
-        {"word": "日記", "reading": "にっき", "meaning": "diary"},
-        {"word": "日本", "reading": "にほん", "meaning": "Japan"},
-    ])
+def test_discover_words(client, db_conn, seed_kanji, mock_ai_client):
+    mock_ai_client.discover_words.return_value = AIResult(
+        data=[
+            {"word": "日記", "reading": "にっき", "meaning": "diary"},
+            {"word": "日本", "reading": "にほん", "meaning": "Japan"},
+        ],
+        cost_microdollars=100,
+        model="test-model",
+    )
 
     with db_conn.cursor() as cur:
         cur.execute("SELECT id FROM kanji_master WHERE character = '日'")

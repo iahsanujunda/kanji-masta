@@ -15,7 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class WordsIntegrationTest {
+class WordsIntegrationTest : com.kanjimasta.support.PersistenceTest() {
     @BeforeTest
     @AfterTest
     fun cleanWords() {

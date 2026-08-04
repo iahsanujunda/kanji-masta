@@ -3,12 +3,13 @@ package com.kanjimasta
 import com.kanjimasta.core.auth.AuthUser
 import com.kanjimasta.core.plugins.configureRouting
 import com.kanjimasta.core.plugins.configureSerialization
+import com.kanjimasta.support.TestPostgres
 import com.kanjimasta.modules.kanji.KanjiRepository
 import com.kanjimasta.modules.kanji.KanjiService
 import com.kanjimasta.modules.photo.PhotoRepository
 import com.kanjimasta.modules.photo.PhotoService
 import io.ktor.client.*
-import io.ktor.client.engine.cio.*
+import io.ktor.client.engine.mock.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
@@ -21,7 +22,6 @@ import io.ktor.server.response.*
 import io.ktor.server.testing.*
 import org.ktorm.database.Database
 import org.slf4j.LoggerFactory
-import org.testcontainers.containers.PostgreSQLContainer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertContains
@@ -34,22 +34,7 @@ const val TEST_USER_EMAIL = "test@example.com"
  * No external dependencies required (no `supabase start` needed).
  */
 object TestDatabase {
-    private val container = PostgreSQLContainer("postgres:16-alpine")
-        .withDatabaseName("test")
-        .withUsername("test")
-        .withPassword("test")
-
-    val db: Database by lazy {
-        container.start()
-        val db = Database.connect(container.jdbcUrl, user = "test", password = "test")
-        db.useConnection { conn ->
-            val sql = Thread.currentThread().contextClassLoader
-                .getResource("test-schema.sql")?.readText()
-                ?: error("test-schema.sql not found on classpath")
-            conn.createStatement().execute(sql)
-        }
-        db
-    }
+    val db: Database get() = TestPostgres.database
 }
 
 private val testLogger = LoggerFactory.getLogger("TestModule")
@@ -69,7 +54,19 @@ fun Application.testModule(db: Database) {
             }
         }
     }
-    val httpClient = HttpClient(CIO)
+    // This harness must never escape to the network. Worker triggers, Cloud
+    // metadata token requests, and email calls all terminate in memory.
+    val httpClient = HttpClient(MockEngine) {
+        engine {
+            addHandler {
+                respond(
+                    content = "ok",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, ContentType.Text.Plain.toString()),
+                )
+            }
+        }
+    }
     val photoService = PhotoService(PhotoRepository(db), httpClient, "http://localhost:5001")
     val kanjiService = KanjiService(KanjiRepository(db), PhotoRepository(db), httpClient, "http://localhost:5001")
     val quizRepository = com.kanjimasta.modules.quiz.QuizRepository(db)
@@ -93,7 +90,7 @@ fun ApplicationTestBuilder.jsonClient() = createClient {
     install(ContentNegotiation) { json() }
 }
 
-class ApplicationTest {
+class ApplicationTest : com.kanjimasta.support.PersistenceTest() {
 
     @Test
     fun `health endpoint returns ok`() = testApplication {

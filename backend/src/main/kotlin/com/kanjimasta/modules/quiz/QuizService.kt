@@ -280,27 +280,22 @@ class QuizService(private val quizRepository: QuizRepository) {
         val normalNeeded = (remaining - introductions.size).coerceAtLeast(0)
         val excluded = introductions.map { it.first.word.id }.toSet()
         val overdueLimit = (normalNeeded * 0.6).toInt().coerceAtLeast(if (normalNeeded > 0) 1 else 0)
-        val normalWords = (
-            quizRepository.getOverdueWords(userId, normalNeeded * 4 + 4).take(overdueLimit * 2) +
-                quizRepository.getLearningWords(userId, normalNeeded * 6 + 6)
-            )
+        val overdueCandidates = quizRepository.getOverdueWords(userId, normalNeeded * 4 + 4)
             .distinctBy { it.id }
             .filterNot { it.id in excluded }
-            .mapNotNull { word ->
-                val type = pickQuizType(word.familiarity)
-                val quiz = quizRepository.getQuizForWord(word.wordMasterId, type)
-                    ?: quizRepository.getAnyQuizForWord(word.wordMasterId)
-                    ?: return@mapNotNull null
-                val distractor = quizRepository.getDistractor(quiz.id)
-                PlannedCard(
-                    type = SessionCardType.QUIZ,
-                    word = word,
-                    quiz = quiz,
-                    distractor = distractor,
-                    options = buildOptions(quiz, distractor, userId),
-                )
-            }
-            .take(normalNeeded)
+            .mapNotNull { planReviewCard(userId, it) }
+        val overdueWords = overdueCandidates.take(overdueLimit)
+        val selectionTime = Instant.now()
+        val resurfacedWords = quizRepository.getLearningWords(userId, normalNeeded * 6 + 6)
+            .distinctBy { it.id }
+            .filterNot { it.id in excluded }
+            .filter { word -> word.nextReview?.isBefore(selectionTime) != true }
+            .mapNotNull { planReviewCard(userId, it) }
+            .take((normalNeeded - overdueWords.size).coerceAtLeast(0))
+        val overdueFallback = overdueCandidates
+            .drop(overdueWords.size)
+            .take((normalNeeded - overdueWords.size - resurfacedWords.size).coerceAtLeast(0))
+        val normalWords = overdueWords + resurfacedWords + overdueFallback
 
         val planned = mutableListOf<PlannedCard>()
         planned += introductions.map { it.first }
@@ -340,6 +335,21 @@ class QuizService(private val quizRepository: QuizRepository) {
             return quizRepository.getSlot(userId, slot.id)!!
         }
         return slot
+    }
+
+    private fun planReviewCard(userId: String, word: UserWordRow): PlannedCard? {
+        val type = pickQuizType(word.familiarity)
+        val quiz = quizRepository.getQuizForWord(word.wordMasterId, type)
+            ?: quizRepository.getAnyQuizForWord(word.wordMasterId)
+            ?: return null
+        val distractor = quizRepository.getDistractor(quiz.id)
+        return PlannedCard(
+            type = SessionCardType.QUIZ,
+            word = word,
+            quiz = quiz,
+            distractor = distractor,
+            options = buildOptions(quiz, distractor, userId),
+        )
     }
 
     private fun insertStepTwo(

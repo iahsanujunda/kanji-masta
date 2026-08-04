@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="980" viewBox="0 0 1500 980" role="img" aria-labelledby="title desc">
+  <title id="title">Kanji Masta Phase 3 Dictionary and word-reference access</title>
+  <desc id="desc">Three dark mobile mockups show all saved vocabulary with learning-state labels, the Dictionary filtered to new words, and a read-only word-reference page that reuses introduction content without changing session or scheduling state.</desc>
+  <defs>
+    <linearGradient id="brand-gradient" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#4338ca"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="14" stdDeviation="20" flood-color="#000000" flood-opacity="0.42"/></filter>
+    <style>
+      .canvas{fill:#050508}.app{fill:#0a0a0f}.card{fill:#0f0f16}.raised{fill:#1a1a24}.line{stroke:rgba(255,255,255,.08);stroke-width:1}
+      .text{fill:#f5f5f7;font-family:"Noto Sans JP",system-ui,-apple-system,"Segoe UI",sans-serif}.muted{fill:#a1a1aa;font-family:"Noto Sans JP",system-ui,-apple-system,"Segoe UI",sans-serif}.quiet{fill:#71717a;font-family:"Noto Sans JP",system-ui,-apple-system,"Segoe UI",sans-serif}
+      .emerald{fill:#34d399;font-family:"Noto Sans JP",system-ui,sans-serif}.emeraldPale{fill:#6ee7b7;font-family:"Noto Sans JP",system-ui,sans-serif}.indigo{fill:#818cf8;font-family:"Noto Sans JP",system-ui,sans-serif}.indigoPale{fill:#a5b4fc;font-family:"Noto Sans JP",system-ui,sans-serif}.purple{fill:#a78bfa;font-family:"Noto Sans JP",system-ui,sans-serif}
+      .title{font-size:28px;font-weight:800;letter-spacing:-.6px}.h1{font-size:26px;font-weight:800;letter-spacing:-.4px}.h2{font-size:19px;font-weight:750}.word{font-size:66px;font-weight:650}.body{font-size:14px}.small{font-size:12px}.tiny{font-size:10px}.label{font-size:11px;font-weight:800;letter-spacing:1.15px}.button{font-size:14px;font-weight:800}
+    </style>
+    <g id="phone-shell"><rect width="390" height="760" rx="30" class="app" filter="url(#shadow)"/><rect x="1" y="1" width="388" height="758" rx="29" fill="none" stroke="rgba(255,255,255,.09)"/></g>
+    <g id="back-control"><circle cx="40" cy="47" r="20" class="raised"/><path d="m43 39-9 8 9 8M34 47h14" fill="none" stroke="#a1a1aa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <g id="search-field"><rect x="26" y="118" width="338" height="46" rx="12" class="raised" stroke="rgba(255,255,255,.09)"/><circle cx="49" cy="141" r="7" fill="none" stroke="#71717a" stroke-width="1.6"/><path d="m54 146 6 6" stroke="#71717a" stroke-width="1.6" stroke-linecap="round"/><text x="72" y="146" class="quiet small">Search kanji, hiragana, or romaji</text></g>
+  </defs>
+
+  <rect width="1500" height="980" class="canvas"/>
+  <rect x="40" y="32" width="38" height="38" rx="10" fill="url(#brand-gradient)"/><path d="M52 58c10-2 15-8 16-17-9 1-15 6-16 17Zm0 0c-2-7-1-13 2-18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+  <text x="92" y="55" class="text title">Phase 3 — Dictionary access for new words</text>
+  <text x="92" y="80" class="muted body">Saved vocabulary remains browsable; only the active session can acknowledge an introduction or advance learning state.</text>
+  <rect x="1250" y="36" width="210" height="30" rx="15" fill="rgba(129,140,248,.12)" stroke="rgba(129,140,248,.28)"/><text x="1355" y="56" text-anchor="middle" class="indigoPale label">READ-ONLY REFERENCE</text>
+
+  <!-- 01 ALL WORDS -->
+  <text x="40" y="128" class="indigoPale label">01 · DICTIONARY · ALL SAVED WORDS</text>
+  <use href="#phone-shell" x="40" y="150"/><use href="#back-control" x="40" y="150"/>
+  <text x="100" y="190" class="text h1">Dictionary</text><text x="100" y="212" class="muted small">24 saved words</text>
+  <use href="#search-field" x="40" y="150"/>
+  <rect x="66" y="330" width="52" height="32" rx="16" fill="rgba(67,56,202,.25)" stroke="rgba(129,140,248,.42)"/><text x="92" y="351" text-anchor="middle" class="indigoPale small" font-weight="750">All</text>
+  <rect x="126" y="330" width="62" height="32" rx="16" class="raised"/><text x="157" y="351" text-anchor="middle" class="muted small">New · 7</text>
+  <rect x="196" y="330" width="84" height="32" rx="16" class="raised"/><text x="238" y="351" text-anchor="middle" class="muted small">Learning · 4</text>
+  <rect x="288" y="330" width="112" height="32" rx="16" class="raised"/><text x="344" y="351" text-anchor="middle" class="muted small">Familiar · 13</text>
+
+  <rect x="66" y="382" width="338" height="88" rx="14" class="card" stroke="rgba(129,140,248,.24)"/><rect x="66" y="382" width="3" height="88" rx="1.5" fill="#818cf8"/>
+  <text x="86" y="415" class="text h2">電車</text><text x="138" y="415" class="muted small">でんしゃ</text><text x="86" y="442" class="muted body">train</text>
+  <rect x="294" y="398" width="82" height="26" rx="13" fill="rgba(129,140,248,.12)" stroke="rgba(129,140,248,.24)"/><text x="335" y="416" text-anchor="middle" class="indigoPale tiny" font-weight="800">NEW</text><path d="m384 423 6 6-6 6" fill="none" stroke="#71717a" stroke-width="1.8"/>
+
+  <rect x="66" y="482" width="338" height="88" rx="14" class="card" stroke="rgba(167,139,250,.22)"/><rect x="66" y="482" width="3" height="88" rx="1.5" fill="#a78bfa"/>
+  <text x="86" y="515" class="text h2">乗換</text><text x="138" y="515" class="muted small">のりかえ</text><text x="86" y="542" class="muted body">transfer</text>
+  <rect x="286" y="498" width="90" height="26" rx="13" fill="rgba(167,139,250,.12)" stroke="rgba(167,139,250,.24)"/><text x="331" y="516" text-anchor="middle" class="purple tiny" font-weight="800">REVISIT</text><path d="m384 523 6 6-6 6" fill="none" stroke="#71717a" stroke-width="1.8"/>
+
+  <rect x="66" y="582" width="338" height="88" rx="14" class="card" stroke="rgba(67,56,202,.22)"/><rect x="66" y="582" width="3" height="88" rx="1.5" fill="#4338ca"/>
+  <text x="86" y="615" class="text h2">電話</text><text x="138" y="615" class="muted small">でんわ</text><text x="86" y="642" class="muted body">phone</text>
+  <rect x="282" y="598" width="94" height="26" rx="13" fill="rgba(67,56,202,.16)"/><text x="329" y="616" text-anchor="middle" class="indigoPale tiny" font-weight="800">LEARNING</text><path d="m384 623 6 6-6 6" fill="none" stroke="#71717a" stroke-width="1.8"/>
+
+  <rect x="66" y="682" width="338" height="88" rx="14" class="card" stroke="rgba(16,185,129,.20)"/><rect x="66" y="682" width="3" height="88" rx="1.5" fill="#10b981"/>
+  <text x="86" y="715" class="text h2">日本</text><text x="138" y="715" class="muted small">にほん</text><text x="86" y="742" class="muted body">Japan</text>
+  <circle cx="316" cy="711" r="4" fill="#818cf8"/><circle cx="330" cy="711" r="4" fill="#818cf8"/><circle cx="344" cy="711" r="4" class="raised"/><circle cx="358" cy="711" r="4" class="raised"/><circle cx="372" cy="711" r="4" class="raised"/><text x="344" y="744" text-anchor="middle" class="muted tiny">TIER 2</text><path d="m384 723 6 6-6 6" fill="none" stroke="#71717a" stroke-width="1.8"/>
+
+  <!-- ARROW 1 -->
+  <path d="M455 520h76" fill="none" stroke="#4338ca" stroke-width="2"/><path d="m520 513 12 7-12 7" fill="none" stroke="#818cf8" stroke-width="2"/><text x="493" y="500" text-anchor="middle" class="muted small">tap New</text>
+
+  <!-- 02 NEW FILTER -->
+  <text x="555" y="128" class="indigoPale label">02 · DICTIONARY · NEW FILTER</text>
+  <use href="#phone-shell" x="555" y="150"/><use href="#back-control" x="555" y="150"/>
+  <text x="615" y="190" class="text h1">Dictionary</text><text x="615" y="212" class="muted small">7 waiting to learn</text>
+  <use href="#search-field" x="555" y="150"/>
+  <rect x="581" y="330" width="52" height="32" rx="16" class="raised"/><text x="607" y="351" text-anchor="middle" class="muted small">All</text>
+  <rect x="641" y="330" width="62" height="32" rx="16" fill="rgba(67,56,202,.25)" stroke="rgba(129,140,248,.42)"/><text x="672" y="351" text-anchor="middle" class="indigoPale small" font-weight="750">New · 7</text>
+  <rect x="711" y="330" width="84" height="32" rx="16" class="raised"/><text x="753" y="351" text-anchor="middle" class="muted small">Learning · 4</text>
+  <rect x="803" y="330" width="112" height="32" rx="16" class="raised"/><text x="859" y="351" text-anchor="middle" class="muted small">Familiar · 13</text>
+
+  <rect x="581" y="382" width="338" height="96" rx="14" fill="rgba(129,140,248,.07)" stroke="rgba(129,140,248,.32)"/><rect x="581" y="382" width="3" height="96" rx="1.5" fill="#818cf8"/>
+  <text x="601" y="417" class="text h2">電車</text><text x="653" y="417" class="muted small">でんしゃ</text><text x="601" y="445" class="muted body">train</text><text x="601" y="463" class="quiet tiny">Added from your station photo</text>
+  <rect x="809" y="399" width="82" height="26" rx="13" fill="rgba(129,140,248,.12)" stroke="rgba(129,140,248,.24)"/><text x="850" y="417" text-anchor="middle" class="indigoPale tiny" font-weight="800">NEW</text><path d="m899 425 6 6-6 6" fill="none" stroke="#818cf8" stroke-width="1.8"/>
+
+  <rect x="581" y="490" width="338" height="96" rx="14" class="card" stroke="rgba(129,140,248,.22)"/><rect x="581" y="490" width="3" height="96" rx="1.5" fill="#818cf8"/>
+  <text x="601" y="525" class="text h2">改札</text><text x="653" y="525" class="muted small">かいさつ</text><text x="601" y="553" class="muted body">ticket gate</text><text x="601" y="571" class="quiet tiny">Added from your station photo</text>
+  <rect x="809" y="507" width="82" height="26" rx="13" fill="rgba(129,140,248,.12)"/><text x="850" y="525" text-anchor="middle" class="indigoPale tiny" font-weight="800">NEW</text><path d="m899 533 6 6-6 6" fill="none" stroke="#71717a" stroke-width="1.8"/>
+
+  <rect x="581" y="598" width="338" height="96" rx="14" class="card" stroke="rgba(129,140,248,.22)"/><rect x="581" y="598" width="3" height="96" rx="1.5" fill="#818cf8"/>
+  <text x="601" y="633" class="text h2">終電</text><text x="653" y="633" class="muted small">しゅうでん</text><text x="601" y="661" class="muted body">last train</text><text x="601" y="679" class="quiet tiny">Added from your station photo</text>
+  <rect x="809" y="615" width="82" height="26" rx="13" fill="rgba(129,140,248,.12)"/><text x="850" y="633" text-anchor="middle" class="indigoPale tiny" font-weight="800">NEW</text><path d="m899 641 6 6-6 6" fill="none" stroke="#71717a" stroke-width="1.8"/>
+
+  <rect x="581" y="730" width="338" height="64" rx="14" fill="rgba(129,140,248,.08)" stroke="rgba(129,140,248,.20)"/><circle cx="608" cy="762" r="12" fill="rgba(129,140,248,.14)"/><path d="M608 755v1m0 5v8" stroke="#818cf8" stroke-width="1.7" stroke-linecap="round"/><text x="630" y="757" class="indigoPale small">New words enter a future learning session.</text><text x="630" y="777" class="muted tiny">You can still open and study them now.</text>
+
+  <!-- ARROW 2 -->
+  <path d="M970 520h76" fill="none" stroke="#4338ca" stroke-width="2"/><path d="m1035 513 12 7-12 7" fill="none" stroke="#818cf8" stroke-width="2"/><text x="1008" y="500" text-anchor="middle" class="muted small">tap 電車</text>
+
+  <!-- 03 WORD REFERENCE -->
+  <text x="1070" y="128" class="indigoPale label">03 · WORD REFERENCE · WAITING TO LEARN</text>
+  <use href="#phone-shell" x="1070" y="150"/><use href="#back-control" x="1070" y="150"/>
+  <text x="1130" y="199" class="text h2">Word</text>
+  <rect x="1256" y="181" width="114" height="28" rx="14" fill="rgba(129,140,248,.12)" stroke="rgba(129,140,248,.24)"/><circle cx="1274" cy="195" r="5" fill="none" stroke="#818cf8" stroke-width="1.3"/><path d="M1274 190v10m-5-5h10" stroke="#818cf8" stroke-width="1.1"/><text x="1323" y="199" text-anchor="middle" class="indigoPale tiny" font-weight="800">NEW</text>
+  <text x="1265" y="327" text-anchor="middle" class="text word">電車</text><text x="1265" y="359" text-anchor="middle" class="indigoPale body" letter-spacing="2">でんしゃ</text><text x="1265" y="393" text-anchor="middle" class="text h2">train</text>
+
+  <text x="1096" y="440" class="muted label">MEMORY HOOK</text><rect x="1096" y="456" width="338" height="82" rx="14" class="raised" stroke="rgba(255,255,255,.08)"/><line x1="1265" y1="456" x2="1265" y2="538" class="line"/>
+  <text x="1116" y="494" class="indigoPale h1">電</text><text x="1149" y="494" class="muted small">electricity</text><text x="1285" y="494" class="emeraldPale h1">車</text><text x="1318" y="494" class="muted small">vehicle</text>
+
+  <text x="1096" y="576" class="muted label">EXAMPLE</text><rect x="1096" y="592" width="338" height="108" rx="14" class="card" stroke="rgba(255,255,255,.08)"/>
+  <path d="M1118 613h10l-4 12h-9Z" fill="none" stroke="#818cf8" stroke-width="1.5"/><text x="1116" y="651" class="text body" font-weight="650">電車、遅れてるじゃん。</text><text x="1116" y="678" class="muted small">A casual sentence about a delayed train.</text>
+
+  <rect x="1096" y="724" width="338" height="100" rx="14" fill="rgba(129,140,248,.08)" stroke="rgba(129,140,248,.20)"/><circle cx="1123" cy="753" r="12" fill="rgba(129,140,248,.14)"/><path d="M1123 746v1m0 5v8" stroke="#818cf8" stroke-width="1.7" stroke-linecap="round"/>
+  <text x="1146" y="754" class="indigoPale small" font-weight="750">Waiting for a learning session</text><text x="1116" y="782" class="muted small">Browsing is read-only. The session will still</text><text x="1116" y="802" class="muted small">teach this word before asking you to recall it.</text>
+
+  <text x="40" y="945" class="muted body">State contract: filters are server-derived and applied before pagination; opening this page never sets introducedAt, schedules a review, consumes allowance, or advances familiarity.</text>
+</svg>

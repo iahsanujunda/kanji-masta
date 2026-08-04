@@ -1,0 +1,188 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1960" viewBox="0 0 1800 1960" role="img" aria-labelledby="title desc">
+  <title id="title">Kanji Masta Phase 3 learning session flow</title>
+  <desc id="desc">Six dark mobile mockups showing the authoritative session flow from a ready home slot through a new-word introduction, spaced quick recalls, supportive feedback, learned confirmation, and the session summary.</desc>
+  <defs>
+    <linearGradient id="slot-gradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#065f46"/>
+      <stop offset="1" stop-color="#312e81"/>
+    </linearGradient>
+    <linearGradient id="brand-gradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#4338ca"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="14" stdDeviation="20" flood-color="#000000" flood-opacity="0.42"/>
+    </filter>
+    <style>
+      .canvas{fill:#050508}.app{fill:#0a0a0f}.card{fill:#0f0f16}.raised{fill:#1a1a24}.line{stroke:rgba(255,255,255,.08);stroke-width:1}
+      .text{fill:#f5f5f7;font-family:"Noto Sans JP",system-ui,-apple-system,"Segoe UI",sans-serif}.muted{fill:#a1a1aa;font-family:"Noto Sans JP",system-ui,-apple-system,"Segoe UI",sans-serif}.quiet{fill:#71717a;font-family:"Noto Sans JP",system-ui,-apple-system,"Segoe UI",sans-serif}
+      .emerald{fill:#34d399;font-family:"Noto Sans JP",system-ui,sans-serif}.emeraldPale{fill:#6ee7b7;font-family:"Noto Sans JP",system-ui,sans-serif}.indigo{fill:#818cf8;font-family:"Noto Sans JP",system-ui,sans-serif}.indigoPale{fill:#a5b4fc;font-family:"Noto Sans JP",system-ui,sans-serif}
+      .darkText{fill:#031b13;font-family:"Noto Sans JP",system-ui,sans-serif}.title{font-size:28px;font-weight:800;letter-spacing:-.6px}.h1{font-size:26px;font-weight:800;letter-spacing:-.4px}.h2{font-size:19px;font-weight:750}.word{font-size:68px;font-weight:650}.body{font-size:14px}.small{font-size:12px}.tiny{font-size:10px}.label{font-size:11px;font-weight:800;letter-spacing:1.2px}.button{font-size:15px;font-weight:800}
+    </style>
+    <g id="phone-shell">
+      <rect width="390" height="760" rx="30" class="app" filter="url(#shadow)"/>
+      <rect x="1" y="1" width="388" height="758" rx="29" fill="none" stroke="rgba(255,255,255,.09)"/>
+    </g>
+  </defs>
+
+  <rect width="1800" height="1960" class="canvas"/>
+  <rect x="60" y="32" width="38" height="38" rx="10" fill="url(#brand-gradient)"/>
+  <path d="M72 58c10-2 15-8 16-17-9 1-15 6-16 17Zm0 0c-2-7-1-13 2-18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+  <text x="112" y="55" class="text title">Phase 3 — introduction and learning loop</text>
+  <text x="112" y="80" class="muted body">Mobile storyboard aligned to the PostgreSQL-backed session contract and the existing Kanji Masta dark theme.</text>
+  <rect x="1538" y="36" width="202" height="30" rx="15" fill="rgba(16,185,129,.13)" stroke="rgba(52,211,153,.28)"/>
+  <text x="1639" y="56" text-anchor="middle" class="emeraldPale label">UX MOCKUP · AUG 2026</text>
+
+  <!-- 01 HOME READY -->
+  <text x="60" y="128" class="indigoPale label">01 · HOME · SESSION READY</text>
+  <use href="#phone-shell" x="60" y="150"/>
+  <text x="86" y="211" class="text h1">Good evening</text>
+  <text x="86" y="234" fill="#ff9800" class="body" font-family="system-ui" font-weight="700">You are on a 12 day streak</text>
+  <rect x="361" y="184" width="62" height="30" rx="15" fill="rgba(255,152,0,.13)"/>
+  <path d="M377 205c-7-7 2-12 0-19 8 5 11 11 7 18-2 4-5 5-7 1Z" fill="none" stroke="#ffb74d" stroke-width="1.8"/>
+  <text x="400" y="205" text-anchor="middle" fill="#ffb74d" font-family="system-ui" font-size="13" font-weight="800">12</text>
+  <circle cx="432" cy="199" r="17" class="raised"/>
+  <path d="M432 190v18M423 199h18M426 193l12 12M438 193l-12 12" fill="none" stroke="#a1a1aa" stroke-width="1.5" stroke-linecap="round"/>
+  <rect x="86" y="270" width="338" height="254" rx="22" fill="url(#slot-gradient)" stroke="rgba(255,255,255,.11)"/>
+  <circle cx="405" cy="286" r="74" fill="rgba(255,255,255,.035)"/>
+  <text x="112" y="313" class="emeraldPale body" font-weight="750">Ready to learn</text>
+  <rect x="304" y="293" width="100" height="28" rx="14" fill="rgba(0,0,0,.24)"/>
+  <text x="354" y="312" text-anchor="middle" class="text small" font-weight="700">+ 1 new word</text>
+  <text x="112" y="369" class="text" font-family="system-ui" font-size="46" font-weight="850">5</text>
+  <text x="148" y="369" class="text h2" opacity=".72">reviews</text>
+  <rect x="112" y="410" width="286" height="70" rx="14" fill="#10b981"/>
+  <text x="245" y="452" text-anchor="middle" class="darkText button">Start session</text>
+  <path d="m365 440 8 7-8 7" fill="none" stroke="#031b13" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="86" y="550" width="338" height="132" rx="18" class="card" stroke="rgba(255,255,255,.08)"/>
+  <rect x="106" y="571" width="44" height="44" rx="12" fill="rgba(129,140,248,.12)"/>
+  <path d="M117 583h9c4 0 6 2 6 6v14c0-4-2-6-6-6h-9Zm22 0h-7v20c0-4 2-6 6-6h7v-11Z" fill="none" stroke="#818cf8" stroke-width="1.6"/>
+  <text x="165" y="590" class="indigoPale label">DAILY INSIGHT</text>
+  <text x="165" y="619" class="text h2">Why short gaps strengthen recall</text>
+  <text x="165" y="647" class="muted small">Spacing makes the next retrieval useful.</text>
+
+  <!-- ARROW 1 -->
+  <path d="M494 530h132" fill="none" stroke="#4338ca" stroke-width="2"/>
+  <path d="m615 523 12 7-12 7" fill="none" stroke="#818cf8" stroke-width="2"/>
+  <text x="560" y="510" text-anchor="middle" class="muted small">start returns snapshot</text>
+
+  <!-- 02 INTRODUCTION -->
+  <text x="705" y="128" class="indigoPale label">02 · INTRODUCTION · NEW</text>
+  <use href="#phone-shell" x="705" y="150"/>
+  <circle cx="745" cy="196" r="20" class="raised"/>
+  <path d="m738 189 14 14m0-14-14 14" stroke="#a1a1aa" stroke-width="2" stroke-linecap="round"/>
+  <text x="900" y="188" text-anchor="middle" class="indigoPale label">NEW WORD</text>
+  <text x="900" y="208" text-anchor="middle" class="muted small">5 reviews left</text>
+  <rect x="731" y="226" width="338" height="6" rx="3" class="raised"/>
+  <rect x="731" y="226" width="0" height="6" rx="3" fill="#818cf8"/>
+  <rect x="852" y="255" width="96" height="28" rx="14" fill="rgba(129,140,248,.12)" stroke="rgba(129,140,248,.24)"/>
+  <path d="M869 264h7c3 0 5 2 5 5v7c0-3-2-5-5-5h-7Zm17 0h-5v12c0-3 2-5 5-5h6v-7Z" fill="none" stroke="#818cf8" stroke-width="1.3"/>
+  <text x="908" y="274" text-anchor="middle" class="indigoPale tiny" font-weight="750">FIRST LOOK</text>
+  <text x="900" y="365" text-anchor="middle" class="text word">電車</text>
+  <text x="900" y="396" text-anchor="middle" class="indigoPale body" letter-spacing="2">でんしゃ</text>
+  <text x="900" y="428" text-anchor="middle" class="text h2">train</text>
+  <text x="731" y="472" class="muted label">MEMORY HOOK</text>
+  <rect x="731" y="488" width="338" height="82" rx="14" class="raised" stroke="rgba(255,255,255,.08)"/>
+  <line x1="900" y1="488" x2="900" y2="570" class="line"/>
+  <text x="751" y="526" class="indigoPale h1">電</text><text x="784" y="526" class="muted small">electricity</text>
+  <text x="920" y="526" class="emeraldPale h1">車</text><text x="953" y="526" class="muted small">vehicle</text>
+  <rect x="731" y="590" width="338" height="104" rx="14" class="card" stroke="rgba(255,255,255,.08)"/>
+  <path d="M753 610h10l-4 12h-9Z" fill="none" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="751" y="645" class="text body" font-weight="650">電車、遅れてるじゃん。</text>
+  <text x="751" y="672" class="muted small">A casual sentence about a delayed train.</text>
+  <rect x="731" y="836" width="338" height="52" rx="12" fill="#10b981"/>
+  <text x="900" y="869" text-anchor="middle" class="darkText button">Got it</text>
+
+  <!-- ARROW 2 -->
+  <path d="M1139 530h132" fill="none" stroke="#4338ca" stroke-width="2"/>
+  <path d="m1260 523 12 7-12 7" fill="none" stroke="#818cf8" stroke-width="2"/>
+  <text x="1205" y="495" text-anchor="middle" class="muted small">acknowledge</text>
+  <text x="1205" y="515" text-anchor="middle" class="indigoPale small">2 reviews later</text>
+
+  <!-- 03 QUICK RECALL STEP 1 -->
+  <text x="1350" y="128" class="indigoPale label">03 · QUICK RECALL · STEP 1</text>
+  <use href="#phone-shell" x="1350" y="150"/>
+  <circle cx="1390" cy="196" r="20" class="raised"/>
+  <path d="m1383 189 14 14m0-14-14 14" stroke="#a1a1aa" stroke-width="2" stroke-linecap="round"/>
+  <text x="1545" y="188" text-anchor="middle" class="indigoPale label">QUICK RECALL · STEP 1</text>
+  <text x="1545" y="208" text-anchor="middle" class="muted small">3 reviews left</text>
+  <rect x="1376" y="226" width="338" height="6" rx="3" class="raised"/>
+  <rect x="1376" y="226" width="135" height="6" rx="3" fill="#818cf8"/>
+  <text x="1545" y="286" text-anchor="middle" class="muted label">WHAT DOES THIS WORD MEAN?</text>
+  <rect x="1483" y="315" width="124" height="26" rx="13" fill="rgba(129,140,248,.10)"/>
+  <text x="1545" y="333" text-anchor="middle" class="indigoPale tiny" font-weight="700">LEARNING STEP 1 OF 2</text>
+  <text x="1545" y="430" text-anchor="middle" class="text word">電車</text>
+  <text x="1545" y="461" text-anchor="middle" class="muted body" letter-spacing="2">でんしゃ</text>
+  <g>
+    <rect x="1376" y="518" width="338" height="52" rx="12" class="raised" stroke="rgba(255,255,255,.08)"/><text x="1545" y="550" text-anchor="middle" class="text button">train</text>
+    <rect x="1376" y="584" width="338" height="52" rx="12" class="raised" stroke="rgba(255,255,255,.08)"/><text x="1545" y="616" text-anchor="middle" class="text button">phone</text>
+    <rect x="1376" y="650" width="338" height="52" rx="12" class="raised" stroke="rgba(255,255,255,.08)"/><text x="1545" y="682" text-anchor="middle" class="text button">battery</text>
+    <rect x="1376" y="716" width="338" height="52" rx="12" class="raised" stroke="rgba(255,255,255,.08)"/><text x="1545" y="748" text-anchor="middle" class="text button">subway</text>
+  </g>
+
+  <!-- ROW TRANSITION -->
+  <path d="M1545 940v52H255v45" fill="none" stroke="#4338ca" stroke-width="2" stroke-dasharray="7 7"/>
+  <path d="m248 1025 7 12 7-12" fill="none" stroke="#818cf8" stroke-width="2"/>
+  <text x="900" y="977" text-anchor="middle" class="muted small">A wrong first recall inserts step 2 and replaces the final eligible normal review; answer allowance stays at five.</text>
+
+  <!-- 04 NOT YET -->
+  <text x="60" y="1048" class="indigoPale label">04 · FEEDBACK · NOT YET</text>
+  <use href="#phone-shell" x="60" y="1070"/>
+  <circle cx="100" cy="1116" r="20" class="raised"/><path d="m93 1109 14 14m0-14-14 14" stroke="#a1a1aa" stroke-width="2" stroke-linecap="round"/>
+  <text x="255" y="1108" text-anchor="middle" class="indigoPale label">QUICK RECALL · STEP 1</text><text x="255" y="1128" text-anchor="middle" class="muted small">2 reviews left</text>
+  <rect x="86" y="1146" width="338" height="6" rx="3" class="raised"/><rect x="86" y="1146" width="203" height="6" rx="3" fill="#818cf8"/>
+  <text x="255" y="1223" text-anchor="middle" class="text word">電車</text><text x="255" y="1253" text-anchor="middle" class="muted body" letter-spacing="2">でんしゃ</text>
+  <rect x="86" y="1290" width="338" height="48" rx="12" fill="rgba(16,185,129,.10)" stroke="rgba(16,185,129,.55)"/><text x="255" y="1320" text-anchor="middle" class="emeraldPale button">train</text>
+  <rect x="86" y="1350" width="338" height="48" rx="12" fill="rgba(129,140,248,.08)" stroke="rgba(129,140,248,.45)"/><text x="255" y="1380" text-anchor="middle" class="indigoPale button">phone</text>
+  <rect x="60" y="1462" width="390" height="368" rx="24" class="raised" stroke="rgba(129,140,248,.35)"/>
+  <circle cx="108" cy="1510" r="18" fill="rgba(129,140,248,.12)"/><path d="M108 1501v1m0 6v11" stroke="#818cf8" stroke-width="2.3" stroke-linecap="round"/>
+  <text x="139" y="1517" class="text h2">Not yet</text>
+  <text x="86" y="1565" class="indigoPale h2">電</text><text x="115" y="1565" class="muted small">electricity</text><text x="193" y="1565" class="quiet body">+</text><text x="213" y="1565" class="emeraldPale h2">車</text><text x="243" y="1565" class="muted small">vehicle</text>
+  <text x="86" y="1605" class="muted small">You'll see 電車 once more before this</text><text x="86" y="1627" class="muted small">session ends. No progress is lost.</text>
+  <rect x="86" y="1664" width="338" height="52" rx="12" fill="rgba(129,140,248,.12)" stroke="rgba(129,140,248,.24)"/><text x="255" y="1697" text-anchor="middle" class="indigoPale button">Continue</text>
+
+  <!-- ARROW 4 -->
+  <path d="M494 1450h132" fill="none" stroke="#4338ca" stroke-width="2"/><path d="m615 1443 12 7-12 7" fill="none" stroke="#818cf8" stroke-width="2"/>
+  <text x="560" y="1415" text-anchor="middle" class="muted small">continue</text><text x="560" y="1435" text-anchor="middle" class="indigoPale small">3 reviews later</text>
+
+  <!-- 05 LEARNED -->
+  <text x="705" y="1048" class="indigoPale label">05 · QUICK RECALL · STEP 2 · LEARNED</text>
+  <use href="#phone-shell" x="705" y="1070"/>
+  <circle cx="745" cy="1116" r="20" class="raised"/><path d="m738 1109 14 14m0-14-14 14" stroke="#a1a1aa" stroke-width="2" stroke-linecap="round"/>
+  <text x="900" y="1108" text-anchor="middle" class="indigoPale label">QUICK RECALL · STEP 2</text><text x="900" y="1128" text-anchor="middle" class="muted small">0 reviews left</text>
+  <rect x="731" y="1146" width="338" height="6" rx="3" class="raised"/><rect x="731" y="1146" width="338" height="6" rx="3" fill="#818cf8"/>
+  <text x="900" y="1223" text-anchor="middle" class="text word">電車</text><text x="900" y="1253" text-anchor="middle" class="muted body" letter-spacing="2">でんしゃ</text>
+  <rect x="731" y="1290" width="338" height="52" rx="12" fill="rgba(16,185,129,.10)" stroke="rgba(16,185,129,.55)"/><text x="900" y="1322" text-anchor="middle" class="emeraldPale button">train</text>
+  <rect x="705" y="1462" width="390" height="368" rx="24" fill="#064e3b" stroke="rgba(52,211,153,.40)"/>
+  <circle cx="753" cy="1510" r="18" fill="rgba(52,211,153,.16)"/><path d="m744 1510 6 6 13-15" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="784" y="1517" class="text h2">Word learned</text>
+  <text x="731" y="1565" fill="#d1fae5" class="body">電車 has entered your regular review</text><text x="731" y="1588" fill="#d1fae5" class="body">schedule at familiarity 1.</text>
+  <rect x="731" y="1644" width="338" height="52" rx="12" fill="#10b981"/><text x="900" y="1677" text-anchor="middle" class="darkText button">Continue</text>
+
+  <!-- ARROW 5 -->
+  <path d="M1139 1450h132" fill="none" stroke="#4338ca" stroke-width="2"/><path d="m1260 1443 12 7-12 7" fill="none" stroke="#818cf8" stroke-width="2"/>
+  <text x="1205" y="1430" text-anchor="middle" class="muted small">session complete</text>
+
+  <!-- 06 SUMMARY -->
+  <text x="1350" y="1048" class="indigoPale label">06 · SESSION SUMMARY</text>
+  <use href="#phone-shell" x="1350" y="1070"/>
+  <circle cx="1408" cy="1142" r="31" fill="rgba(16,185,129,.12)"/>
+  <path d="M1408 1156c-3-15 4-25 18-29-1 14-7 23-18 29Zm0 0c0-10-5-18-14-23" fill="none" stroke="#34d399" stroke-width="2.2" stroke-linecap="round"/>
+  <text x="1376" y="1212" class="text title">Session complete</text>
+  <text x="1376" y="1244" class="muted body">A new word was taught before it was tested,</text><text x="1376" y="1267" class="muted body">while regular reviews kept moving.</text>
+  <line x1="1376" y1="1305" x2="1714" y2="1305" class="line"/>
+  <circle cx="1400" cy="1351" r="18" fill="rgba(16,185,129,.10)"/><path d="M1400 1360c-2-10 3-17 12-20-1 9-5 15-12 20Z" fill="none" stroke="#34d399" stroke-width="1.7"/>
+  <text x="1438" y="1359" class="text h1">1</text><text x="1487" y="1356" class="muted body">new word learned</text>
+  <line x1="1376" y1="1393" x2="1714" y2="1393" class="line"/>
+  <circle cx="1400" cy="1439" r="18" fill="rgba(129,140,248,.10)"/><path d="m1392 1439 6 6 11-14" fill="none" stroke="#818cf8" stroke-width="2"/>
+  <text x="1438" y="1447" class="text h1">3</text><text x="1487" y="1444" class="muted body">reviews correct</text>
+  <line x1="1376" y1="1481" x2="1714" y2="1481" class="line"/>
+  <circle cx="1400" cy="1527" r="18" fill="rgba(167,139,250,.10)"/><circle cx="1400" cy="1527" r="8" fill="none" stroke="#a78bfa" stroke-width="1.7"/><path d="M1400 1522v6l4 3" fill="none" stroke="#a78bfa" stroke-width="1.7" stroke-linecap="round"/>
+  <text x="1438" y="1535" class="text h1">0</text><text x="1487" y="1532" class="muted body">to revisit</text>
+  <line x1="1376" y1="1569" x2="1714" y2="1569" class="line"/>
+  <rect x="1376" y="1602" width="338" height="80" rx="14" fill="rgba(129,140,248,.08)" stroke="rgba(129,140,248,.20)"/>
+  <path d="M1397 1622h8c4 0 6 2 6 6v17c0-4-2-6-6-6h-8Zm28 0h-8c-4 0-6 2-6 6v17c0-4 2-6 6-6h8Z" fill="none" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="1441" y="1634" class="indigoPale small">電車 returns as a regular Tier 1 review</text><text x="1441" y="1656" class="indigoPale small">in the next learning window.</text>
+  <rect x="1376" y="1742" width="338" height="52" rx="12" fill="#10b981"/><text x="1545" y="1775" text-anchor="middle" class="darkText button">Return home</text>
+
+  <text x="60" y="1905" class="muted body">Contract notes: introductions never advance answer progress; feedback stays attached to the answered card; Continue renders the server-provided current card; summary counters are server-derived.</text>
+</svg>

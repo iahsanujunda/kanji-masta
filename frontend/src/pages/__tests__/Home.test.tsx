@@ -78,7 +78,7 @@ describe("Home", () => {
     renderWithProviders(<Home />);
 
     await waitFor(() => {
-      expect(screen.getByText("25 words learned")).toBeInTheDocument();
+      expect(screen.getByText("25 saved words")).toBeInTheDocument();
     });
   });
 });

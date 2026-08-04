@@ -43,14 +43,16 @@ interface UserSummary {
   slotRemaining: number;
   slotTotal: number;
   slotEndsAt: string | null;
+  sessionState?: "READY" | "ACTIVE" | "COOLDOWN";
   onboardingComplete: boolean;
 }
 
 export default function Home() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [errorBanner, setErrorBanner] = useState<string | null>(null);
-  const [quizBanner, setQuizBanner] = useState(false);
+  const navigationState = location.state as { error?: string; quizGenerating?: boolean } | null;
+  const [errorBanner, setErrorBanner] = useState<string | null>(() => navigationState?.error ?? null);
+  const [quizBanner, setQuizBanner] = useState(() => Boolean(navigationState?.quizGenerating));
 
   const { data: summary, isLoading } = useQuery({
     queryKey: ["user-summary"],
@@ -73,32 +75,22 @@ export default function Home() {
 
   // Handle navigation state from Capture page
   useEffect(() => {
-    const state = location.state as { error?: string; quizGenerating?: boolean } | null;
     window.history.replaceState({}, "");
 
-    if (state?.error) {
-      setErrorBanner(state.error);
+    if (navigationState?.error) {
       const timer = setTimeout(() => setErrorBanner(null), 5000);
       return () => clearTimeout(timer);
     }
 
-    if (state?.quizGenerating) {
-      setQuizBanner(true);
+    if (navigationState?.quizGenerating) {
       const timer = setTimeout(() => setQuizBanner(false), 4000);
       return () => clearTimeout(timer);
     }
-  }, [location.state]);
+  }, [navigationState]);
 
-  const [lessonState, setLessonState] = useState(() => getCurrentLesson());
-  const { lesson: todayLesson, locked: lessonLocked, unlocksAt: lessonUnlocksAt } = lessonState;
-  const [lessonCompleted, setLessonCompleted] = useState(() => isLessonCompleted(todayLesson.id));
-
-  // Refresh lesson state when returning from lesson detail
-  useEffect(() => {
-    const state = getCurrentLesson();
-    setLessonState(state);
-    setLessonCompleted(isLessonCompleted(state.lesson.id));
-  }, [location.key]);
+  const [lessonState] = useState(() => getCurrentLesson());
+  const { lesson: todayLesson, locked: lessonLocked, unlocksInHours: lessonUnlockHours } = lessonState;
+  const [lessonCompleted] = useState(() => isLessonCompleted(todayLesson.id));
 
   const streak = summary?.streak ?? 0;
   const kanjiLearning = summary?.kanjiLearning ?? 0;
@@ -109,6 +101,7 @@ export default function Home() {
   const slotEndsAt = summary?.slotEndsAt;
   const slotEndDate = slotEndsAt ? new Date(slotEndsAt) : null;
   const hasActiveSlot = slotEndDate != null && slotEndDate > new Date();
+  const sessionState = summary?.sessionState ?? (hasActiveSlot ? (slotRemaining > 0 ? "ACTIVE" : "COOLDOWN") : "READY");
   const slotTimeLeft = slotEndDate ? formatTimeLeft(slotEndDate) : "";
   const onboardingComplete = summary?.onboardingComplete ?? false;
 
@@ -221,7 +214,7 @@ export default function Home() {
               Add More Kanji
             </Button>
           </Paper>
-        ) : hasActiveSlot && slotRemaining > 0 ? (
+        ) : sessionState === "ACTIVE" ? (
           /* Active slot with quizzes remaining */
           <Paper elevation={4} sx={{ background: "linear-gradient(135deg, #065f46, #312e81)", color: "white", borderRadius: 4, p: 3 }}>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 3 }}>
@@ -242,7 +235,7 @@ export default function Home() {
               Continue Session
             </Button>
           </Paper>
-        ) : hasActiveSlot && slotRemaining === 0 ? (
+        ) : sessionState === "COOLDOWN" ? (
           /* Slot complete — show countdown to next session */
           <Paper elevation={4} sx={{ background: "linear-gradient(135deg, #065f46, #312e81)", color: "white", borderRadius: 4, p: 3 }}>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 2 }}>
@@ -309,7 +302,7 @@ export default function Home() {
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
                 <LockOutlinedIcon sx={{ fontSize: 14, color: "text.disabled" }} />
                 <Typography variant="caption" sx={{ fontWeight: 700, color: "text.disabled" }}>
-                  {lessonUnlocksAt ? `Unlocks in ${Math.ceil((lessonUnlocksAt.getTime() - Date.now()) / 3_600_000)}h` : "Locked"}
+                  {lessonUnlockHours ? `Unlocks in ${lessonUnlockHours}h` : "Locked"}
                 </Typography>
               </Box>
             ) : (
@@ -369,7 +362,7 @@ export default function Home() {
             <Box>
               <Typography fontWeight="bold">Dictionary</Typography>
               <Typography variant="body2" color="text.secondary">
-                {loading ? "–" : wordCount} words learned
+                {loading ? "–" : wordCount} saved words
               </Typography>
             </Box>
           </Box>

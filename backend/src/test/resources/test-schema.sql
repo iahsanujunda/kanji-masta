@@ -19,6 +19,10 @@ CREATE TYPE job_status AS ENUM ('PENDING', 'PROCESSING', 'DONE', 'FAILED');
 CREATE TYPE distractor_trigger AS ENUM ('INITIAL', 'MILESTONE', 'SERVE_COUNT');
 CREATE TYPE word_source AS ENUM ('PHOTO', 'QUIZ', 'CHALLENGE', 'DISCOVERY');
 CREATE TYPE invite_status AS ENUM ('PENDING', 'ACCEPTED', 'REVOKED');
+CREATE TYPE quiz_slot_status AS ENUM ('ACTIVE', 'COMPLETED', 'ABANDONED', 'EXPIRED');
+CREATE TYPE session_card_type AS ENUM ('INTRODUCTION', 'QUIZ');
+CREATE TYPE session_card_status AS ENUM ('PENDING', 'COMPLETED', 'DROPPED');
+CREATE TYPE introduction_kind AS ENUM ('NEW', 'REINTRODUCTION');
 
 -- =============================================================================
 -- Tables
@@ -121,24 +125,14 @@ CREATE TABLE quiz_slot (
     started_at  timestamptz,
     completed   integer NOT NULL DEFAULT 0,
     allowance   integer NOT NULL,
+    status      quiz_slot_status NOT NULL DEFAULT 'ACTIVE',
+    version     integer NOT NULL DEFAULT 0,
+    completed_at timestamptz,
     created_at  timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_quiz_slot_user_slot ON quiz_slot (user_id, slot_end DESC);
-
--- Full answer history
-CREATE TABLE quiz_serve (
-    id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    quiz_id                     uuid NOT NULL REFERENCES quiz_bank(id),
-    distractor_set_id           uuid NOT NULL REFERENCES quiz_distractor(id),
-    slot_id                     uuid NOT NULL REFERENCES quiz_slot(id),
-    user_id                     text NOT NULL,
-    word_familiarity_at_serve   integer NOT NULL,
-    correct                     boolean NOT NULL,
-    answered_at                 timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE INDEX idx_quiz_serve_slot_id ON quiz_serve (slot_id);
+CREATE UNIQUE INDEX idx_quiz_slot_one_active_per_user ON quiz_slot (user_id) WHERE status = 'ACTIVE';
 
 -- Background job queue for quiz generation
 CREATE TABLE quiz_generation_job (
@@ -167,6 +161,8 @@ CREATE TABLE user_words (
     familiarity             integer NOT NULL DEFAULT 0,
     current_tier            quiz_type NOT NULL DEFAULT 'MEANING_RECALL',
     next_review             timestamptz,
+    introduced_at           timestamptz,
+    consecutive_failures    integer NOT NULL DEFAULT 0,
     discovered_via_kanji_id uuid,
     unlocked                boolean NOT NULL DEFAULT false,
     created_at              timestamptz NOT NULL DEFAULT now(),
@@ -174,6 +170,44 @@ CREATE TABLE user_words (
 );
 
 CREATE INDEX idx_user_words_user_id ON user_words (user_id);
+
+CREATE TABLE quiz_session_card (
+    id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    slot_id             uuid NOT NULL REFERENCES quiz_slot(id) ON DELETE CASCADE,
+    user_id             text NOT NULL,
+    position            integer NOT NULL,
+    card_type           session_card_type NOT NULL,
+    status              session_card_status NOT NULL DEFAULT 'PENDING',
+    user_word_id        uuid NOT NULL REFERENCES user_words(id),
+    quiz_id             uuid REFERENCES quiz_bank(id),
+    distractor_set_id   uuid REFERENCES quiz_distractor(id),
+    learning_step       integer,
+    introduction_kind   introduction_kind,
+    options             text[] NOT NULL DEFAULT '{}',
+    submission_id       uuid UNIQUE,
+    created_at          timestamptz NOT NULL DEFAULT now(),
+    completed_at        timestamptz,
+    UNIQUE (slot_id, position)
+);
+
+CREATE INDEX idx_quiz_session_card_pending ON quiz_session_card (slot_id, position) WHERE status = 'PENDING';
+
+-- Full answer history
+CREATE TABLE quiz_serve (
+    id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    quiz_id                     uuid NOT NULL REFERENCES quiz_bank(id),
+    distractor_set_id           uuid REFERENCES quiz_distractor(id),
+    slot_id                     uuid NOT NULL REFERENCES quiz_slot(id),
+    user_id                     text NOT NULL,
+    word_familiarity_at_serve   integer NOT NULL,
+    correct                     boolean NOT NULL,
+    session_card_id             uuid REFERENCES quiz_session_card(id),
+    submission_id               uuid UNIQUE,
+    answered_in_ms              integer,
+    answered_at                 timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_quiz_serve_slot_id ON quiz_serve (slot_id);
 
 -- Milestone challenges
 CREATE TABLE challenge_session (

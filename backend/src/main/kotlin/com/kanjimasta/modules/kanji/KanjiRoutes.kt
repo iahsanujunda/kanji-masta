@@ -83,9 +83,19 @@ fun Route.kanjiRoutes(kanjiService: KanjiService, settingsRepository: SettingsRe
         get("/list") {
             val user = call.principal<AuthUser>()!!
             val query = call.request.queryParameters["q"]
+            val state = call.request.queryParameters["state"]
             val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
             val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 30
-            val result = kanjiService.getWordList(user.uid, query, offset, limit)
+            val result = kanjiService.getWordList(user.uid, query, state, offset, limit.coerceIn(1, 100))
+            call.respond(result)
+        }
+
+        get("/{userWordId}") {
+            val user = call.principal<AuthUser>()!!
+            val userWordId = call.parameters["userWordId"]
+                ?: return@get call.respond(HttpStatusCode.BadRequest)
+            val result = runCatching { kanjiService.getWordReference(user.uid, userWordId) }.getOrNull()
+                ?: return@get call.respond(HttpStatusCode.NotFound)
             call.respond(result)
         }
     }

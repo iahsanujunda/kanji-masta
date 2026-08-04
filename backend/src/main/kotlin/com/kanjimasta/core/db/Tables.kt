@@ -25,6 +25,10 @@ enum class JobStatus { PENDING, PROCESSING, DONE, FAILED }
 enum class DistractorTrigger { INITIAL, MILESTONE, SERVE_COUNT }
 enum class WordSource { PHOTO, QUIZ, CHALLENGE, DISCOVERY }
 enum class InviteStatus { PENDING, ACCEPTED, REVOKED }
+enum class QuizSlotStatus { ACTIVE, COMPLETED, ABANDONED, EXPIRED }
+enum class SessionCardType { INTRODUCTION, QUIZ }
+enum class SessionCardStatus { PENDING, COMPLETED, DROPPED }
+enum class IntroductionKind { NEW, REINTRODUCTION }
 
 // =============================================================================
 // Table definitions
@@ -116,6 +120,9 @@ object QuizSlotTable : Table<Nothing>("quiz_slot") {
     val startedAt = timestamp("started_at")
     val completed = int("completed")
     val allowance = int("allowance")
+    val status = pgEnum<QuizSlotStatus>("status", "quiz_slot_status")
+    val version = int("version")
+    val completedAt = timestamp("completed_at")
     val createdAt = timestamp("created_at")
     val updatedAt = timestamp("updated_at")
 }
@@ -128,9 +135,30 @@ object QuizServeTable : Table<Nothing>("quiz_serve") {
     val userId = text("user_id")
     val wordFamiliarityAtServe = int("word_familiarity_at_serve")
     val correct = boolean("correct")
+    val sessionCardId = uuid("session_card_id")
+    val submissionId = uuid("submission_id")
+    val answeredInMs = int("answered_in_ms")
     val answeredAt = timestamp("answered_at")
     val createdAt = timestamp("created_at")
     val updatedAt = timestamp("updated_at")
+}
+
+object QuizSessionCardTable : Table<Nothing>("quiz_session_card") {
+    val id = uuid("id").primaryKey()
+    val slotId = uuid("slot_id")
+    val userId = text("user_id")
+    val position = int("position")
+    val cardType = pgEnum<SessionCardType>("card_type", "session_card_type")
+    val status = pgEnum<SessionCardStatus>("status", "session_card_status")
+    val userWordId = uuid("user_word_id")
+    val quizId = uuid("quiz_id")
+    val distractorSetId = uuid("distractor_set_id")
+    val learningStep = int("learning_step")
+    val introductionKind = pgEnum<IntroductionKind>("introduction_kind", "introduction_kind")
+    val options = textArray("options")
+    val submissionId = uuid("submission_id")
+    val createdAt = timestamp("created_at")
+    val completedAt = timestamp("completed_at")
 }
 
 object QuizGenerationJobTable : Table<Nothing>("quiz_generation_job") {
@@ -157,6 +185,8 @@ object UserWordsTable : Table<Nothing>("user_words") {
     val familiarity = int("familiarity")
     val currentTier = pgEnum<QuizType>("current_tier", "quiz_type")
     val nextReview = timestamp("next_review")
+    val introducedAt = timestamp("introduced_at")
+    val consecutiveFailures = int("consecutive_failures")
     val discoveredViaKanjiId = uuid("discovered_via_kanji_id")
     val unlocked = boolean("unlocked")
     val createdAt = timestamp("created_at")

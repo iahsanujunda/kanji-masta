@@ -2,6 +2,17 @@ import { supabase } from "@/lib/supabase";
 
 const apiUrl = import.meta.env.VITE_API_URL;
 
+export class ApiError extends Error {
+  status: number;
+  body: unknown;
+
+  constructor(status: number, body: unknown) {
+    super(`API error: ${status}`);
+    this.status = status;
+    this.body = body;
+  }
+}
+
 export async function apiFetch<T>(
   path: string,
   init?: RequestInit,
@@ -24,7 +35,8 @@ export async function apiFetch<T>(
       window.location.href = "/login";
       throw new Error("Access denied. Your invite may be invalid or revoked.");
     }
-    throw new Error(`API error: ${response.status}`);
+    const body = await response.json().catch(() => null);
+    throw new ApiError(response.status, body);
   }
 
   return response.json();

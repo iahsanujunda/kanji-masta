@@ -336,13 +336,12 @@ class KanjiRepository(private val db: Database) {
             }
     }
 
-    fun getUserWords(userId: String, searchQuery: String?, offset: Int, limit: Int): WordListResponse {
+    fun getUserWords(userId: String, searchQuery: String?, state: String?, offset: Int, limit: Int): WordListResponse {
         var items = db.from(UserWordsTable)
             .innerJoin(WordMasterTable, on = UserWordsTable.wordMasterId eq WordMasterTable.id)
             .select()
             .where { UserWordsTable.userId eq userId }
             .orderBy(WordMasterTable.reading.asc())
-            .limit(500)
             .map { row ->
                 WordListItem(
                     id = row[UserWordsTable.id].toString(),
@@ -351,6 +350,11 @@ class KanjiRepository(private val db: Database) {
                     meaning = (row[WordMasterTable.meanings] ?: emptyList()).firstOrNull() ?: "",
                     familiarity = row[UserWordsTable.familiarity] ?: 0,
                     nextReview = row[UserWordsTable.nextReview]?.toString(),
+                    learningState = learningState(
+                        familiarity = row[UserWordsTable.familiarity] ?: 0,
+                        introducedAt = row[UserWordsTable.introducedAt],
+                        failures = row[UserWordsTable.consecutiveFailures] ?: 0,
+                    ),
                 )
             }
 
@@ -364,11 +368,97 @@ class KanjiRepository(private val db: Database) {
             }
         }
 
+        if (!state.isNullOrBlank()) {
+            items = items.filter { it.learningState == state.uppercase() }
+        }
+
         val total = items.size
         val paged = items.drop(offset).take(limit)
         return WordListResponse(paged, total, offset + limit < total)
     }
+
+    fun getUserWordReference(userId: String, userWordId: String): WordReferenceResponse? {
+        val base = db.from(UserWordsTable)
+            .innerJoin(WordMasterTable, on = UserWordsTable.wordMasterId eq WordMasterTable.id)
+            .select()
+            .where {
+                (UserWordsTable.userId eq userId) and
+                    (UserWordsTable.id eq UUID.fromString(userWordId))
+            }
+            .limit(1)
+            .map { row ->
+                WordReferenceRow(
+                    id = row[UserWordsTable.id].toString(),
+                    wordMasterId = row[UserWordsTable.wordMasterId]!!,
+                    word = row[WordMasterTable.word] ?: "",
+                    reading = row[WordMasterTable.reading] ?: "",
+                    meaning = (row[WordMasterTable.meanings] ?: emptyList()).firstOrNull() ?: "",
+                    familiarity = row[UserWordsTable.familiarity] ?: 0,
+                    introducedAt = row[UserWordsTable.introducedAt],
+                    failures = row[UserWordsTable.consecutiveFailures] ?: 0,
+                    kanjiIds = row[UserWordsTable.kanjiIds] ?: emptyList(),
+                )
+            }
+            .firstOrNull() ?: return null
+
+        val wordMasterId = base.wordMasterId
+        val kanjiIds = base.kanjiIds
+        val breakdownRows: Map<String, WordKanjiBreakdown> = if (kanjiIds.isEmpty()) emptyMap() else db.from(KanjiMasterTable)
+            .select(KanjiMasterTable.id, KanjiMasterTable.character, KanjiMasterTable.meanings)
+            .where { KanjiMasterTable.id inList kanjiIds.map(UUID::fromString) }
+            .map {
+                it[KanjiMasterTable.id].toString() to WordKanjiBreakdown(
+                    character = it[KanjiMasterTable.character] ?: "",
+                    meaning = (it[KanjiMasterTable.meanings] ?: emptyList()).firstOrNull() ?: "",
+                )
+            }.toMap()
+        val example = db.from(QuizBankTable)
+            .select(QuizBankTable.prompt, QuizBankTable.explanation)
+            .where {
+                (QuizBankTable.wordId eq wordMasterId) and
+                    (QuizBankTable.quizType eq QuizType.BOLD_WORD_MEANING)
+            }
+            .limit(1)
+            .map { (it[QuizBankTable.prompt] ?: "") to it[QuizBankTable.explanation] }
+            .firstOrNull()
+
+        return WordReferenceResponse(
+            id = base.id,
+            word = base.word,
+            reading = base.reading,
+            meaning = base.meaning,
+            familiarity = base.familiarity,
+            learningState = learningState(
+                base.familiarity,
+                base.introducedAt,
+                base.failures,
+            ),
+            kanjiBreakdown = kanjiIds.mapNotNull(breakdownRows::get),
+            exampleSentence = example?.first,
+            exampleContext = example?.second,
+        )
+    }
 }
+
+private fun learningState(familiarity: Int, introducedAt: Instant?, failures: Int): String = when {
+    introducedAt == null && failures == 0 -> "WAITING_TO_LEARN"
+    introducedAt == null -> "WAITING_TO_REVISIT"
+    familiarity == 0 -> "LEARNING"
+    familiarity >= 5 -> "MASTERED"
+    else -> "REVIEWING"
+}
+
+private data class WordReferenceRow(
+    val id: String,
+    val wordMasterId: UUID,
+    val word: String,
+    val reading: String,
+    val meaning: String,
+    val familiarity: Int,
+    val introducedAt: Instant?,
+    val failures: Int,
+    val kanjiIds: List<String>,
+)
 
 data class WordMasterRow(
     val id: String, val word: String, val reading: String,

@@ -69,19 +69,20 @@ export interface LessonState {
   lesson: Lesson;
   locked: boolean;
   unlocksAt: Date | null;
+  unlocksInHours: number | null;
 }
 
 export function getCurrentLesson(): LessonState {
   for (let i = 0; i < LESSONS.length; i++) {
     if (!isLessonCompleted(LESSONS[i].id)) {
-      if (i === 0) return { lesson: LESSONS[0], locked: false, unlocksAt: null };
+      if (i === 0) return { lesson: LESSONS[0], locked: false, unlocksAt: null, unlocksInHours: null };
       const prevStart = getInsightStartTime(LESSONS[i - 1].id);
-      if (!prevStart) return { lesson: LESSONS[i], locked: true, unlocksAt: null };
+      if (!prevStart) return { lesson: LESSONS[i], locked: true, unlocksAt: null, unlocksInHours: null };
       const unlocksAt = new Date(prevStart.getTime() + 12 * 60 * 60 * 1000);
       const locked = Date.now() < unlocksAt.getTime();
-      return { lesson: LESSONS[i], locked, unlocksAt: locked ? unlocksAt : null };
+      return { lesson: LESSONS[i], locked, unlocksAt: locked ? unlocksAt : null, unlocksInHours: locked ? Math.ceil((unlocksAt.getTime() - Date.now()) / 3_600_000) : null };
     }
   }
   // All completed — show last lesson in completed state
-  return { lesson: LESSONS[LESSONS.length - 1], locked: false, unlocksAt: null };
+  return { lesson: LESSONS[LESSONS.length - 1], locked: false, unlocksAt: null, unlocksInHours: null };
 }

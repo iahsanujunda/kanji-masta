@@ -160,9 +160,12 @@ class KanjiService(
         return kanjiRepository.getAllUserKanji(userId)
     }
 
-    suspend fun getWordList(userId: String, query: String?, offset: Int, limit: Int): WordListResponse {
-        return kanjiRepository.getUserWords(userId, query, offset, limit)
+    suspend fun getWordList(userId: String, query: String?, state: String?, offset: Int, limit: Int): WordListResponse {
+        return kanjiRepository.getUserWords(userId, query, state, offset, limit)
     }
+
+    suspend fun getWordReference(userId: String, userWordId: String): WordReferenceResponse? =
+        kanjiRepository.getUserWordReference(userId, userWordId)
 
     suspend fun getOnboardingKanji(userId: String, offset: Int, limit: Int): OnboardingResponse {
         val (items, hasMore) = kanjiRepository.getOnboardingKanji(userId, offset, limit)

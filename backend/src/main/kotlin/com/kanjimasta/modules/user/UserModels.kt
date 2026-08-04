@@ -11,5 +11,6 @@ data class UserSummaryResponse(
     val slotRemaining: Int,
     val slotTotal: Int,
     val slotEndsAt: String? = null,
+    val sessionState: String = "READY",
     val onboardingComplete: Boolean = false,
 )

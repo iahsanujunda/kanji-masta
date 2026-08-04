@@ -24,10 +24,19 @@ class UserService(
 
         var slotRemaining = allowance
         var slotEndsAt: String? = null
+        var sessionState = "READY"
 
         if (activeSlot != null && activeSlot.slotEnd.isAfter(now)) {
-            slotRemaining = (allowance - activeSlot.completed).coerceAtLeast(0)
+            slotRemaining = (activeSlot.allowance - activeSlot.completed).coerceAtLeast(0)
             slotEndsAt = activeSlot.slotEnd.toString()
+            sessionState = "ACTIVE"
+        } else {
+            val latest = quizRepository.getLatestFinishedSlot(userId)
+            if (latest != null && latest.status == "COMPLETED" && latest.slotEnd.isAfter(now)) {
+                slotRemaining = 0
+                slotEndsAt = latest.slotEnd.toString()
+                sessionState = "COOLDOWN"
+            }
         }
 
         return UserSummaryResponse(
@@ -38,6 +47,7 @@ class UserService(
             slotRemaining = slotRemaining,
             slotTotal = allowance,
             slotEndsAt = slotEndsAt,
+            sessionState = sessionState,
             onboardingComplete = settingsRepository.getSettings(userId).onboardingComplete,
         )
     }

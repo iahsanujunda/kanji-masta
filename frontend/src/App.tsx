@@ -13,6 +13,7 @@ const Capture = lazy(() => import("@/pages/Capture"));
 const Quiz = lazy(() => import("@/pages/Quiz"));
 const KanjiList = lazy(() => import("@/pages/KanjiList"));
 const Dictionary = lazy(() => import("@/pages/Dictionary"));
+const WordDetail = lazy(() => import("@/pages/WordDetail"));
 const AddKanji = lazy(() => import("@/pages/AddKanji"));
 const Onboarding = lazy(() => import("@/pages/Onboarding"));
 const Signup = lazy(() => import("@/pages/Signup"));
@@ -99,6 +100,14 @@ export default function App() {
           element={
             <ProtectedRoute user={user} isLoading={isLoading}>
               <Dictionary />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/dictionary/:id"
+          element={
+            <ProtectedRoute user={user} isLoading={isLoading}>
+              <WordDetail />
             </ProtectedRoute>
           }
         />

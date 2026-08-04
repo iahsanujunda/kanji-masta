@@ -1,368 +1,174 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
-import {
-  Box,
-  Button,
-  IconButton,
-  LinearProgress,
-  TextField,
-  Typography,
-} from "@mui/material";
-import CloseIcon from "@mui/icons-material/Close";
-import CheckIcon from "@mui/icons-material/Check";
-import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
-import { apiFetch } from "@/lib/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Typography } from "@mui/material";
+import SessionHeader from "@/components/session/SessionHeader";
+import IntroductionCard from "@/components/session/IntroductionCard";
+import QuizCard from "@/components/session/QuizCard";
+import FeedbackSheet from "@/components/session/FeedbackSheet";
+import SessionSummaryView from "@/components/session/SessionSummaryView";
+import { ApiError, apiFetch } from "@/lib/api";
+import type { SessionCard, SessionCommandResponse, SessionFeedback, SessionResponse, SessionSnapshot } from "@/lib/session";
 
-interface QuizItem {
-  id: string;
-  quizType: string;
-  word: string;
-  wordReading: string;
-  prompt: string;
-  target: string;
-  furigana: string | null;
-  answer: string;
-  options: string[];
-  explanation: string | null;
-  wordFamiliarity: number;
-  currentTier: string;
-}
-
-interface SlotResponse {
-  quizzes: QuizItem[];
-  remaining: number;
-  slotEndsAt: string | null;
-}
+interface AdvancedBody { code: "SESSION_ADVANCED"; session: SessionSnapshot }
 
 export default function Quiz() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [session, setSession] = useState<SessionSnapshot | null>(null);
+  const [pendingSession, setPendingSession] = useState<SessionSnapshot | null>(null);
+  const [feedback, setFeedback] = useState<SessionFeedback | null>(null);
+  const [answeredCard, setAnsweredCard] = useState<SessionCard | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [commandError, setCommandError] = useState(false);
+  const [retryAction, setRetryAction] = useState<(() => void) | null>(null);
+  const [exitOpen, setExitOpen] = useState(false);
+  const cardStartedAt = useRef(Date.now());
 
-  const goHome = () => {
-    queryClient.invalidateQueries({ queryKey: ["user-summary"] });
-    navigate("/home");
-  };
-  const [quizzes, setQuizzes] = useState<QuizItem[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [selectedOption, setSelectedOption] = useState<string | null>(null);
-  const [textInput, setTextInput] = useState("");
-  const [isAnswered, setIsAnswered] = useState(false);
-  const [isFinished, setIsFinished] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  const currentQuiz = quizzes[currentIndex];
-  const isCorrect = isAnswered && selectedOption === currentQuiz?.answer;
-  const progress = quizzes.length > 0 ? (currentIndex / quizzes.length) * 100 : 0;
+  const startQuery = useQuery({
+    queryKey: ["quiz-session", "active"],
+    queryFn: () => apiFetch<SessionResponse>("/api/quiz/session/start", { method: "POST" }),
+    retry: 1,
+    staleTime: Infinity,
+  });
 
   useEffect(() => {
-    apiFetch<SlotResponse>("/api/quiz/slot")
-      .then((data) => {
-        setQuizzes(data.quizzes);
-        setLoading(false);
-        if (data.quizzes.length === 0) setIsFinished(true);
-      })
-      .catch(() => {
-        goHome();
-      });
-  }, [navigate]);
+    if (startQuery.data) setSession(startQuery.data.session);
+  }, [startQuery.data]);
 
-  const handleSelectOption = useCallback((option: string) => {
-    if (isAnswered) return;
-    setSelectedOption(option);
-    setIsAnswered(true);
+  useEffect(() => {
+    cardStartedAt.current = Date.now();
+  }, [session?.currentCard?.cardId]);
 
-    apiFetch("/api/quiz/result", {
-      method: "POST",
-      body: JSON.stringify({
-        quizId: currentQuiz.id,
-        correct: option === currentQuiz.answer,
-      }),
-    }).catch(() => {});
-  }, [isAnswered, currentQuiz]);
+  const finish = () => {
+    queryClient.invalidateQueries({ queryKey: ["user-summary"] });
+    queryClient.removeQueries({ queryKey: ["quiz-session", "active"] });
+    navigate("/home");
+  };
 
-  const handleTextSubmit = useCallback(() => {
-    if (isAnswered || !textInput.trim()) return;
-    const trimmed = textInput.trim();
-    setSelectedOption(trimmed);
-    setIsAnswered(true);
-
-    apiFetch("/api/quiz/result", {
-      method: "POST",
-      body: JSON.stringify({
-        quizId: currentQuiz.id,
-        correct: trimmed === currentQuiz.answer,
-      }),
-    }).catch(() => {});
-  }, [isAnswered, textInput, currentQuiz]);
-
-  const [transitioning, setTransitioning] = useState(false);
-
-  const handleNext = useCallback(() => {
-    if (currentIndex < quizzes.length - 1) {
-      setTransitioning(true);
-      // Hide feedback sheet instantly, then swap quiz after a frame
-      setIsAnswered(false);
-      requestAnimationFrame(() => {
-        setCurrentIndex(currentIndex + 1);
-        setSelectedOption(null);
-        setTextInput("");
-        setTransitioning(false);
-      });
-    } else {
-      setIsFinished(true);
+  const runCommand = async (
+    card: SessionCard,
+    path: string,
+    body: Record<string, unknown>,
+    showFeedback: boolean,
+  ) => {
+    setSubmitting(true);
+    setCommandError(false);
+    try {
+      const response = await apiFetch<SessionCommandResponse>(path, { method: "POST", body: JSON.stringify(body) });
+      if (showFeedback) {
+        setAnsweredCard(card);
+        setFeedback(response.feedback);
+        setPendingSession(response.session);
+      } else {
+        setSession(response.session);
+      }
+      setRetryAction(null);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        const advanced = error.body as AdvancedBody;
+        setSession(advanced.session);
+        setFeedback(null);
+        setPendingSession(null);
+      } else {
+        setCommandError(true);
+        setRetryAction(() => () => void runCommand(card, path, body, showFeedback));
+      }
+    } finally {
+      setSubmitting(false);
     }
-  }, [currentIndex, quizzes.length]);
+  };
 
-  // --- Loading ---
-  if (loading) {
+  const acknowledge = () => {
+    const card = session?.currentCard;
+    if (!session || !card) return;
+    const body = { cardId: card.cardId, submissionId: crypto.randomUUID(), expectedVersion: session.version };
+    void runCommand(card, `/api/quiz/session/${session.slotId}/introduction`, body, false);
+  };
+
+  const answer = (value: string) => {
+    const card = session?.currentCard;
+    if (!session || !card) return;
+    const body = {
+      cardId: card.cardId,
+      submissionId: crypto.randomUUID(),
+      expectedVersion: session.version,
+      answer: value,
+      answeredInMs: Date.now() - cardStartedAt.current,
+    };
+    void runCommand(card, `/api/quiz/session/${session.slotId}/answer`, body, true);
+  };
+
+  const continueAfterFeedback = () => {
+    if (pendingSession) setSession(pendingSession);
+    setPendingSession(null);
+    setFeedback(null);
+    setAnsweredCard(null);
+  };
+
+  const exitSession = async () => {
+    if (!session) return finish();
+    setSubmitting(true);
+    try {
+      await apiFetch<SessionResponse>(`/api/quiz/session/${session.slotId}/exit`, { method: "POST" });
+    } finally {
+      finish();
+    }
+  };
+
+  if (startQuery.isLoading || !session) {
     return (
-      <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <Typography color="text.secondary">Loading quizzes...</Typography>
-      </Box>
-    );
-  }
-
-  // --- Finished ---
-  if (isFinished) {
-    return (
-      <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", p: 3, textAlign: "center" }}>
-        <Box sx={{ width: 80, height: 80, bgcolor: "rgba(16, 185, 129, 0.15)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", mb: 3 }}>
-          <CheckIcon sx={{ fontSize: 40, color: "#34d399" }} />
-        </Box>
-        <Typography variant="h5" fontWeight="bold" sx={{ mb: 1 }}>
-          Slot Complete!
-        </Typography>
-        <Typography color="text.secondary" sx={{ mb: 4 }}>
-          You finished your {quizzes.length} reviews for this session.
-        </Typography>
-        <Button
-          onClick={goHome}
-          sx={{ bgcolor: "grey.800", color: "white", fontWeight: "bold", py: 1.5, px: 4, borderRadius: 3, "&:hover": { bgcolor: "grey.700" } }}
-        >
-          Return to Home
-        </Button>
-      </Box>
-    );
-  }
-
-  if (!currentQuiz) return null;
-
-  // --- Active Quiz ---
-  return (
-    <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }}>
-      {/* Header */}
-      <Box sx={{ px: 3, pt: 5, pb: 2, display: "flex", flexDirection: "column", gap: 2 }}>
-        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <IconButton onClick={goHome} sx={{ color: "grey.500" }}>
-            <CloseIcon />
-          </IconButton>
-          <Typography variant="caption" sx={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 2, color: "grey.500" }}>
-            Tier {currentQuiz.wordFamiliarity}
-          </Typography>
-          <Box sx={{ width: 40 }} />
-        </Box>
-        <LinearProgress
-          variant="determinate"
-          value={progress}
-          sx={{ height: 6, borderRadius: 3, bgcolor: "grey.800", "& .MuiLinearProgress-bar": { bgcolor: "#4338ca", borderRadius: 3 } }}
-        />
-      </Box>
-
-      {/* Quiz type label */}
-      <Box sx={{ textAlign: "center", mt: 2, mb: 4 }}>
-        <Typography variant="caption" sx={{ textTransform: "uppercase", letterSpacing: 2, color: "grey.500", fontWeight: 500 }}>
-          {currentQuiz.quizType.replace(/_/g, " ")}
-        </Typography>
-      </Box>
-
-      {/* Prompt area */}
-      <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", px: 3, mb: 4, minHeight: 160, opacity: transitioning ? 0 : 1 }}>
-        {currentQuiz.quizType === "MEANING_RECALL" && (
-          <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-            <Typography sx={{ fontSize: "5rem", fontWeight: 500 }}>{currentQuiz.prompt}</Typography>
-            {currentQuiz.wordReading && (
-              <Typography sx={{ fontSize: "1rem", color: "grey.500", mt: 1, letterSpacing: 2 }}>
-                {currentQuiz.wordReading}
-              </Typography>
-            )}
+      <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "grid", placeItems: "center", p: 3, textAlign: "center" }}>
+        {startQuery.isError ? (
+          <Box>
+            <Typography variant="h6" fontWeight={800}>Couldn’t load this session</Typography>
+            <Typography color="text.secondary" sx={{ mt: 1, mb: 3 }}>Your progress is safe. Try reconnecting.</Typography>
+            <Button variant="contained" onClick={() => startQuery.refetch()} sx={{ bgcolor: "#10b981", color: "#050508", fontWeight: 800 }}>Try again</Button>
+          </Box>
+        ) : (
+          <Box>
+            <CircularProgress size={30} sx={{ color: "#10b981" }} />
+            <Typography color="text.secondary" sx={{ mt: 2 }}>Preparing your session…</Typography>
           </Box>
         )}
-        {currentQuiz.quizType === "READING_RECOGNITION" && (
-          <Typography sx={{ fontSize: "3.5rem", fontWeight: 500, letterSpacing: 4 }}>{currentQuiz.prompt}</Typography>
-        )}
-        {currentQuiz.quizType === "REVERSE_READING" && (
-          <Typography sx={{ fontSize: "3rem", fontWeight: 500, letterSpacing: 4, color: "#a5b4fc" }}>{currentQuiz.prompt}</Typography>
-        )}
-        {currentQuiz.quizType === "BOLD_WORD_MEANING" && (
-          <RenderHighlightedSentence prompt={currentQuiz.prompt} target={currentQuiz.target} furigana={currentQuiz.furigana} isAnswered={isAnswered} />
-        )}
-        {currentQuiz.quizType === "FILL_IN_THE_BLANK" && (
-          <RenderGappedSentence prompt={currentQuiz.prompt} answer={currentQuiz.answer} isAnswered={isAnswered} isCorrect={isCorrect} />
-        )}
       </Box>
+    );
+  }
 
-      {/* Options area */}
-      <Box sx={{ px: 3, pb: isAnswered ? 28 : 4, display: "flex", flexDirection: "column", gap: 1.5, maxWidth: 360, mx: "auto", width: "100%" }}>
-        {currentQuiz.wordFamiliarity >= 5 ? (
-          // Free text input
-          <>
-            <TextField
-              fullWidth
-              value={textInput}
-              onChange={(e) => setTextInput(e.target.value)}
-              disabled={isAnswered}
-              placeholder="Type the word..."
-              autoFocus
-              onKeyDown={(e) => { if (e.key === "Enter") handleTextSubmit(); }}
-              sx={{
-                "& .MuiOutlinedInput-root": {
-                  borderRadius: 3,
-                  fontSize: "1.2rem",
-                  textAlign: "center",
-                  bgcolor: "grey.900",
-                  ...(isAnswered && {
-                    borderColor: isCorrect ? "rgba(16,185,129,0.5)" : "rgba(239,68,68,0.5)",
-                    bgcolor: isCorrect ? "rgba(16,185,129,0.05)" : "rgba(239,68,68,0.05)",
-                  }),
-                },
-                "& input": { textAlign: "center" },
-              }}
-            />
-            {!isAnswered && (
-              <Button
-                onClick={handleTextSubmit}
-                disabled={!textInput.trim()}
-                variant="contained"
-                sx={{ py: 1.5, borderRadius: 3, bgcolor: "#4338ca", "&:hover": { bgcolor: "#3730a3" }, "&:disabled": { bgcolor: "grey.800", color: "grey.500" } }}
-              >
-                Check
-              </Button>
-            )}
-          </>
-        ) : (
-          // Multiple choice
-          currentQuiz.options.map((option, index) => {
-            const isCorrectOption = option === currentQuiz.answer;
-            const isSelectedWrong = option === selectedOption && !isCorrectOption;
-            const isOther = isAnswered && !isCorrectOption && option !== selectedOption;
+  if (session.status !== "ACTIVE" || !session.currentCard) {
+    return <SessionSummaryView summary={session.summary} onDone={finish} />;
+  }
 
-            return (
-              <Button
-                key={index}
-                fullWidth
-                onClick={() => handleSelectOption(option)}
-                disabled={isAnswered}
-                sx={{
-                  py: 1.5, borderRadius: 3, fontSize: "1rem", fontWeight: 500, textTransform: "none", justifyContent: "center",
-                  border: "2px solid",
-                  ...(isAnswered && isCorrectOption ? {
-                    bgcolor: "rgba(16,185,129,0.1)", borderColor: "rgba(16,185,129,0.6)", color: "#a7f3d0", boxShadow: "0 0 15px rgba(16,185,129,0.15)",
-                  } : isAnswered && isSelectedWrong ? {
-                    bgcolor: "rgba(239,68,68,0.1)", borderColor: "rgba(239,68,68,0.4)", color: "#fca5a5",
-                  } : isOther ? {
-                    bgcolor: "rgba(30,30,30,0.5)", borderColor: "transparent", color: "grey.600", opacity: 0.5,
-                  } : {
-                    bgcolor: "grey.800", borderColor: "transparent", color: "grey.200", "&:hover": { bgcolor: "grey.700" },
-                  }),
-                }}
-              >
-                {option}
-              </Button>
-            );
-          })
-        )}
-      </Box>
-
-      {/* Feedback bottom sheet */}
-      <Box
-        sx={{
-          position: "absolute",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          transform: isAnswered ? "translateY(0)" : "translateY(100%)",
-          transition: "transform 0.3s ease-in-out",
-          p: 3,
-          borderTop: "2px solid",
-          borderColor: isCorrect ? "rgba(16,185,129,0.4)" : "rgba(239,68,68,0.4)",
-          bgcolor: isCorrect ? "rgba(6,78,59,0.95)" : "rgba(127,29,29,0.95)",
-          backdropFilter: "blur(16px)",
-          borderTopLeftRadius: 24,
-          borderTopRightRadius: 24,
-        }}
-      >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
-          {isCorrect ? (
-            <CheckIcon sx={{ color: "#34d399" }} />
-          ) : (
-            <CloseIcon sx={{ color: "#f87171" }} />
-          )}
-          <Typography variant="h6" fontWeight="bold" sx={{ color: isCorrect ? "#d1fae5" : "#fee2e2" }}>
-            {isCorrect ? "Correct!" : "Not quite."}
-          </Typography>
-        </Box>
-        <Typography variant="body2" sx={{ mb: 3, color: isCorrect ? "rgba(167,243,208,0.8)" : "rgba(254,202,202,0.8)", lineHeight: 1.6 }}>
-          {currentQuiz.explanation}
-        </Typography>
-        <Button
-          fullWidth
-          onClick={handleNext}
-          endIcon={<ArrowForwardIcon />}
-          sx={{
-            py: 1.5,
-            borderRadius: 3,
-            fontWeight: "bold",
-            fontSize: "1rem",
-            bgcolor: isCorrect ? "#10b981" : "#ef4444",
-            color: isCorrect ? "#064e3b" : "#7f1d1d",
-            "&:hover": { bgcolor: isCorrect ? "#059669" : "#dc2626" },
-          }}
+  const card = session.currentCard;
+  return (
+    <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", position: "relative", overflow: "hidden", bgcolor: "#050508" }}>
+      <SessionHeader session={session} onExit={() => setExitOpen(true)} />
+      {commandError && (
+        <Alert
+          severity="warning"
+          action={<Button color="inherit" size="small" onClick={() => retryAction?.()}>Retry</Button>}
+          sx={{ mx: 3, mb: 1, borderRadius: 2 }}
         >
-          Continue
-        </Button>
-      </Box>
-    </Box>
-  );
-}
-
-// --- Helper components ---
-
-function RenderHighlightedSentence({ prompt, target, furigana, isAnswered }: { prompt: string; target: string; furigana: string | null; isAnswered: boolean }) {
-  const parts = prompt.split(target);
-  if (parts.length !== 2) return <Typography sx={{ fontSize: "1.2rem" }}>{prompt}</Typography>;
-
-  return (
-    <Typography sx={{ fontSize: "1.2rem", fontWeight: 500, textAlign: "center", px: 2, lineHeight: 2 }}>
-      {parts[0]}
-      <Box component="span" sx={{ display: "inline-flex", flexDirection: "column", alignItems: "center", mx: 0.5, verticalAlign: "bottom", transform: "translateY(8px)" }}>
-        <Typography component="span" sx={{ fontSize: "0.7rem", fontWeight: 700, color: "#818cf8", mb: 0.25 }}>
-          {isAnswered ? furigana : "\u00A0"}
-        </Typography>
-        <Typography component="span" sx={{ color: "#818cf8", borderBottom: "2px solid rgba(99,102,241,0.4)", pb: 0.25 }}>
-          {target}
-        </Typography>
-      </Box>
-      {parts[1]}
-    </Typography>
-  );
-}
-
-function RenderGappedSentence({ prompt, answer, isAnswered, isCorrect }: { prompt: string; answer: string; isAnswered: boolean; isCorrect: boolean }) {
-  const parts = prompt.split("＿＿");
-  if (parts.length !== 2) return <Typography sx={{ fontSize: "1.2rem" }}>{prompt}</Typography>;
-
-  return (
-    <Typography sx={{ fontSize: "1.2rem", fontWeight: 500, textAlign: "center", px: 2, lineHeight: 2 }}>
-      {parts[0]}
-      {isAnswered ? (
-        <Box component="span" sx={{ px: 1, fontWeight: "bold", color: isCorrect ? "#34d399" : "#f87171" }}>
-          {answer}
-        </Box>
-      ) : (
-        <Box component="span" sx={{ display: "inline-block", width: 48, borderBottom: "2px solid", borderColor: "grey.600", mx: 0.5, verticalAlign: "middle", opacity: 0.5 }} />
+          Couldn’t save that turn. Your answer has not been lost.
+        </Alert>
       )}
-      {parts[1]}
-    </Typography>
+      {card.cardType === "INTRODUCTION" ? (
+        <IntroductionCard key={card.cardId} card={card} submitting={submitting} onAcknowledge={acknowledge} />
+      ) : (
+        <QuizCard key={card.cardId} card={card} submitting={submitting || Boolean(feedback)} onAnswer={answer} />
+      )}
+      {feedback && answeredCard && <FeedbackSheet feedback={feedback} answeredCard={answeredCard} onContinue={continueAfterFeedback} />}
+
+      <Dialog open={exitOpen} onClose={() => setExitOpen(false)} PaperProps={{ sx: { borderRadius: 4, bgcolor: "#0f0f16", maxWidth: 400 } }}>
+        <DialogTitle fontWeight={800}>Leave this session?</DialogTitle>
+        <DialogContent>
+          <Typography color="text.secondary">Your completed reviews stay saved. Any new-word learning steps will return in a later session.</Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5, pt: 1 }}>
+          <Button onClick={() => setExitOpen(false)} sx={{ color: "grey.400" }}>Keep learning</Button>
+          <Button onClick={exitSession} disabled={submitting} sx={{ color: "#fca5a5" }}>Leave session</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 }

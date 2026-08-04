@@ -606,53 +606,53 @@ The frontend replaces its local snapshot with this response. A retry using the s
 
 ### Schema and migration
 
-- [ ] `UserWords.introducedAt` and `UserWords.consecutiveFailures` added
-- [ ] `QuizSlot.status`, `QuizSlot.version`, and `QuizSlot.completedAt` added
-- [ ] `QuizSessionCard` table and enums added through `supabase/migrations/`
-- [ ] `QuizServe.sessionCardId`, `submissionId`, and `answeredInMs` added
-- [ ] Familiarity 1+ words backfilled as introduced; familiarity 0 words re-enter introduction
-- [ ] Existing active slots materialize remaining cards safely on first resume
+- [x] `UserWords.introducedAt` and `UserWords.consecutiveFailures` added
+- [x] `QuizSlot.status`, `QuizSlot.version`, and `QuizSlot.completedAt` added
+- [x] `QuizSessionCard` table and enums added through `supabase/migrations/`
+- [x] `QuizServe.sessionCardId`, `submissionId`, and `answeredInMs` added
+- [x] Familiarity 1+ words backfilled as introduced; familiarity 0 words re-enter introduction
+- [x] Existing active slots materialize remaining cards safely on first resume
 
 ### Session architecture
 
-- [ ] Start command creates or resumes exactly one active session per user
-- [ ] Availability is derived from authoritative timestamps; no delayed unlock jobs
-- [ ] Any Cloud Run instance can resume and advance a session
-- [ ] Current card is the lowest-position pending session card
-- [ ] Every mutation is short, transactional, versioned, and idempotent
-- [ ] Duplicate `submissionId` cannot increment progress or familiarity twice
-- [ ] Stale device/tab commands receive `409 SESSION_ADVANCED` with latest snapshot
-- [ ] Explicit exit and expiry drop pending learning steps cleanly
+- [x] Start command creates or resumes exactly one active session per user
+- [x] Availability is derived from authoritative timestamps; no delayed unlock jobs
+- [x] Any Cloud Run instance can resume and advance a session
+- [x] Current card is the lowest-position pending session card
+- [x] Every mutation is short, transactional, versioned, and idempotent
+- [x] Duplicate `submissionId` cannot increment progress or familiarity twice
+- [x] Stale device/tab commands receive `409 SESSION_ADVANCED` with latest snapshot
+- [x] Explicit exit and expiry drop pending learning steps cleanly
 
 ### Introduction and learning
 
-- [ ] Introduction card assembled from existing word, kanji, and quiz rows with no new AI calls
-- [ ] Missing example sentence/context has a clean UI fallback
-- [ ] Introduction acknowledgement sets `introducedAt` and fallback `nextReview`
-- [ ] Introductions do not increment `QuizSlot.completed`
-- [ ] `maxIntroductions(allowance)` caps introductions at `floor(allowance / 3)`, max 3
-- [ ] Learning step 1 is at least 2 cards after introduction
-- [ ] Step-1 failure inserts step 2 at least 3 cards later and drops one normal review
-- [ ] Both steps clamp to the end when the session is too short
-- [ ] Correct learning step moves the word to familiarity 1 and normal scheduling
-- [ ] Failed step 2 increments failures and schedules tomorrow unless re-introduction triggers
-- [ ] Failure threshold preserves the count for ordering and marks the card `REINTRODUCTION`
-- [ ] Re-introduction acknowledgement and any correct answer reset failures
-- [ ] “New words never served” selection priority removed
+- [x] Introduction card assembled from existing word, kanji, and quiz rows with no new AI calls
+- [x] Missing example sentence/context has a clean UI fallback
+- [x] Introduction acknowledgement sets `introducedAt` and fallback `nextReview`
+- [x] Introductions do not increment `QuizSlot.completed`
+- [x] `maxIntroductions(allowance)` caps introductions at `floor(allowance / 3)`, max 3
+- [x] Learning step 1 is at least 2 cards after introduction
+- [x] Step-1 failure inserts step 2 at least 3 cards later and drops one normal review
+- [x] Both steps clamp to the end when the session is too short
+- [x] Correct learning step moves the word to familiarity 1 and normal scheduling
+- [x] Failed step 2 increments failures and schedules tomorrow unless re-introduction triggers
+- [x] Failure threshold preserves the count for ordering and marks the card `REINTRODUCTION`
+- [x] Re-introduction acknowledgement and any correct answer reset failures
+- [x] “New words never served” selection priority removed
 
 ### API and UI
 
-- [ ] API returns an authoritative `currentCard`, progress, summary, and version
-- [ ] Server derives correctness; client does not submit a trusted `correct` boolean
-- [ ] Buttons disable and show progress while a command is saving
-- [ ] Failed saves do not advance the UI and offer Retry with the same `submissionId`
-- [ ] Learning-step misses use neutral framing and repeat the kanji breakdown
-- [ ] Progress counts answer moments and never moves backward after queue mutation
-- [ ] Summary separates new words, re-introduced words, correct reviews, and revisits
-- [ ] Dictionary lists every saved `UserWords` row, including pre-introduction words
-- [ ] Word list and detail responses expose a server-derived `learningState`
-- [ ] Dictionary state filters are applied before pagination
-- [ ] Dictionary cards open a read-only word-reference page with introduction content
-- [ ] Viewing word-reference content does not mutate introduction, session, familiarity, failure, or scheduling state
-- [ ] Collection counts and empty states do not describe unintroduced words as learned
-- [ ] Verified end-to-end: a new word is introduced, recalled later, and reaches familiarity 1 in the same session
+- [x] API returns an authoritative `currentCard`, progress, summary, and version
+- [x] Server derives correctness; client does not submit a trusted `correct` boolean
+- [x] Buttons disable and show progress while a command is saving
+- [x] Failed saves do not advance the UI and offer Retry with the same `submissionId`
+- [x] Learning-step misses use neutral framing and repeat the kanji breakdown
+- [x] Progress counts answer moments and never moves backward after queue mutation
+- [x] Summary separates new words, re-introduced words, correct reviews, and revisits
+- [x] Dictionary lists every saved `UserWords` row, including pre-introduction words
+- [x] Word list and detail responses expose a server-derived `learningState`
+- [x] Dictionary state filters are applied before pagination
+- [x] Dictionary cards open a read-only word-reference page with introduction content
+- [x] Viewing word-reference content does not mutate introduction, session, familiarity, failure, or scheduling state
+- [x] Collection counts and empty states do not describe unintroduced words as learned
+- [x] Verified end-to-end: a new word is introduced, recalled later, and reaches familiarity 1 in the same session

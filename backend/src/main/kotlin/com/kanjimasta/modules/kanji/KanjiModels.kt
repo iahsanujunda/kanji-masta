@@ -34,6 +34,7 @@ data class WordListItem(
     val meaning: String,
     val familiarity: Int,
     val nextReview: String? = null,
+    val learningState: String,
 )
 
 @Serializable
@@ -42,6 +43,22 @@ data class WordListResponse(
     val total: Int,
     val hasMore: Boolean,
 )
+
+@Serializable
+data class WordReferenceResponse(
+    val id: String,
+    val word: String,
+    val reading: String,
+    val meaning: String,
+    val familiarity: Int,
+    val learningState: String,
+    val kanjiBreakdown: List<WordKanjiBreakdown> = emptyList(),
+    val exampleSentence: String? = null,
+    val exampleContext: String? = null,
+)
+
+@Serializable
+data class WordKanjiBreakdown(val character: String, val meaning: String)
 
 @Serializable
 data class SeenAs(

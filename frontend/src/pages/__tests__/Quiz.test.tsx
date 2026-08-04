@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Quiz from "../Quiz";
@@ -6,121 +6,83 @@ import { renderWithProviders } from "@/test/mocks";
 
 const mockApiFetch = vi.fn();
 vi.mock("@/lib/api", () => ({
+  ApiError: class ApiError extends Error { status = 500; body = null; },
   apiFetch: (...args: unknown[]) => mockApiFetch(...args),
 }));
 
-const mockSlotResponse = {
-  quizzes: [
-    {
-      id: "q1",
-      quizType: "MEANING_RECALL",
-      word: "電車",
-      wordReading: "でんしゃ",
-      prompt: "電車",
-      target: "電車",
-      furigana: null,
-      answer: "train",
-      options: ["bus", "train", "taxi", "subway"],
-      explanation: "電車 means train",
-      wordFamiliarity: 0,
-      currentTier: "MEANING_RECALL",
-    },
-    {
-      id: "q2",
-      quizType: "READING_RECOGNITION",
-      word: "電話",
-      wordReading: "でんわ",
-      prompt: "電話",
-      target: "電話",
-      furigana: null,
-      answer: "でんわ",
-      options: ["でんわ", "でんき", "でんち", "でんしゃ"],
-      explanation: "電話 is read でんわ",
-      wordFamiliarity: 1,
-      currentTier: "READING_RECOGNITION",
-    },
-  ],
-  remaining: 2,
-  slotEndsAt: null,
+const introCard = {
+  cardType: "INTRODUCTION", cardId: "card-intro", wordId: "word-1", word: "電車", reading: "でんしゃ", meaning: "train",
+  kanjiBreakdown: [{ character: "電", meaning: "electricity" }, { character: "車", meaning: "vehicle" }],
+  introductionKind: "NEW", exampleSentence: "電車、遅れてるじゃん。", exampleContext: "A casual sentence.", quizType: null,
+  learningStep: null, prompt: null, target: null, furigana: null, options: [], explanation: null, wordFamiliarity: 0,
 };
 
-describe("Quiz", () => {
-  beforeEach(() => {
-    mockApiFetch.mockReset();
+const quizCard = {
+  ...introCard, cardType: "QUIZ", cardId: "card-quiz", introductionKind: null, exampleSentence: null, exampleContext: null,
+  quizType: "MEANING_RECALL", learningStep: 1, prompt: "電車", target: "電車", options: ["bus", "train", "taxi", "subway"], explanation: "電車 means train",
+};
+
+const session = (currentCard: typeof introCard | typeof quizCard | null, status = "ACTIVE") => ({
+  slotId: "slot-1", status, version: currentCard === introCard ? 0 : 1, slotEndsAt: "2026-08-05T00:00:00Z", currentCard,
+  progress: { completed: currentCard === quizCard ? 0 : 5, allowance: 5, remaining: currentCard === quizCard ? 5 : 0 },
+  summary: { newWordsLearned: 0, reintroducedWordsLearned: 0, reviewsCorrect: 0, toRevisit: 0 },
+});
+
+describe("Quiz Phase 3 session", () => {
+  beforeEach(() => mockApiFetch.mockReset());
+
+  it("shows a resilient loading state", async () => {
+    let resolve!: (value: unknown) => void;
+    mockApiFetch.mockReturnValue(new Promise((done) => { resolve = done; }));
+    const view = renderWithProviders(<Quiz />);
+    expect(screen.getByText("Preparing your session…")).toBeInTheDocument();
+    resolve({ session: session(introCard) });
+    await screen.findByText("電車");
+    view.unmount();
   });
 
-  it("shows loading state initially", () => {
-    mockApiFetch.mockReturnValue(new Promise(() => {})); // never resolves
+  it("renders a new-word introduction without answer controls", async () => {
+    mockApiFetch.mockResolvedValue({ session: session(introCard) });
     renderWithProviders(<Quiz />);
-    expect(screen.getByText("Loading quizzes...")).toBeInTheDocument();
+    expect(await screen.findByText("電車")).toBeInTheDocument();
+    expect(screen.getByText("electricity")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Got it" })).toBeInTheDocument();
+    expect(screen.queryByText("bus")).not.toBeInTheDocument();
   });
 
-  it("renders quiz prompt after loading", async () => {
-    mockApiFetch.mockResolvedValue(mockSlotResponse);
-    renderWithProviders(<Quiz />);
-
-    await waitFor(() => {
-      expect(screen.getByText("電車")).toBeInTheDocument();
-    });
-  });
-
-  it("shows options as buttons", async () => {
-    mockApiFetch.mockResolvedValue(mockSlotResponse);
-    renderWithProviders(<Quiz />);
-
-    await waitFor(() => {
-      expect(screen.getByText("bus")).toBeInTheDocument();
-      expect(screen.getByText("train")).toBeInTheDocument();
-      expect(screen.getByText("taxi")).toBeInTheDocument();
-      expect(screen.getByText("subway")).toBeInTheDocument();
-    });
-  });
-
-  it("shows feedback after answering correctly", async () => {
+  it("acknowledges an introduction using the current card and version", async () => {
     mockApiFetch
-      .mockResolvedValueOnce(mockSlotResponse) // GET /api/quiz/slot
-      .mockResolvedValue({ remaining: 1, correct: true, newFamiliarity: 1 }); // POST /api/quiz/result
-
+      .mockResolvedValueOnce({ session: session(introCard) })
+      .mockResolvedValueOnce({ feedback: { type: "INTRODUCED" }, session: session(quizCard) });
     renderWithProviders(<Quiz />);
-    const user = userEvent.setup();
-
-    await waitFor(() => {
-      expect(screen.getByText("train")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByText("train"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Correct!")).toBeInTheDocument();
-      expect(screen.getByText("電車 means train")).toBeInTheDocument();
-    });
+    await userEvent.click(await screen.findByRole("button", { name: "Got it" }));
+    await waitFor(() => expect(screen.getByText("bus")).toBeInTheDocument());
+    expect(mockApiFetch.mock.calls[1][0]).toBe("/api/quiz/session/slot-1/introduction");
+    const request = JSON.parse(mockApiFetch.mock.calls[1][1].body);
+    expect(request.cardId).toBe("card-intro");
+    expect(request.expectedVersion).toBe(0);
+    expect(request.submissionId).toBeTruthy();
   });
 
-  it("shows feedback after answering incorrectly", async () => {
+  it("uses neutral feedback for a missed learning step", async () => {
     mockApiFetch
-      .mockResolvedValueOnce(mockSlotResponse)
-      .mockResolvedValue({ remaining: 1, correct: false, newFamiliarity: 0 });
-
+      .mockResolvedValueOnce({ session: session(quizCard) })
+      .mockResolvedValueOnce({
+        feedback: { type: "NOT_YET", correctAnswer: "train", explanation: null, kanjiBreakdown: quizCard.kanjiBreakdown },
+        session: { ...session(quizCard), version: 2 },
+      });
     renderWithProviders(<Quiz />);
-    const user = userEvent.setup();
-
-    await waitFor(() => {
-      expect(screen.getByText("bus")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByText("bus"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Not quite.")).toBeInTheDocument();
-    });
+    await userEvent.click(await screen.findByRole("button", { name: "bus" }));
+    expect(await screen.findByText("Not yet")).toBeInTheDocument();
+    expect(screen.getByText("No penalty. You’ll see this word again before the session ends.")).toBeInTheDocument();
+    expect(screen.getByText("Answer:")).toBeInTheDocument();
   });
 
-  it("shows completion screen when no quizzes", async () => {
-    mockApiFetch.mockResolvedValue({ quizzes: [], remaining: 0, slotEndsAt: null });
+  it("renders the server-derived summary when complete", async () => {
+    mockApiFetch.mockResolvedValue({ session: { ...session(null, "COMPLETED"), summary: { newWordsLearned: 1, reintroducedWordsLearned: 0, reviewsCorrect: 3, toRevisit: 1 } } });
     renderWithProviders(<Quiz />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Slot Complete!")).toBeInTheDocument();
-    });
+    expect(await screen.findByText("Good work today")).toBeInTheDocument();
+    expect(screen.getByText("new words learned")).toBeInTheDocument();
+    expect(screen.getByText("reviews correct")).toBeInTheDocument();
   });
 });

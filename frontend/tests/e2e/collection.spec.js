@@ -46,3 +46,64 @@ test("opens a filtered tier from the tree summary", async ({ page }) => {
   await expect(page.getByText("学", { exact: true })).toBeVisible();
   await expect(page.getByText("読", { exact: true })).toHaveCount(0);
 });
+
+test("zooms the shared tree into the selected zone after navigation", async ({ page }) => {
+  await expect(page.getByRole("img", { name: "A low-poly kanji learning tree" })).toBeVisible();
+
+  await page.getByText("Mastered", { exact: true }).click();
+  await page.waitForURL(/\/collection\/list\?zone=canopy$/);
+
+  const treeBackdrop = page.getByTestId("zone-tree-backdrop");
+  const samples = await treeBackdrop.evaluate(async (element) => {
+    const sample = () => {
+      const transform = getComputedStyle(element).transform;
+      const matrix = transform === "none"
+        ? new DOMMatrixReadOnly()
+        : new DOMMatrixReadOnly(transform);
+      return { scale: matrix.a, y: matrix.m42 };
+    };
+
+    const start = sample();
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    const middle = sample();
+    await new Promise((resolve) => setTimeout(resolve, 780));
+    const end = sample();
+    return { start, middle, end };
+  });
+
+  await expect(treeBackdrop.getByRole("img", { name: "A low-poly kanji learning tree" })).toBeVisible();
+  expect(samples.middle.scale).toBeGreaterThan(samples.start.scale);
+  expect(samples.end.scale).toBeGreaterThan(samples.middle.scale);
+  expect(samples.end.scale).toBeGreaterThan(1.8);
+  expect(Math.abs(samples.end.y - samples.start.y)).toBeGreaterThan(40);
+});
+
+test("keeps the focused tree anchored while a long tier scrolls", async ({ page }) => {
+  const masteredKanji = Array.from({ length: 45 }, (_, index) => ({
+    id: `20000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    character: String.fromCodePoint(0x4e00 + index),
+    familiarity: index % 2 === 0 ? 5 : 4,
+    meanings: [`fixture ${index + 1}`],
+  }));
+
+  await page.route("**/api/kanji/list", (route) => route.fulfill({ json: masteredKanji }));
+  await page.reload();
+  await expect(page.getByText("45 Kanji", { exact: true })).toBeVisible();
+  await page.getByText("Mastered", { exact: true }).click();
+
+  const treeBackdrop = page.getByTestId("zone-tree-backdrop");
+  await expect(page.getByRole("heading", { name: "Mastered" })).toBeVisible();
+  await page.waitForTimeout(950);
+  const beforeScroll = await treeBackdrop.boundingBox();
+  expect(beforeScroll).not.toBeNull();
+
+  await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight }));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  const afterScroll = await treeBackdrop.boundingBox();
+  expect(afterScroll).not.toBeNull();
+
+  expect(afterScroll.x).toBeCloseTo(beforeScroll.x, 0);
+  expect(afterScroll.y).toBeCloseTo(beforeScroll.y, 0);
+  expect(afterScroll.width).toBeCloseTo(beforeScroll.width, 0);
+  expect(afterScroll.height).toBeCloseTo(beforeScroll.height, 0);
+});

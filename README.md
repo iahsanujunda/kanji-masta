@@ -1,6 +1,6 @@
 # Kanji Masta
 
-Photo-driven kanji learning app for people living in Japan. Capture signs and menus → select kanji to learn → get spaced-repetition quizzes powered by Gemini.
+Photo-driven kanji learning app for people living in Japan. Capture signs and menus → select kanji to learn → get AI-powered spaced-repetition quizzes.
 
 ## Stack
 
@@ -12,7 +12,7 @@ Photo-driven kanji learning app for people living in Japan. Capture signs and me
 | Database | Firebase Data Connect (PostgreSQL) |
 | Storage | Firebase Cloud Storage |
 | Functions | Firebase Functions (Python) |
-| AI | Gemini 3.1 Pro |
+| AI | Gemini or OpenRouter |
 | Hosting | Firebase Hosting (frontend) + Cloud Run (backend) |
 
 ## Local Development
@@ -44,6 +44,27 @@ make reset-quiz     # Reset quiz progress only
 make trigger-quizzes  # Manually trigger quiz generation
 make db             # Show key table counts
 ```
+
+### AI provider configuration
+
+Copy `.env.example` to `.env`, then choose either direct Gemini or OpenRouter:
+
+```bash
+# Direct Gemini (the backward-compatible default)
+AI_PROVIDER=gemini
+GEMINI_API_KEY=...
+
+# OpenRouter
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=...
+OPENROUTER_MODEL=provider/model
+OPENROUTER_REASONING_EFFORT=medium
+```
+
+`OPENROUTER_MODEL` is used for every operation. You can instead set
+`OPENROUTER_ANALYZE_MODEL`, `OPENROUTER_QUIZ_MODEL`, and
+`OPENROUTER_DISCOVERY_MODEL` independently; the analyze model must support
+image input.
 
 ---
 

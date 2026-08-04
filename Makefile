@@ -1,6 +1,11 @@
 -include .env
 export
 
+AI_PROVIDER ?= gemini
+OPENROUTER_SITE_URL ?= https://shuukanhq.com
+OPENROUTER_APP_NAME ?= Kanji Masta
+OPENROUTER_REASONING_EFFORT ?= medium
+
 .PHONY: dev up down backend frontend seed clean build check
 
 # --- Local Development ---
@@ -33,7 +38,16 @@ supabase-reset: ## Reset Supabase DB (reapply migrations + seed)
 ai-worker: ## Start AI worker (quiz gen, photo analysis, word discovery)
 	cd services/ai-worker && \
 	DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
+	AI_PROVIDER=$(AI_PROVIDER) \
 	GEMINI_API_KEY=$(GEMINI_API_KEY) \
+	OPENROUTER_API_KEY=$(OPENROUTER_API_KEY) \
+	OPENROUTER_MODEL=$(OPENROUTER_MODEL) \
+	OPENROUTER_REASONING_EFFORT=$(OPENROUTER_REASONING_EFFORT) \
+	OPENROUTER_ANALYZE_MODEL=$(OPENROUTER_ANALYZE_MODEL) \
+	OPENROUTER_QUIZ_MODEL=$(OPENROUTER_QUIZ_MODEL) \
+	OPENROUTER_DISCOVERY_MODEL=$(OPENROUTER_DISCOVERY_MODEL) \
+	OPENROUTER_SITE_URL=$(OPENROUTER_SITE_URL) \
+	OPENROUTER_APP_NAME='$(OPENROUTER_APP_NAME)' \
 	uvicorn app.main:app --reload --port 5001
 
 backend: ## Start Ktor backend (connects to local Supabase + AI worker)
@@ -120,7 +134,7 @@ deploy-ai-worker: ## Build + deploy AI worker to Cloud Run
 	gcloud run deploy kanji-masta-ai-worker \
 		--image $(ARTIFACT_REGISTRY)/kanji-masta-ai-worker/ai-worker \
 		--region $(CLOUD_RUN_REGION) \
-		--set-env-vars "DATABASE_URL=$(shell echo '$(PROD_SUPABASE_DB_URI)' | sed 's|^jdbc:||'),GEMINI_API_KEY=$(GEMINI_API_KEY)" \
+		--set-env-vars "DATABASE_URL=$(shell echo '$(PROD_SUPABASE_DB_URI)' | sed 's|^jdbc:||'),AI_PROVIDER=$(AI_PROVIDER),GEMINI_API_KEY=$(GEMINI_API_KEY),OPENROUTER_API_KEY=$(OPENROUTER_API_KEY),OPENROUTER_MODEL=$(OPENROUTER_MODEL),OPENROUTER_REASONING_EFFORT=$(OPENROUTER_REASONING_EFFORT),OPENROUTER_ANALYZE_MODEL=$(OPENROUTER_ANALYZE_MODEL),OPENROUTER_QUIZ_MODEL=$(OPENROUTER_QUIZ_MODEL),OPENROUTER_DISCOVERY_MODEL=$(OPENROUTER_DISCOVERY_MODEL),OPENROUTER_SITE_URL=$(OPENROUTER_SITE_URL),OPENROUTER_APP_NAME=$(OPENROUTER_APP_NAME)" \
 		--no-allow-unauthenticated
 	@$(call _mark-deploy,ai-worker)
 

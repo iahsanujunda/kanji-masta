@@ -1,62 +1,103 @@
 from __future__ import annotations
 
-import json
 import os
 
 from google import genai
 from google.genai import types
 
-
-def get_client() -> genai.Client:
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY not configured")
-    return genai.Client(api_key=api_key)
+from .ai_client import AIResult, parse_json_array
 
 
-def analyze_image(client: genai.Client, prompt: str, image_bytes: bytes, content_type: str) -> tuple[list, int]:
-    """Call Gemini 3.1 Pro with vision. Returns (parsed_json, cost_microdollars)."""
-    response = client.models.generate_content(
-        model="gemini-3.1-pro-preview",
-        contents=[
-            types.Part(text=prompt),
-            types.Part(inline_data=types.Blob(mime_type=content_type, data=image_bytes)),
-        ],
-        config=types.GenerateContentConfig(
-            thinking_config=types.ThinkingConfig(thinking_level="MEDIUM"),
-            response_mime_type="application/json",
-        ),
-    )
-    cost = calculate_cost_microdollars(response.usage_metadata)
-    parsed = json.loads(response.text)
-    return parsed, cost
+class GeminiAIClient:
+    provider_name = "gemini"
 
+    def __init__(
+        self,
+        client: genai.Client,
+        analyze_model: str = "gemini-3.1-pro-preview",
+        quiz_model: str = "gemini-3.1-pro-preview",
+        discovery_model: str = "gemini-2.0-flash",
+    ):
+        self._client = client
+        self._analyze_model = analyze_model
+        self._quiz_model = quiz_model
+        self._discovery_model = discovery_model
 
-def generate_quizzes_text(client: genai.Client, prompt: str) -> tuple[list, int]:
-    """Call Gemini 3.1 Pro for quiz generation. Returns (parsed_json, cost_microdollars)."""
-    response = client.models.generate_content(
-        model="gemini-3.1-pro-preview",
-        contents=[types.Part(text=prompt)],
-        config=types.GenerateContentConfig(
-            thinking_config=types.ThinkingConfig(thinking_level="MEDIUM"),
-            response_mime_type="application/json",
-        ),
-    )
-    cost = calculate_cost_microdollars(response.usage_metadata)
-    parsed = json.loads(response.text)
-    return parsed, cost
+    @classmethod
+    def from_env(cls) -> "GeminiAIClient":
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY not configured")
+        return cls(
+            client=genai.Client(api_key=api_key),
+            analyze_model=os.environ.get(
+                "GEMINI_ANALYZE_MODEL", "gemini-3.1-pro-preview"
+            ),
+            quiz_model=os.environ.get(
+                "GEMINI_QUIZ_MODEL", "gemini-3.1-pro-preview"
+            ),
+            discovery_model=os.environ.get(
+                "GEMINI_DISCOVERY_MODEL", "gemini-2.0-flash"
+            ),
+        )
 
+    def analyze_image(
+        self,
+        prompt: str,
+        image_bytes: bytes,
+        content_type: str,
+    ) -> AIResult:
+        response = self._client.models.generate_content(
+            model=self._analyze_model,
+            contents=[
+                types.Part(text=prompt),
+                types.Part(
+                    inline_data=types.Blob(
+                        mime_type=content_type,
+                        data=image_bytes,
+                    )
+                ),
+            ],
+            config=types.GenerateContentConfig(
+                thinking_config=types.ThinkingConfig(thinking_level="MEDIUM"),
+                response_mime_type="application/json",
+            ),
+        )
+        return AIResult(
+            data=parse_json_array(response.text),
+            cost_microdollars=calculate_cost_microdollars(response.usage_metadata),
+            model=self._analyze_model,
+        )
 
-def discover_words_text(client: genai.Client, prompt: str) -> list:
-    """Call Gemini 2.0 Flash for word discovery. Returns parsed JSON."""
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=[types.Part(text=prompt)],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-        ),
-    )
-    return json.loads(response.text)
+    def generate_quizzes(self, prompt: str) -> AIResult:
+        response = self._client.models.generate_content(
+            model=self._quiz_model,
+            contents=[types.Part(text=prompt)],
+            config=types.GenerateContentConfig(
+                thinking_config=types.ThinkingConfig(thinking_level="MEDIUM"),
+                response_mime_type="application/json",
+            ),
+        )
+        return AIResult(
+            data=parse_json_array(response.text),
+            cost_microdollars=calculate_cost_microdollars(response.usage_metadata),
+            model=self._quiz_model,
+        )
+
+    def discover_words(self, prompt: str) -> AIResult:
+        response = self._client.models.generate_content(
+            model=self._discovery_model,
+            contents=[types.Part(text=prompt)],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+            ),
+        )
+        return AIResult(
+            data=parse_json_array(response.text),
+            # Preserve the existing behavior: discovery cost is not recorded.
+            cost_microdollars=0,
+            model=self._discovery_model,
+        )
 
 
 def calculate_cost_microdollars(usage) -> int:

@@ -44,8 +44,13 @@ def db_conn(db_url):
 
 
 @pytest.fixture(autouse=True)
-def _clean_test_data(db_conn):
-    """Clean user-scoped data before each test. Keep kanji_master seed."""
+def _clean_test_data(request):
+    """Clean DB state around integration tests without starting Docker for unit tests."""
+    if "db_conn" not in request.fixturenames:
+        yield
+        return
+
+    db_conn = request.getfixturevalue("db_conn")
     yield
     with db_conn.cursor() as cur:
         cur.execute("""

@@ -10,7 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from . import db
-from .gemini import get_client, analyze_image, generate_quizzes_text, discover_words_text, calculate_cost_microdollars
+from .ai_client import AIClient, AIClientError, get_ai_client
 from .models import AnalyzePhotoRequest, GenerateQuizzesRequest, DiscoverWordsRequest, StatusResponse, DiscoverWordsResponse
 from .prompts import KANJI_PROMPT, QUIZ_PROMPT, REGEN_PROMPT, DISCOVERY_PROMPT, QUIZ_TYPE_MAP
 from .trace import TraceContext, default_ctx
@@ -64,17 +64,29 @@ async def analyze_photo(body: AnalyzePhotoRequest, request: Request):
         known_kanji_section = "The learner is a beginner with no kanji knowledge yet."
 
     prompt = KANJI_PROMPT.format(known_kanji_section=known_kanji_section)
-    ctx.log_info("analyze_photo: session=%s calling Gemini (known kanji: %d)", body.sessionId, len(known_kanji))
-
-    client = get_client()
+    client = get_ai_client()
+    ctx.log_info(
+        "analyze_photo: session=%s calling %s (known kanji: %d)",
+        body.sessionId,
+        client.provider_name,
+        len(known_kanji),
+    )
     try:
-        kanji_list, cost = analyze_image(client, prompt, image_bytes, content_type)
-    except json.JSONDecodeError:
+        result = client.analyze_image(prompt, image_bytes, content_type)
+        kanji_list = result.data
+        cost = result.cost_microdollars
+    except (json.JSONDecodeError, AIClientError):
         ctx.log_error("analyze_photo: session=%s failed to parse JSON response", body.sessionId)
         db.update_photo_session(body.sessionId, "", 0)
         return JSONResponse({"error": "Failed to parse AI response"}, status_code=500)
 
-    ctx.log_info("analyze_photo: session=%s Gemini done, cost=$%.4f", body.sessionId, cost / 1_000_000)
+    ctx.log_info(
+        "analyze_photo: session=%s %s/%s done, cost=$%.4f",
+        body.sessionId,
+        client.provider_name,
+        result.model,
+        cost / 1_000_000,
+    )
 
     # Enrich with KanjiMaster data
     characters = [k["character"] for k in kanji_list if "character" in k]
@@ -119,7 +131,7 @@ async def analyze_photo(body: AnalyzePhotoRequest, request: Request):
 def _run_quiz_generation(ctx: TraceContext, callback_url: str = "", callback_status_url: str = "", callback_key: str = ""):
     from .callback import send_quiz_result, send_job_status as send_job_status_callback
 
-    client = get_client()
+    client = get_ai_client()
     jobs = db.get_pending_jobs(limit=10)
     if not jobs:
         ctx.log_info("generate_quizzes: no pending jobs")
@@ -180,7 +192,7 @@ def _run_quiz_generation(ctx: TraceContext, callback_url: str = "", callback_sta
                 db.update_job_status(job_id, "FAILED", increment_attempts=True)
 
 
-def _process_initial_job(client, job: dict, ctx: TraceContext) -> tuple[int, int, list[dict]]:
+def _process_initial_job(client: AIClient, job: dict, ctx: TraceContext) -> tuple[int, int, list[dict]]:
     kanji_id = job["kanjiId"]
     word_master_id = job.get("wordMasterId", "")
     word_data = job.get("wordMaster") or {}
@@ -194,7 +206,9 @@ def _process_initial_job(client, job: dict, ctx: TraceContext) -> tuple[int, int
         meaning=meaning,
     )
 
-    quizzes, cost = generate_quizzes_text(client, prompt)
+    result = client.generate_quizzes(prompt)
+    quizzes = result.data
+    cost = result.cost_microdollars
 
     # Attach IDs so the callback receiver knows where to insert
     for q in quizzes:
@@ -204,7 +218,7 @@ def _process_initial_job(client, job: dict, ctx: TraceContext) -> tuple[int, int
     return cost, 0, quizzes
 
 
-def _process_regen_job(client, job: dict, ctx: TraceContext) -> tuple[int, int, list[dict]]:
+def _process_regen_job(client: AIClient, job: dict, ctx: TraceContext) -> tuple[int, int, list[dict]]:
     quiz_id = job.get("quizId")
     if not quiz_id:
         ctx.log_error("REGEN job missing quizId")
@@ -231,7 +245,9 @@ def _process_regen_job(client, job: dict, ctx: TraceContext) -> tuple[int, int, 
         previous_distractors=json.dumps(prev_distractors, ensure_ascii=False),
     )
 
-    distractors, cost = generate_quizzes_text(client, prompt)
+    result = client.generate_quizzes(prompt)
+    distractors = result.data
+    cost = result.cost_microdollars
 
     # Regen still writes directly — it's a distractor update, not a new quiz
     trigger = job.get("trigger", "milestone")
@@ -303,10 +319,10 @@ def discover_words(body: DiscoverWordsRequest):
         known_words="、".join(body.knownWords) if body.knownWords else "(none)",
     )
 
-    client = get_client()
+    client = get_ai_client()
     try:
-        new_words = discover_words_text(client, prompt)
-    except json.JSONDecodeError:
+        new_words = client.discover_words(prompt).data
+    except (json.JSONDecodeError, AIClientError):
         return JSONResponse({"error": "Failed to parse response"}, status_code=500)
 
     inserted = 0

@@ -8,7 +8,7 @@ _Move the Ktor backend and AI worker from Cloud Run to Fly.io, move the static f
 
 Migrate the application runtime without moving application data:
 
-- Run the Ktor backend on a public Fly.io Machine with 512 MB of memory.
+- Run the Ktor backend on a public Fly.io Machine with 1 GB of memory initially.
 - Run the FastAPI AI worker on a separate private Fly.io Machine with 512 MB of memory.
 - Route backend-to-worker traffic over Fly.io private IPv6 networking.
 - Host the React/Vite frontend on Cloudflare Pages.
@@ -32,7 +32,7 @@ Browser
   │
   ├── authenticated API requests ───────> Fly.io backend
   │                                        api.shuukanhq.com
-  │                                        Ktor, 512 MB
+  │                                        Ktor, 1 GB
   │                                             │
   │                                  Fly private IPv6 / 6PN
   │                                             │
@@ -52,10 +52,10 @@ Use two separate Fly Apps in the same Fly organization and primary region:
 
 | Application | Exposure | Initial size | Runtime |
 |-------------|----------|--------------|---------|
-| Backend | Public HTTPS through Fly Proxy | `shared-cpu-1x`, 512 MB | Ktor/JVM |
+| Backend | Public HTTPS through Fly Proxy | `shared-cpu-1x`, 1 GB | Ktor/JVM |
 | AI worker | Private 6PN only; no public service | `shared-cpu-1x`, 512 MB | FastAPI/Uvicorn |
 
-The backend and worker should start in the same region. Region selection should prioritize proximity to the Supabase database because most application requests perform database work. User latency is still relevant, but unnecessary cross-region database round trips should be avoided.
+The backend and worker should start in the same region. Region selection should match the Supabase AWS region because most application requests perform database work. Use Fly `nrt` when Supabase is in `ap-northeast-1`; otherwise select the nearest Fly region to the actual Supabase region and verify database latency before cutover.
 
 Both Machines should remain running during the initial migration and soak period. Autostop is unsafe for the current long-running/background request pattern because Fly Proxy only observes inbound traffic and cannot see application work continuing after the initiating browser request has completed.
 
@@ -103,25 +103,17 @@ Required changes:
 - Verify AAAA resolution of `<worker-fly-app>.internal` from the backend Machine.
 - Verify `GET /health` and all worker operations over the private hostname.
 
-### 3.3 Callback routing must be selected explicitly
+### 3.3 The backend must listen on private IPv6 for callbacks
 
 The worker sends results back to backend callback routes protected by `INTERNAL_API_KEY`.
 
-Preferred configuration:
+Use private callback routing:
 
 ```text
 SELF_URL=http://<backend-fly-app>.internal:8080
 ```
 
-This requires the Ktor server to listen on IPv6 while remaining reachable through the public Fly service. Dual-stack behavior must be verified inside Fly rather than assumed.
-
-Fallback configuration:
-
-```text
-SELF_URL=https://api.shuukanhq.com
-```
-
-This keeps backend-to-worker traffic private while worker callbacks traverse the public API hostname. Callback routes remain protected by `INTERNAL_API_KEY`. The fallback can be used for the first deployment if dual-stack callback routing needs more investigation.
+Bind Ktor to `::` so the same listener accepts Fly Proxy traffic and direct 6PN callback traffic. Verify both paths inside Fly before cutover. Do not route callbacks through the public API hostname.
 
 ### 3.4 Scheduled jobs are not represented as deployable infrastructure
 
@@ -133,22 +125,54 @@ The repository exposes scheduled operations but does not contain the scheduler c
 
 A scheduler outside the Fly organization cannot call a private `.internal` worker address.
 
+Use one in-process scheduler in the Ktor backend. It is smaller than operating Fly Cron Manager and supports exact schedules and an explicit time zone, unlike Fly Scheduled Machines, which only provide fuzzy hourly/daily/weekly/monthly intervals in UTC.
+
 Required changes:
 
-- Extract scheduled work into finite command-line entry points that reuse the same service functions as the HTTP routes.
-- Ensure every command exits non-zero on failure and logs a concise result summary.
-- Ensure commands are safe to retry.
-- Ensure concurrent or duplicate execution cannot generate duplicate work.
-- Configure all schedules in version-controlled infrastructure.
+- Start the scheduler from the Ktor application lifecycle.
+- Configure every schedule and its IANA time zone in version-controlled application configuration.
+- Acquire a PostgreSQL advisory lock before every scheduled execution.
+- Hold and release the advisory lock on the same dedicated database connection for the full execution; do not run scheduler locking through a transaction-mode pooler.
+- Assign a stable, documented lock identifier to each scheduled operation.
+- Skip the execution when another instance holds the lock.
+- Invoke the private worker endpoints for quiz generation and regeneration checks.
+- Invoke the backend cleanup service for stale photo sessions and quiz jobs.
+- Log the task name, scheduled time, start time, duration, result count, and failure.
+- Ensure each operation is safe to retry.
+- Release scheduler resources during graceful shutdown.
+- Test two backend instances attempting the same schedule and prove only one performs the work.
 
-Recommended scheduler:
+The advisory lock is required even with one backend Machine so later scaling or overlapping deployments do not create duplicate runs.
 
-- Use Fly Scheduled Machines when approximate hourly/daily/weekly execution is sufficient.
-- Use Fly Cron Manager if exact cron expressions, isolated runs, execution history, and manual reruns are required.
+### 3.5 Durable records exist, but stale-state recovery is incomplete
 
-Do not add an in-process scheduler to both application Machines. Horizontal scaling would otherwise risk duplicate execution unless distributed locking were also added.
+The dispatch paths already create durable database records before contacting the worker:
 
-### 3.5 Deployment commands target Google Cloud
+- `PhotoService.startAnalysis()` inserts a `photo_session` row with the default `PROCESSING` status before launching the worker request.
+- quiz selection inserts `quiz_generation_job` rows with `PENDING` status before `triggerQuizGeneration()` contacts the worker.
+- the worker marks a quiz job `PROCESSING` before making the AI call.
+
+An outbox is therefore not a prerequisite for this migration and must not be introduced in Phase A. The immediate gap is that an interrupted quiz job can remain `PROCESSING` indefinitely. Photo sessions already have an hourly cleanup path that marks stale `PROCESSING` rows failed, but quiz jobs have no equivalent reaper.
+
+Required changes:
+
+- Detect stale `PROCESSING` quiz jobs using `updated_at` and a documented timeout.
+- Mark stale jobs `FAILED`, increment `attempts`, and record a recovery reason.
+- Surface stale, failed, and long-running work in the admin Jobs page.
+- Make the admin retry action the documented recovery path.
+- Add equivalent admin visibility and recovery for failed photo sessions, or explicitly provide a user-visible rescan action using the stored image.
+- Ensure a retried quiz job returns to `PENDING`, immediately triggers private worker processing, and requires no manual database edits.
+- Test status transitions and retry behavior around process restarts.
+
+A transactional outbox or database-polling worker may be considered only after the new infrastructure has completed its soak period.
+
+### 3.6 Public API requests do not wait for AI completion
+
+The current Ktor dispatch paths create their database record and then call the worker from a separate coroutine. The browser-facing request returns without waiting for the AI request to finish. Cloudflare's origin request timeout therefore does not apply to photo analysis or quiz generation completion.
+
+Keep the Cloudflare proxy enabled for `api.shuukanhq.com` to retain fast DNS/origin rollback. Add a regression test proving the dispatch endpoints return promptly while worker processing continues, and confirm normal synchronous API routes remain comfortably below Cloudflare's origin timeout.
+
+### 3.7 Deployment commands target Google Cloud
 
 The current `Makefile`:
 
@@ -159,7 +183,7 @@ The current `Makefile`:
 
 These commands must be replaced or retained temporarily under clearly named legacy targets during the rollback window.
 
-### 3.6 Documentation is stale
+### 3.8 Documentation is stale
 
 `README.md` still describes older Firebase and Cloud Run architecture in several places. Deployment, architecture, environment-variable, and project-structure documentation must be updated after the new deployment path is working.
 
@@ -177,10 +201,9 @@ Add `backend/fly.toml` containing:
 - `internal_port = 8080`;
 - forced HTTPS;
 - service-level HTTP health check against `/health`;
-- one `shared-cpu-1x` Machine with 512 MB memory;
+- one `shared-cpu-1x` Machine with 1 GB memory;
 - `auto_stop_machines = "off"`;
 - `auto_start_machines = true`;
-- `min_machines_running = 1` where applicable;
 - an appropriate shutdown timeout;
 - a rolling deployment strategy initially.
 
@@ -262,12 +285,12 @@ Fly secrets should hold all credentials and private connection strings. Non-sens
 
 ### 4.5 Memory and connection-pool hardening
 
-The 512 MB targets need explicit guardrails and production measurement.
+Start the JVM backend at 1 GB. A 512 MB JVM limit leaves little margin for Netty direct buffers, metaspace, thread stacks, and non-heap allocations even when the Java heap appears healthy. Keep the Python worker at 512 MB initially and measure both services under representative work.
 
 Backend changes:
 
-- Add JVM container-memory settings through `JAVA_TOOL_OPTIONS`.
-- Leave sufficient native memory for metaspace, thread stacks, direct buffers, and the Netty runtime.
+- Set `-XX:MaxRAMPercentage=60` through `JAVA_TOOL_OPTIONS`.
+- Set an explicit `-XX:MaxDirectMemorySize=128m` for Netty/direct buffers and verify it under load.
 - Add `-XX:+ExitOnOutOfMemoryError` so an unhealthy process restarts cleanly.
 - Make Hikari `maximumPoolSize` configurable instead of hard-coding seven.
 - Start with a conservative pool size and increase only from observed demand.
@@ -283,24 +306,35 @@ Worker changes:
 
 Initial combined database connection limits should account for both services. Current defaults allow up to twelve application connections before deployment, cron, administrative, or migration connections are counted.
 
-If either service repeatedly exceeds roughly 80–85% of its memory allocation under representative load, increase that service to 1 GB rather than relying on repeated OOM restarts.
+If the worker repeatedly exceeds roughly 80–85% of its 512 MB allocation under representative photo load, increase it to 1 GB rather than relying on repeated OOM restarts. Reduce the backend to 512 MB only after production measurements demonstrate safe heap and native-memory headroom.
 
 ### 4.6 Graceful shutdown and in-flight work
 
-Photo analysis and quiz generation can outlive the browser request that initiated them.
+Photo analysis and quiz generation can outlive the browser request that initiated them. Code inspection confirms that worker AI work is not detached from Uvicorn:
+
+- `/analyze-photo` awaits the image download, AI call, and callback in its request handler.
+- `/generate-quizzes` is a synchronous FastAPI handler and remains an active request while its thread-pool work runs.
+- the worker does not use FastAPI `BackgroundTask` or bare `asyncio.create_task` for these operations.
+
+Uvicorn can therefore drain these active requests during graceful shutdown. No outstanding-task registry is required for the current worker shape.
+
+The Ktor side is different: `PhotoService` and `KanjiService` launch outbound worker calls in service-owned `CoroutineScope(Dispatchers.IO)` instances after the browser request returns. Those coroutines are not automatically drained as active Ktor requests. Replace them with an application-managed scope, stop accepting new dispatch work during shutdown, await outstanding dispatch calls within the shutdown budget, and then cancel what remains. The durable database record remains the recovery mechanism if the drain cannot finish.
 
 Required protections:
 
 - Disable Fly autostop for the backend.
 - Keep the worker continuously running.
-- Configure sufficient `kill_timeout` for normal request completion.
+- Set Fly `kill_timeout = 300`, the platform maximum.
+- Set Uvicorn `--timeout-graceful-shutdown` below the Fly limit, leaving time for lifespan cleanup.
+- Close the psycopg2 pool during FastAPI lifespan shutdown.
 - Ensure callback and job status writes are idempotent.
 - Verify what happens when backend deployment occurs after a worker job starts but before its callback.
 - Verify what happens when a worker deployment interrupts active AI generation.
-- Add recovery for sessions or jobs left indefinitely in `PROCESSING`.
+- Run stale-state recovery for sessions and jobs left in `PROCESSING`.
+- Verify the admin Jobs page can rerun recovered work successfully.
 - Preserve database state as the source of truth; no job may depend solely on process memory.
 
-A later reliability iteration may replace long-lived HTTP-triggered work with a database-backed worker poller. That redesign is not required for the initial infrastructure migration if interruption and retry behavior are tested and documented.
+`kill_timeout` is a best-effort drain window, not a durability guarantee. Work exceeding the five-minute Fly limit must be recovered from its existing database record. A later reliability iteration may replace long-lived HTTP-triggered work with an outbox or database-backed worker poller, but that redesign is explicitly out of scope until after migration soak.
 
 ### 4.7 Makefile and deployment state
 
@@ -458,14 +492,14 @@ Git integration is preferred over a Direct Upload-only project because it provid
 
 ### 5.7 Scheduled jobs
 
-- Select Scheduled Machines or Cron Manager.
+- Configure the Ktor in-process scheduler and exact IANA time zone.
 - Configure each schedule in version control.
-- Use the same region and secrets as the relevant service.
-- Run each scheduled command manually before enabling its schedule.
+- Run each scheduled operation manually before enabling its schedule.
+- Verify the PostgreSQL advisory lock from two concurrent backend processes.
 - Confirm only one logical execution occurs per schedule.
-- Confirm logs and non-zero failures are visible.
+- Confirm results and failures reach the durable log sink.
 - Add a documented manual rerun procedure.
-- Disable the corresponding Google Cloud schedules only after Fly schedules have completed successfully in production.
+- Disable the corresponding Google Cloud schedules only after the Ktor scheduler has completed successfully in production.
 
 ---
 
@@ -489,7 +523,18 @@ Git integration is preferred over a Direct Upload-only project because it provid
 
 ## 7. Observability and operational checks
 
-Establish a baseline before cutover and compare it with Fly production behavior.
+Observability must be operating before application cutover. `fly logs` is useful for live tailing but is not the durable record for the soak period.
+
+Use this stack:
+
+- Fly.io managed Prometheus and managed Grafana for built-in Machine, proxy, CPU, memory, restart, and network metrics.
+- application `/metrics` endpoints scraped through each app's Fly `[metrics]` configuration for service-specific metrics.
+- Fly Log Shipper forwarding backend and worker logs to Better Stack for retention, search, and log-based alerts.
+- Better Stack uptime checks for `https://api.shuukanhq.com/health` and `https://shuukanhq.com`.
+
+Deploy and validate the Log Shipper before the first Fly staging run; log streaming is not retroactive. Store Better Stack ingestion credentials as Fly secrets and give the shipper no public service or public IP.
+
+Establish a Cloud Run/Cloud Monitoring baseline before cutover and compare it with Fly production behavior.
 
 ### Backend
 
@@ -501,6 +546,8 @@ Establish a baseline before cutover and compare it with Fly production behavior.
 - callback authentication failures
 - Supabase JWT/JWKS failures
 - Resend failures
+- scheduler executions, lock skips, durations, and failures
+- stale job recovery counts
 
 ### AI worker
 
@@ -511,6 +558,7 @@ Establish a baseline before cutover and compare it with Fly production behavior.
 - Gemini/OpenRouter latency and error rate
 - callback attempts and failures
 - scheduled job duration and result counts
+- active worker requests during graceful shutdown
 
 ### Cloudflare Pages
 
@@ -520,7 +568,7 @@ Establish a baseline before cutover and compare it with Fly production behavior.
 - browser console errors
 - API CORS failures
 
-Add alerts for repeated Machine restarts, sustained 5xx responses, failed scheduled jobs, and jobs/sessions stuck in `PROCESSING` beyond their expected duration.
+Create Better Stack alerts for repeated Machine restarts/OOM log events, sustained 5xx responses, failed scheduler executions, callback failures, and stale-state recovery. Add an uptime alert for both public endpoints. Build a Fly Grafana migration dashboard covering resident memory, CPU, response latency, response status, restarts, and custom database-pool/worker metrics.
 
 ---
 
@@ -562,6 +610,9 @@ From the worker Machine:
 - Upload a photo to Supabase Storage.
 - Start photo analysis and receive the callback result.
 - Generate quizzes and receive all callbacks.
+- Open the admin Jobs page and verify pending, processing, stale, and failed work is visible.
+- Retry a failed quiz job from the admin Jobs page and verify it reaches `DONE`.
+- Exercise the documented failed-photo recovery or rescan flow.
 - Complete and resume a quiz session.
 - Send or validate an invite flow and Resend link.
 - Run every scheduled command manually.
@@ -570,14 +621,16 @@ From the worker Machine:
 
 ### 8.4 Failure tests
 
-- Restart the backend during an active worker job.
-- Restart the worker during an active AI request.
+- Restart the backend during an active worker job; recover the stale job, rerun it from the admin Jobs page, and verify it reaches `DONE`.
+- Restart the worker during an active AI request; recover the stale job/session, rerun it through the documented admin recovery path, and verify it succeeds.
+- Deploy the worker during an active request and verify Uvicorn drains the request when it finishes within the configured grace period.
+- Run a job longer than the graceful-shutdown limit and verify durable stale-state recovery rather than silent loss.
 - Temporarily supply an invalid worker key.
 - Temporarily supply an invalid callback key.
 - Simulate an unavailable database at startup.
 - Simulate a failed AI provider call.
 - Submit an oversized image response.
-- Confirm failed work reaches an actionable state rather than remaining permanently `PROCESSING`.
+- Confirm the complete operator flow: stale work becomes visible and actionable, an admin reruns it, and the rerun succeeds without direct database edits.
 
 ---
 
@@ -590,12 +643,18 @@ From the worker Machine:
 - Add worker authentication.
 - Add IPv6 listener configuration.
 - Add memory and connection-pool settings.
-- Add scheduled command entry points.
+- Add stale quiz-job recovery and complete the admin rerun flow.
+- Add the locked in-process Ktor scheduler.
+- Add application metrics endpoints.
+- Add Fly managed Prometheus/Grafana configuration.
+- Add the Fly Log Shipper and Better Stack sink configuration.
 - Update deployment commands.
 - Add automated tests.
 - Update deployment documentation.
 
 No production DNS or existing deployment is changed in this phase.
+
+Do not build an outbox or replace the HTTP worker protocol in this phase. Use the existing durable `photo_session` and `quiz_generation_job` records, then reconsider the worker architecture after migration soak.
 
 ### Phase B — provision Fly staging endpoints
 
@@ -607,6 +666,9 @@ No production DNS or existing deployment is changed in this phase.
 - Verify Supabase connectivity from both Machines.
 - Verify private backend-to-worker communication.
 - Verify callback routing.
+- Verify logs arrive in Better Stack and metrics arrive in Fly Grafana.
+- Verify uptime checks and alerts.
+- Force an interrupted job and complete its admin rerun flow.
 - Record baseline memory and latency.
 
 Cloud Run remains production during this phase.
@@ -645,6 +707,7 @@ Soak the new infrastructure for at least 24–48 hours under normal usage.
 
 During the soak:
 
+- review Fly Grafana metrics and retained Better Stack logs;
 - review all Machine restarts;
 - confirm there are no OOM events;
 - inspect callback and scheduled-job failures;
@@ -702,13 +765,15 @@ Rollback remains available until the soak period is complete and legacy services
 | Fly configuration and deployment commands | 0.5 day |
 | Private networking and authentication replacement | 0.5–1 day |
 | Memory, connection pool, health, and failure hardening | 0.5–1 day |
-| Scheduled-job migration | 0.5 day |
+| Stale-state recovery and admin rerun flow | 0.5–1 day |
+| Locked in-process scheduler | 0.5 day |
+| Metrics, log shipping, dashboards, and alerts | 0.5–1 day |
 | Cloudflare Pages preparation and documentation | 0.5 day |
 | Infrastructure provisioning, DNS, and secrets | 2–4 hours |
 | Staging verification and production cutover | 2–4 hours |
 | Production soak | 24–48 hours elapsed |
 
-Expected total: approximately two to three active engineering days plus the production soak period.
+Expected total: approximately three to five active engineering days plus the production soak period.
 
 ---
 
@@ -717,19 +782,18 @@ Expected total: approximately two to three active engineering days plus the prod
 - [ ] Final Fly organization
 - [ ] Backend Fly app name
 - [ ] AI worker Fly app name
-- [ ] Primary Fly region, selected with Supabase region in mind
-- [ ] Confirm both services start at 512 MB
+- [ ] Confirm Supabase AWS region and select the matching Fly region (`nrt` for `ap-northeast-1`)
+- [ ] Confirm backend starts at 1 GB and worker starts at 512 MB
 - [ ] Confirm backend remains always-on initially
 - [ ] Confirm worker remains always-on and private-only
-- [ ] Private callback hostname or public `api.shuukanhq.com` callback fallback
-- [ ] Fly Scheduled Machines or Fly Cron Manager
+- [ ] Confirm Ktor binds to `::` and callbacks use the private backend hostname
 - [ ] Exact schedules and time zone for all three scheduled operations
 - [ ] Git-integrated Cloudflare Pages project or Direct Upload workflow
 - [ ] Production branch name
 - [ ] Whether authenticated preview deployments are required
 - [ ] Supabase direct IPv6 connection or pooler connection
 - [ ] Whether Supabase database network restrictions are enabled
-- [ ] Cloudflare DNS-only or proxied API record
+- [ ] Better Stack account, log source, retention, and alert recipients
 - [ ] Length of production soak before legacy decommissioning
 
 Recommended defaults:
@@ -738,9 +802,10 @@ Recommended defaults:
 - `api.shuukanhq.com` as the stable backend hostname
 - Cloudflare proxy enabled with `_fly-ownership` verification and `Full (strict)` TLS
 - direct Supabase IPv6 connection with `sslmode=require`
-- private callback routing after dual-stack verification
-- Fly Scheduled Machines for approximate daily jobs; Cron Manager if exact timing is required
-- one always-running 512 MB Machine per service
+- private callback routing over a dual-stack Ktor listener
+- one in-process Ktor scheduler protected by a PostgreSQL advisory lock
+- Fly managed Prometheus/Grafana plus Better Stack through Fly Log Shipper
+- one always-running 1 GB backend Machine and one always-running 512 MB worker Machine
 - 48-hour soak before decommissioning Google Cloud resources
 
 ---
@@ -756,11 +821,18 @@ Recommended defaults:
 - [ ] Backend sends `WORKER_API_KEY` on worker requests
 - [ ] Worker rejects unauthenticated operation requests
 - [ ] Worker listens on private IPv6
+- [ ] Backend listens on IPv6 and accepts private worker callbacks
 - [ ] Callback authentication continues to use `INTERNAL_API_KEY`
+- [ ] Backend worker-dispatch coroutines use an application-managed scope with bounded shutdown draining
 - [ ] Connection pool sizes are configurable
-- [ ] 512 MB runtime limits have explicit JVM and worker guardrails
+- [ ] Backend starts at 1 GB with explicit heap and direct-memory limits
+- [ ] Worker has explicit 512 MB guardrails
 - [ ] Image downloads have time and size limits
-- [ ] Scheduled operations have finite, retry-safe command entry points
+- [ ] Stale `PROCESSING` photo sessions and quiz jobs transition to an actionable failed state
+- [ ] Admin Jobs page shows stale/failed work and can rerun it successfully
+- [ ] Scheduled operations run in Ktor behind a PostgreSQL advisory lock
+- [ ] Fly custom metrics are exposed and scraped
+- [ ] Fly Log Shipper delivers retained logs to Better Stack
 - [ ] Makefile and deploy-state tooling are provider-neutral
 - [ ] README and architecture documentation describe the new deployment
 - [ ] Automated tests pass
@@ -774,9 +846,10 @@ Recommended defaults:
 - [ ] Both services connect to Supabase with TLS
 - [ ] Backend-to-worker authentication succeeds
 - [ ] Worker-to-backend callbacks succeed
-- [ ] No repeated OOM or restart loop occurs at 512 MB
+- [ ] Backend is stable at 1 GB and worker is stable at 512 MB
 - [ ] Health checks pass
 - [ ] Scheduled jobs run exactly once per intended schedule
+- [ ] Controlled worker shutdown drains attached requests within the grace period
 
 ### Cloudflare Pages
 
@@ -794,7 +867,9 @@ Recommended defaults:
 - [ ] Full quiz-generation flow succeeds
 - [ ] Quiz session resume and completion succeed
 - [ ] Invite/email flow succeeds
-- [ ] All scheduled commands have completed successfully
+- [ ] All scheduled operations have completed successfully
+- [ ] Interrupted work has been recovered and rerun successfully through the admin page
+- [ ] Fly Grafana, Better Stack logs, alerts, and uptime checks operated throughout the soak
 - [ ] Google Cloud schedules are disabled
 - [ ] Production has completed the selected soak period
 - [ ] Rollback procedure has been verified before legacy removal
@@ -809,6 +884,9 @@ Recommended defaults:
 - [Fly.io monorepo deployments](https://fly.io/docs/launch/monorepo/)
 - [Fly.io configuration reference](https://fly.io/docs/reference/configuration/)
 - [Fly.io health checks](https://fly.io/docs/reference/health-checks/)
+- [Fly.io managed Prometheus and Grafana](https://fly.io/docs/monitoring/metrics/)
+- [Fly.io logging and export options](https://fly.io/docs/monitoring/logs-api-options/)
+- [Fly.io Log Shipper](https://fly.io/docs/monitoring/exporting-logs/)
 - [Fly.io long-running task lifecycle](https://fly.io/docs/blueprints/long-running-tasks/)
 - [Fly.io task scheduling](https://fly.io/docs/blueprints/task-scheduling/)
 - [Fly.io custom domains](https://fly.io/docs/networking/custom-domain/)

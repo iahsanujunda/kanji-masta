@@ -553,6 +553,18 @@ delivery without a visible client and unsupported browsers retain the Milestone 
 queue. Authentication expiry, explicit logout, account switching, and realistic photo sizes
 remain mandatory staging tests before enabling real capture uploads in the worker.
 
+Observed real-device results (2026-08-05):
+
+| Browser | Mode | Service Worker | Background Sync | Result | Follow-up |
+|---------|------|----------------|-----------------|--------|-----------|
+| Android Firefox 153 / Android 17 | Browser tab | Supported | Unsupported | `unsupported` — final | Use Milestone 1 app-open/focus drain |
+| Android Chrome 150 / Android 10 | Browser tab | Supported | Supported | `retrying` — inconclusive | Restore connectivity, close/lock without re-queuing, wait five minutes, then copy the updated report |
+
+The Chrome run attempted sync 13 ms after queuing with one visible window client and its
+connectivity request failed. It therefore proves registration and retry retention, but not
+background execution. `navigator.onLine` reported online at queue time; treat that field as a
+hint rather than proof of connectivity.
+
 Milestone 2 tests cover storage-persistence denial, retention limits, multiple pending
 items, auth expiration/recovery, oversized images, queue privacy, and duplicate-safe
 service-worker delivery on browsers where that experiment is enabled.

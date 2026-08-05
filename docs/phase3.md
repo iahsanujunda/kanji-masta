@@ -656,3 +656,343 @@ The frontend replaces its local snapshot with this response. A retry using the s
 - [x] Viewing word-reference content does not mutate introduction, session, familiarity, failure, or scheduling state
 - [x] Collection counts and empty states do not describe unintroduced words as learned
 - [x] Verified end-to-end: a new word is introduced, recalled later, and reaches familiarity 1 in the same session
+
+----
+
+# Iteration 3.2: Captures
+
+_Keeping the source material, and making progress legible against it_
+
+---
+
+## The problem
+
+A photo is currently disposable input. It is uploaded, read for kanji, and never seen again. Two things are lost:
+
+**The immediate need.** When you photograph a letter from the ward office or an announcement poster, you want to know what it says *now*. The app extracts kanji and sends you to Google Translate for the actual content. That is a gap in the product, not a feature.
+
+**The long-term payoff.** The photo is the artifact of learning. Being able to return to a poster you could not read three months ago and read it now is the entire point of the app, and there is currently no way to feel it.
+
+These pull in opposite directions only if you assume the revisit is about discovering content. It is not — it is about testing whether you can read it yourself. So the translation is given freely at capture, and hidden by default on revisit.
+
+---
+
+## 3.2.1 Concept
+
+Every photo becomes a **capture** — a retained artifact with the original image, its full text, a translation, and a readability score that changes over time.
+
+```
+Captured 12 Mar          Today
+┌─────────────┐          ┌─────────────┐
+│  [poster]   │          │  [poster]   │
+│             │    →     │             │
+│  14% ▁▁     │          │  71% ▆▆▆▆   │
+└─────────────┘          └─────────────┘
+```
+
+The readability score is the feature. It turns an invisible internal state — your vocabulary — into a number attached to something you actually cared about enough to photograph.
+
+---
+
+## 3.2.2 Schema
+
+```graphql
+type PhotoSession @table {
+  # ... existing fields
+
+  fullText: String              # NEW — complete text in the image, not just kanji
+  translation: String           # NEW — English translation of fullText
+  segments: String              # NEW — JSON, word-level segmentation
+  title: String                 # NEW — short AI-generated label, user-editable
+  capturedReadability: Float    # NEW — readability snapshot at capture time
+  archived: Boolean! @default(value: false)   # NEW — hide from gallery, keep data
+  lastRevisitedAt: Timestamp    # NEW — for surfacing stale captures
+}
+```
+
+**`segments`** is the piece that makes readability computable. Word-level segmentation of `fullText`, each segment linked to `WordMaster` where a match exists:
+
+```json
+[
+  { "text": "本日", "reading": "ほんじつ", "wordMasterId": "uuid-a", "hasKanji": true },
+  { "text": "は", "reading": null, "wordMasterId": null, "hasKanji": false },
+  { "text": "電車", "reading": "でんしゃ", "wordMasterId": "uuid-b", "hasKanji": true },
+  { "text": "が", "reading": null, "wordMasterId": null, "hasKanji": false },
+  { "text": "遅れて", "reading": "おくれて", "wordMasterId": "uuid-c", "hasKanji": true },
+  { "text": "おります", "reading": null, "wordMasterId": null, "hasKanji": false }
+]
+```
+
+Stored as JSON rather than a table. It is only ever read whole, per photo, and never queried across photos.
+
+---
+
+## 3.2.3 Readability
+
+```kotlin
+fun readability(segments: List<Segment>, userId: String): Float {
+    val kanjiSegments = segments.filter { it.hasKanji }
+    if (kanjiSegments.isEmpty()) return 1.0f
+
+    val readable = kanjiSegments.count { seg ->
+        seg.wordMasterId?.let { id ->
+            userWordsRepo.findByWordMaster(userId, id)?.familiarity ?: 0
+        }?.let { it >= 3 } ?: false
+    }
+
+    return readable.toFloat() / kanjiSegments.size
+}
+```
+
+**Only kanji-bearing segments count.** Particles and kana endings are always readable and would inflate every score toward 100%, making the metric useless.
+
+**Familiarity 3 is the threshold.** That is the tier where the user can understand the word inside a sentence — which is exactly what reading a poster requires. Familiarity 1 or 2 means they recognize it in isolation, which is not the same as reading.
+
+**Computed live, never stored** — except `capturedReadability`, which is snapshotted once at capture time so the before/after comparison has a fixed anchor.
+
+---
+
+## 3.2.4 Capture flow changes
+
+The existing flow is unchanged up to kanji selection. One screen is added after it.
+
+```
+Photo → analysis → kanji selection → [ NEW: Read it ] → home
+```
+
+### The "Read it" screen
+
+```
+┌────────────────────────────────────┐
+│  ← Station notice                  │
+│                                    │
+│  ┌──────────────────────────────┐  │
+│  │        [original image]      │  │
+│  └──────────────────────────────┘  │
+│                                    │
+│  本日は電車が遅れております。      │
+│  ご迷惑をおかけしております。      │
+│                                    │
+│  ───────────────────────────────   │
+│                                    │
+│  Trains are delayed today.         │
+│  We apologise for the trouble.     │
+│                                    │
+│  You can read 14% of this today.   │
+│                                    │
+│           [ Save capture ]         │
+└────────────────────────────────────┘
+```
+
+Skippable. Some photos are captured purely for vocabulary and the user does not care what the whole thing says.
+
+`capturedReadability` is written here.
+
+### Extraction changes
+
+No new AI call. The photo analysis prompt already reads the image — it just discards everything that is not a kanji. Extend the response:
+
+```
+Additionally return:
+- "fullText": every line of Japanese text visible in the image, joined with newlines.
+  Preserve line breaks as they appear. Omit decorative text, logos, and English.
+- "translation": natural English translation of fullText. Translate meaning, not
+  word-for-word. Keep the register of the original — a casual sign stays casual,
+  an official notice stays formal.
+- "title": a 2-4 word English label for what this is. Examples: "Station notice",
+  "Ramen menu", "Ward office letter", "Convenience store sign".
+- "segments": fullText split into words. Each entry: {"text", "reading", "hasKanji"}.
+  Reading is null for kana-only segments. Split at word boundaries, keeping
+  okurigana attached to its stem.
+```
+
+Ktor resolves `wordMasterId` for each segment after the response returns, matching `segments[].text` against `WordMaster.word`. Unmatched segments keep `wordMasterId: null` and count as unreadable — which is correct, since a word not in the system is a word the user has never encountered.
+
+**Cost impact is marginal.** Same image, same call, longer response. Output tokens on a poster's worth of text are cheap relative to the image input already being paid for.
+
+---
+
+## 3.2.5 The gallery
+
+A new tab or section listing all captures, newest first.
+
+```
+┌──────────────────────────────────────┐
+│  Captures                    [⊞] [☰] │
+├──────────────────────────────────────┤
+│                                      │
+│  ┌────────┐ ┌────────┐ ┌────────┐   │
+│  │ [img]  │ │ [img]  │ │ [img]  │   │
+│  │        │ │        │ │        │   │
+│  │ 71% ▲  │ │ 34%    │ │ 92% ▲  │   │
+│  └────────┘ └────────┘ └────────┘   │
+│  Station     Ramen      Ward         │
+│  notice      menu       letter       │
+│  12 Mar      3 Apr      18 Apr       │
+│                                      │
+└──────────────────────────────────────┘
+```
+
+The ▲ marks captures whose readability has risen meaningfully since capture — the ones worth revisiting.
+
+**Sorting options:** newest, most improved (`current − captured`, descending), least readable.
+
+**Filters:** all, unread since capture, archived.
+
+---
+
+## 3.2.6 The revisit view
+
+Tapping a capture opens it in read mode. This is where the payoff lands.
+
+```
+┌────────────────────────────────────┐
+│  ← Station notice        12 Mar    │
+│                                    │
+│  ┌──────────────────────────────┐  │
+│  │        [original image]      │  │
+│  └──────────────────────────────┘  │
+│                                    │
+│  本日は電車が遅れております。      │
+│  ご迷惑をおかけしております。      │
+│                                    │
+│  ┌──────────────────────────────┐  │
+│  │   Tap to reveal translation  │  │
+│  └──────────────────────────────┘  │
+│                                    │
+│  When captured    14%  ▁▁          │
+│  Today            71%  ▆▆▆▆        │
+│                                    │
+└────────────────────────────────────┘
+```
+
+**Translation hidden by default.** The user reads the Japanese first, then reveals to check. This is the self-test, and it is why giving the translation at capture time costs nothing — months later nobody remembers what a particular poster said.
+
+**Word highlighting on the extracted text.** Segments the user can read at familiarity 3+ render in normal weight; segments below threshold render dimmed. The sentence visibly fills in over months, which is a stronger signal than the percentage alone.
+
+**Tapping a segment** opens the word detail — reading, meaning, current familiarity, next review. Words not yet in `UserWords` offer "Add to learning", which routes into the normal word-encounter flow.
+
+**No familiarity effect.** Revisiting is a mirror, not a drill. Reading a capture correctly does not advance anything, and struggling with one does not knock anything back. Same reasoning as maturity challenges — it exists to show progress, not to drive the queue.
+
+`lastRevisitedAt` is set on open.
+
+---
+
+## 3.2.7 Revisit prompts
+
+The gallery is passive — the user has to remember to go there. Surface captures actively when they cross a readability threshold.
+
+```
+┌────────────────────────────────────┐
+│  📷 You can read this now          │
+│  Station notice · captured 12 Mar  │
+│  14% → 71%                         │
+│  [ Read it ]                       │
+└────────────────────────────────────┘
+```
+
+**Trigger:** a daily job recomputes readability for non-archived captures and fires when one crosses 50%, 75%, or 90% for the first time, provided at least 14 days have passed since capture.
+
+**Rate limit:** at most one revisit prompt at a time, and no more than one per week. This is a moment of delight — showing three at once devalues all of them.
+
+The card appears on the home screen alongside challenge badges, at lower priority than both consolidation and maturity.
+
+Track fired thresholds to avoid repeats:
+
+```graphql
+type PhotoSession @table {
+  # ... existing fields
+  firedThresholds: [Int!]! @default(expr: "[]")   # e.g. [50, 75]
+}
+```
+
+---
+
+## 3.2.8 Storage and retention
+
+Images already go to Cloud Storage and `PhotoSession.imageUrl` already exists — nothing new is needed to retain them. What changes is that they are now user-facing and permanent rather than incidental.
+
+**Volume:** a few captures a week at 2–4MB each is roughly 0.5–1GB per user per year. Negligible cost.
+
+**Deletion:** `archived` hides a capture from the gallery while keeping its data, so an accidental archive is recoverable and the kanji learned from it are unaffected. Hard delete removes the storage object and nulls `imageUrl`, keeping the row so `UserWords.sourcePhotoId` references stay intact.
+
+**Thumbnails.** Serving full-resolution images into a grid is wasteful on mobile data. Generate a thumbnail at upload and store its URL alongside the original:
+
+```graphql
+thumbnailUrl: String    # NEW — ~400px, generated at upload
+```
+
+---
+
+## 3.2.9 Existing photos
+
+Captures made before this ships have `imageUrl` but no `fullText`, `translation`, or `segments`. Two options:
+
+**Lazy backfill (recommended).** When an old capture is opened and `segments` is null, run extraction on demand and store the result. The user waits a few seconds once, and you only pay for photos anyone actually revisits. `capturedReadability` is unavailable for these — show "—" rather than a fabricated number, since backfilling it would compute today's score and label it as the past, which is exactly backwards.
+
+**Bulk backfill.** A script re-running extraction across every stored image. Cleanest gallery, but pays for photos that will never be opened, and still cannot recover a true `capturedReadability`.
+
+---
+
+## 3.2.10 API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/captures` | Paginated list — thumbnail, title, date, captured and current readability |
+| `GET` | `/api/captures/{id}` | Full capture — image, fullText, translation, segments with per-segment familiarity |
+| `PUT` | `/api/captures/{id}` | Update title, archived |
+| `DELETE` | `/api/captures/{id}` | Hard delete — removes storage object, nulls imageUrl |
+| `POST` | `/api/captures/{id}/backfill` | Run extraction on a pre-feature capture |
+| `GET` | `/api/captures/revisit-prompt` | Pending revisit prompt, or null |
+
+**`GET /api/captures/{id}` response:**
+
+```json
+{
+  "id": "uuid",
+  "title": "Station notice",
+  "imageUrl": "https://...",
+  "capturedAt": "2026-03-12T09:14:00+09:00",
+  "capturedReadability": 0.14,
+  "currentReadability": 0.71,
+  "fullText": "本日は電車が遅れております。\nご迷惑をおかけしております。",
+  "translation": "Trains are delayed today.\nWe apologise for the trouble.",
+  "segments": [
+    { "text": "本日", "reading": "ほんじつ", "hasKanji": true, "wordMasterId": "uuid-a", "familiarity": 4, "readable": true },
+    { "text": "は", "reading": null, "hasKanji": false, "wordMasterId": null, "familiarity": null, "readable": null },
+    { "text": "電車", "reading": "でんしゃ", "hasKanji": true, "wordMasterId": "uuid-b", "familiarity": 5, "readable": true },
+    { "text": "遅れて", "reading": "おくれて", "hasKanji": true, "wordMasterId": "uuid-c", "familiarity": 1, "readable": false }
+  ]
+}
+```
+
+Per-segment `familiarity` and `readable` are resolved server-side so the client renders highlighting without additional lookups.
+
+---
+
+## Definition of Done
+
+- [ ] `PhotoSession` gains `fullText`, `translation`, `segments`, `title`, `capturedReadability`, `archived`, `lastRevisitedAt`, `firedThresholds`, `thumbnailUrl`
+- [ ] Photo analysis prompt extended to return fullText, translation, title, segments — no new AI call
+- [ ] Ktor resolves `wordMasterId` per segment against `WordMaster` after extraction
+- [ ] Unmatched segments correctly count as unreadable
+- [ ] Thumbnail generated at upload
+- [ ] "Read it" screen shown after kanji selection, skippable
+- [ ] `capturedReadability` snapshotted at capture time
+- [ ] Readability counts only `hasKanji` segments, threshold familiarity >= 3
+- [ ] Gallery lists captures with thumbnail, title, date, current readability
+- [ ] Gallery sortable by newest, most improved, least readable
+- [ ] Revisit view hides translation behind tap-to-reveal
+- [ ] Extracted text renders readable segments normal, unreadable segments dimmed
+- [ ] Tapping a segment opens word detail; unknown words offer "Add to learning"
+- [ ] Revisiting has no effect on familiarity in either direction
+- [ ] `lastRevisitedAt` set on open
+- [ ] Daily job recomputes readability and fires threshold crossings at 50/75/90
+- [ ] Revisit prompt requires 14+ days since capture
+- [ ] At most one revisit prompt at a time, max one per week
+- [ ] `firedThresholds` prevents repeat prompts for the same threshold
+- [ ] Revisit prompt sits below consolidation and maturity in home screen priority
+- [ ] Archive hides from gallery without data loss; hard delete removes storage object
+- [ ] Lazy backfill runs extraction on old captures when first opened
+- [ ] Pre-feature captures show "—" for captured readability, not a fabricated value
+- [ ] Verified: a capture from months ago shows a meaningfully higher current readability

@@ -16,6 +16,8 @@ import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
 import org.slf4j.MDC
 import java.util.UUID
+import java.util.Base64
+import java.time.Instant
 
 private val logger = LoggerFactory.getLogger("com.kanjimasta.modules.photo.PhotoService")
 
@@ -220,6 +222,73 @@ class PhotoService(
             )
         }
         return RecentScansResponse(sessions = items)
+    }
+
+    fun getActivity(userId: String, limit: Int, cursor: String?): PhotoActivityResponse {
+        val decodedCursor = cursor?.let(::decodeActivityCursor)
+        val sessions = photoRepository.getActivitySessions(
+            userId = userId,
+            limit = limit + 1,
+            beforeCreatedAt = decodedCursor?.first,
+            beforeId = decodedCursor?.second,
+        )
+        val hasMore = sessions.size > limit
+        val page = sessions.take(limit)
+        val items = page.map { session ->
+            PhotoActivityItem(
+                sessionId = session.id,
+                storagePath = session.storagePath,
+                status = session.status.apiValue,
+                createdAt = session.createdAt?.toString() ?: "",
+                updatedAt = session.updatedAt?.toString() ?: session.createdAt?.toString() ?: "",
+                kanjiCount = kanjiCount(session),
+                failureCode = session.failureCode,
+            )
+        }
+        val nextCursor = if (hasMore) page.lastOrNull()?.let { session ->
+            encodeActivityCursor(
+                checkNotNull(session.createdAt) { "Photo activity is missing created_at" },
+                UUID.fromString(session.id),
+            )
+        } else null
+        return PhotoActivityResponse(items = items, nextCursor = nextCursor, hasMore = hasMore)
+    }
+
+    fun getActivityUnseen(userId: String): PhotoActivityUnseenResponse {
+        val latestTerminalAt = photoRepository.getLatestTerminalActivityAt(userId)
+        val seenThrough = photoRepository.getActivitySeenThrough(userId)
+        return PhotoActivityUnseenResponse(
+            hasUnseen = latestTerminalAt != null && (seenThrough == null || latestTerminalAt.isAfter(seenThrough)),
+            latestTerminalAt = latestTerminalAt?.toString(),
+        )
+    }
+
+    fun markActivitySeen(userId: String, seenThrough: Instant) {
+        val latestTerminalAt = photoRepository.getLatestTerminalActivityAt(userId) ?: return
+        val boundedWatermark = if (seenThrough.isAfter(latestTerminalAt)) latestTerminalAt else seenThrough
+        photoRepository.markActivitySeen(userId, boundedWatermark)
+    }
+
+    private fun kanjiCount(session: PhotoSessionRow): Int? {
+        if (session.status != PhotoSessionStatus.DONE || session.rawAiResponse == null) return null
+        return try {
+            Json.parseToJsonElement(session.rawAiResponse).jsonArray.size
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun encodeActivityCursor(createdAt: Instant, id: UUID): String =
+        Base64.getUrlEncoder().withoutPadding()
+            .encodeToString("$createdAt|$id".toByteArray(Charsets.UTF_8))
+
+    private fun decodeActivityCursor(cursor: String): Pair<Instant, UUID> = try {
+        val decoded = String(Base64.getUrlDecoder().decode(cursor), Charsets.UTF_8)
+        val parts = decoded.split('|', limit = 2)
+        require(parts.size == 2)
+        Instant.parse(parts[0]) to UUID.fromString(parts[1])
+    } catch (error: Exception) {
+        throw IllegalArgumentException("Invalid activity cursor", error)
     }
 
     private fun parseEnrichedKanji(rawResponse: String): List<EnrichedKanji> {

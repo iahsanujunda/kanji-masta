@@ -30,7 +30,8 @@ export default function JobsTab() {
       queryClient.invalidateQueries({ queryKey: ["admin-jobs"] }),
       queryClient.invalidateQueries({ queryKey: ["admin-job"] }),
       queryClient.invalidateQueries({ queryKey: ["admin-status"] }),
-      queryClient.invalidateQueries({ queryKey: ["recent-scans"] }),
+      queryClient.invalidateQueries({ queryKey: ["photo-activity"] }),
+      queryClient.invalidateQueries({ queryKey: ["photo-activity-unseen"] }),
       queryClient.invalidateQueries({ queryKey: ["photo-session"] }),
     ]);
   };

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import Home from "../Home";
 import { renderWithProviders } from "@/test/mocks";
 import { deleteLocalCapturesForUser, saveLocalCapture } from "@/lib/captureQueue";
@@ -127,66 +128,22 @@ describe("Home", () => {
     }, { timeout: 2500 });
   });
 
-  it.each([
-    ["processing", "Analysing your photo"],
-    ["done", "Scan ready"],
-    ["failed", "Scan needs attention"],
-  ] as const)("places the %s scan directly below the top quiz card", async (status, scanTitle) => {
+  it("keeps scan status out of Home and exposes unseen updates through Activity", async () => {
     mockApiFetch.mockImplementation((path: string) => {
-      if (path === "/api/photo/recent") {
-        return Promise.resolve({ sessions: [{
-          sessionId: `scan-${status}`,
-          storagePath: null,
-          status,
-          createdAt: new Date().toISOString(),
-          kanjiCount: status === "done" ? 4 : null,
-        }] });
-      }
+      if (path === "/api/photo/activity/unseen") return Promise.resolve({ hasUnseen: true, latestTerminalAt: "2026-08-05T05:10:00Z" });
       return Promise.resolve(activeSummary);
     });
     renderWithProviders(<Home />);
 
-    const quiz = await screen.findByText("Session Active");
-    const scan = await screen.findByRole("button", { name: new RegExp(scanTitle) });
-    const lesson = screen.getByText("Today's Lesson");
-    expect(quiz.compareDocumentPosition(scan) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(scan.compareDocumentPosition(lesson) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Activity, new updates" })).toBeInTheDocument();
+    expect(screen.queryByText("Analysing your photo")).not.toBeInTheDocument();
+    expect(screen.queryByText("Scan ready")).not.toBeInTheDocument();
+    expect(screen.queryByText("Scan needs attention")).not.toBeInTheDocument();
     expect(screen.queryByText("Recent Scans")).not.toBeInTheDocument();
   });
 
-  it("shows the active server scan once while retaining older recent scans", async () => {
-    const now = Date.now();
-    mockApiFetch.mockImplementation((path: string) => {
-      if (path === "/api/photo/recent") {
-        return Promise.resolve({ sessions: [
-          {
-            sessionId: "active-processing",
-            storagePath: null,
-            status: "processing",
-            createdAt: new Date(now).toISOString(),
-            kanjiCount: null,
-          },
-          {
-            sessionId: "older-done",
-            storagePath: null,
-            status: "done",
-            createdAt: new Date(now - 60_000).toISOString(),
-            kanjiCount: 3,
-          },
-        ] });
-      }
-      return Promise.resolve(activeSummary);
-    });
-
-    renderWithProviders(<Home />);
-
-    expect(await screen.findByRole("button", { name: /Analysing your photo/ })).toBeInTheDocument();
-    expect(screen.getAllByText(/Analysing/)).toHaveLength(1);
-    expect(screen.getByText("Recent Scans")).toBeInTheDocument();
-    expect(screen.getByText("3 kanji found")).toBeInTheDocument();
-  });
-
-  it("keeps the quiz first and links to queue management when multiple photos are saved", async () => {
+  it("keeps saved photos out of Home and reveals them inside Activity", async () => {
+    const user = userEvent.setup();
     for (let index = 0; index < 2; index += 1) {
       const id = `home-queued-${index}`;
       const blob = new Blob([`photo-${index}`], { type: "image/jpeg" });
@@ -201,18 +158,19 @@ describe("Home", () => {
         createdAt: new Date(Date.now() + index).toISOString(),
       });
     }
-    mockApiFetch.mockImplementation((path: string) =>
-      path === "/api/photo/recent" ? Promise.resolve({ sessions: [] }) : Promise.resolve(activeSummary),
-    );
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === "/api/photo/activity/unseen") return Promise.resolve({ hasUnseen: false, latestTerminalAt: null });
+      if (path === "/api/photo/activity?limit=20") return Promise.resolve({ items: [], nextCursor: null, hasMore: false });
+      return Promise.resolve(activeSummary);
+    });
 
     renderWithProviders(<Home />);
 
-    const quiz = await screen.findByText("Session Active");
-    const activeScan = await screen.findByRole("button", { name: /Waiting to upload/ });
-    const manageQueue = screen.getByRole("button", { name: /View all 2 saved photos/ });
-    const lesson = screen.getByText("Today's Lesson");
-    expect(quiz.compareDocumentPosition(activeScan) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(activeScan.compareDocumentPosition(manageQueue) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(manageQueue.compareDocumentPosition(lesson) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(await screen.findByText("Session Active")).toBeInTheDocument();
+    expect(screen.queryByText("Waiting to upload")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /View all 2 saved photos/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Activity" }));
+    expect(await screen.findAllByText("Waiting to upload")).toHaveLength(2);
   });
 });

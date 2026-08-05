@@ -263,6 +263,163 @@ class PhotoIntegrationTest : com.kanjimasta.support.PersistenceTest() {
     }
 
     @Test
+    fun `GET activity paginates the owners complete scan history newest first`() = testApplication {
+        val now = Instant.parse("2026-08-05T05:00:00Z")
+        val expectedIds = listOf(
+            UUID.fromString("00000000-0000-0000-0000-000000000004"),
+            UUID.fromString("00000000-0000-0000-0000-000000000003"),
+            UUID.fromString("00000000-0000-0000-0000-000000000002"),
+        )
+        listOf("PROCESSING", "DONE", "INGESTED").forEachIndexed { index, status ->
+            TestDatabase.db.insert(PhotoSessionTable) {
+                set(it.id, expectedIds[index])
+                set(it.userId, TEST_USER_ID)
+                set(it.imageUrl, "https://storage.example.com/photos/activity-$index.jpg")
+                set(it.status, status)
+                set(it.createdAt, now.minus(index.toLong(), ChronoUnit.MINUTES))
+            }
+        }
+        TestDatabase.db.insert(PhotoSessionTable) {
+            set(it.id, UUID.fromString("00000000-0000-0000-0000-000000000001"))
+            set(it.userId, "different-user")
+            set(it.imageUrl, "https://storage.example.com/photos/private.jpg")
+            set(it.status, "FAILED")
+            set(it.createdAt, now.plus(1, ChronoUnit.MINUTES))
+        }
+
+        application { testModule(TestDatabase.db) }
+        val client = jsonClient()
+        val firstResponse = client.get("/api/photo/activity?limit=2") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+
+        assertEquals(HttpStatusCode.OK, firstResponse.status)
+        val first = Json.parseToJsonElement(firstResponse.bodyAsText()).jsonObject
+        assertEquals(
+            expectedIds.take(2).map(UUID::toString),
+            first["items"]!!.jsonArray.map { it.jsonObject["sessionId"]!!.jsonPrimitive.content },
+        )
+        assertEquals(listOf("processing", "done"), first["items"]!!.jsonArray.map {
+            it.jsonObject["status"]!!.jsonPrimitive.content
+        })
+        assertEquals(true, first["hasMore"]!!.jsonPrimitive.boolean)
+        val cursor = first["nextCursor"]!!.jsonPrimitive.content
+
+        val secondResponse = client.get("/api/photo/activity?limit=2&cursor=$cursor") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+        assertEquals(HttpStatusCode.OK, secondResponse.status)
+        val second = Json.parseToJsonElement(secondResponse.bodyAsText()).jsonObject
+        assertEquals(
+            listOf(expectedIds.last().toString()),
+            second["items"]!!.jsonArray.map { it.jsonObject["sessionId"]!!.jsonPrimitive.content },
+        )
+        assertEquals("ingested", second["items"]!!.jsonArray.single().jsonObject["status"]!!.jsonPrimitive.content)
+        assertEquals(false, second["hasMore"]!!.jsonPrimitive.boolean)
+    }
+
+    @Test
+    fun `activity unseen watermark clears acknowledged changes and preserves later changes`() = testApplication {
+        val firstChangedAt = Instant.parse("2026-08-05T05:10:00Z")
+        TestDatabase.db.insert(PhotoSessionTable) {
+            set(it.id, UUID.fromString("00000000-0000-0000-0000-000000000011"))
+            set(it.userId, TEST_USER_ID)
+            set(it.imageUrl, "https://storage.example.com/photos/ready.jpg")
+            set(it.status, "DONE")
+            set(it.updatedAt, firstChangedAt)
+        }
+        TestDatabase.db.insert(PhotoSessionTable) {
+            set(it.id, UUID.fromString("00000000-0000-0000-0000-000000000012"))
+            set(it.userId, "different-user")
+            set(it.imageUrl, "https://storage.example.com/photos/private-failure.jpg")
+            set(it.status, "FAILED")
+            set(it.updatedAt, firstChangedAt.plus(1, ChronoUnit.HOURS))
+        }
+
+        application { testModule(TestDatabase.db) }
+        val client = jsonClient()
+        suspend fun unseen(): JsonObject {
+            val response = client.get("/api/photo/activity/unseen") {
+                header(HttpHeaders.Authorization, "Bearer test-token")
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+            return Json.parseToJsonElement(response.bodyAsText()).jsonObject
+        }
+
+        val before = unseen()
+        assertEquals(true, before["hasUnseen"]!!.jsonPrimitive.boolean)
+        assertEquals(firstChangedAt.toString(), before["latestTerminalAt"]!!.jsonPrimitive.content)
+
+        val seenResponse = client.post("/api/photo/activity/seen") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+            contentType(ContentType.Application.Json)
+            setBody("""{"seenThrough":"$firstChangedAt"}""")
+        }
+        assertEquals(HttpStatusCode.OK, seenResponse.status)
+        assertEquals(false, unseen()["hasUnseen"]!!.jsonPrimitive.boolean)
+
+        val laterChangedAt = firstChangedAt.plus(2, ChronoUnit.MINUTES)
+        TestDatabase.db.insert(PhotoSessionTable) {
+            set(it.id, UUID.fromString("00000000-0000-0000-0000-000000000013"))
+            set(it.userId, TEST_USER_ID)
+            set(it.imageUrl, "https://storage.example.com/photos/later-failure.jpg")
+            set(it.status, "FAILED")
+            set(it.updatedAt, laterChangedAt)
+        }
+        val after = unseen()
+        assertEquals(true, after["hasUnseen"]!!.jsonPrimitive.boolean)
+        assertEquals(laterChangedAt.toString(), after["latestTerminalAt"]!!.jsonPrimitive.content)
+
+        client.post("/api/photo/activity/seen") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+            contentType(ContentType.Application.Json)
+            setBody("""{"seenThrough":"$laterChangedAt"}""")
+        }
+        client.post("/api/photo/activity/seen") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+            contentType(ContentType.Application.Json)
+            setBody("""{"seenThrough":"$firstChangedAt"}""")
+        }
+        assertEquals(false, unseen()["hasUnseen"]!!.jsonPrimitive.boolean)
+    }
+
+    @Test
+    fun `activity acknowledgement cannot advance beyond the owners latest terminal change`() = testApplication {
+        val firstChangedAt = Instant.parse("2026-08-05T05:30:00Z")
+        TestDatabase.db.insert(PhotoSessionTable) {
+            set(it.id, UUID.fromString("00000000-0000-0000-0000-000000000021"))
+            set(it.userId, TEST_USER_ID)
+            set(it.imageUrl, "https://storage.example.com/photos/first-terminal.jpg")
+            set(it.status, "DONE")
+            set(it.updatedAt, firstChangedAt)
+        }
+        application { testModule(TestDatabase.db) }
+        val client = jsonClient()
+
+        val response = client.post("/api/photo/activity/seen") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+            contentType(ContentType.Application.Json)
+            setBody("""{"seenThrough":"2036-08-05T05:30:00Z"}""")
+        }
+        assertEquals(HttpStatusCode.OK, response.status)
+
+        val laterChangedAt = firstChangedAt.plus(1, ChronoUnit.MINUTES)
+        TestDatabase.db.insert(PhotoSessionTable) {
+            set(it.id, UUID.fromString("00000000-0000-0000-0000-000000000022"))
+            set(it.userId, TEST_USER_ID)
+            set(it.imageUrl, "https://storage.example.com/photos/later-terminal.jpg")
+            set(it.status, "FAILED")
+            set(it.updatedAt, laterChangedAt)
+        }
+        val unseenResponse = client.get("/api/photo/activity/unseen") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+        val unseen = Json.parseToJsonElement(unseenResponse.bodyAsText()).jsonObject
+        assertEquals(true, unseen["hasUnseen"]!!.jsonPrimitive.boolean)
+        assertEquals(laterChangedAt.toString(), unseen["latestTerminalAt"]!!.jsonPrimitive.content)
+    }
+
+    @Test
     fun `stale cleanup returns failed through the photo API`() = testApplication {
         val sessionId = UUID.randomUUID()
         val longRunningSessionId = UUID.randomUUID()

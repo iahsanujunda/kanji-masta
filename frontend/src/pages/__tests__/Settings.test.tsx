@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Settings from "@/pages/Settings";
 import {
@@ -56,8 +56,8 @@ describe("Settings logout with locally saved captures", () => {
 
     await userEvent.click(screen.getByText("Logout"));
 
-    expect(supabase.auth.signOut).toHaveBeenCalledOnce();
-    expect(await getLocalCapture(captureId)).toBeUndefined();
+    await waitFor(() => expect(supabase.auth.signOut).toHaveBeenCalledOnce());
+    await expect(getLocalCapture(captureId)).resolves.toBeUndefined();
     confirm.mockRestore();
   });
 });

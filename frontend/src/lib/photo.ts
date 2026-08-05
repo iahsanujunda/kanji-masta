@@ -34,3 +34,18 @@ export interface RecentScanItem {
   kanjiCount: number | null;
   failureCode?: string | null;
 }
+
+export interface PhotoActivityItem extends RecentScanItem {
+  updatedAt: string;
+}
+
+export interface PhotoActivityPage {
+  items: PhotoActivityItem[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+export interface PhotoActivityUnseen {
+  hasUnseen: boolean;
+  latestTerminalAt: string | null;
+}

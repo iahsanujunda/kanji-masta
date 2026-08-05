@@ -47,6 +47,8 @@ const detectedKanji = [{
 
 let captureDeliveryOnline = false;
 let scanStatus = "processing";
+let scanUpdatedAt = "2026-08-05T00:00:00.000Z";
+let activitySeenThrough = null;
 let analyzeCalls = 0;
 const sessionsByCapture = new Map();
 const adminJob = {
@@ -66,6 +68,8 @@ const adminJob = {
 function resetCaptureState() {
   captureDeliveryOnline = false;
   scanStatus = "processing";
+  scanUpdatedAt = "2026-08-05T00:00:00.000Z";
+  activitySeenThrough = null;
   analyzeCalls = 0;
   sessionsByCapture.clear();
 }
@@ -77,6 +81,7 @@ function recentSessions() {
     storagePath: null,
     status: scanStatus,
     createdAt: "2026-08-05T00:00:00.000Z",
+    updatedAt: scanUpdatedAt,
     kanjiCount: scanStatus === "done" ? detectedKanji.length : null,
     failureCode: scanStatus === "failed" ? "invalid_response" : null,
   }];
@@ -104,7 +109,10 @@ createServer(async (request, response) => {
   if (path === "/__test/capture-state" && request.method === "POST") {
     const state = await readJson(request);
     if (typeof state.online === "boolean") captureDeliveryOnline = state.online;
-    if (["processing", "done", "failed"].includes(state.status)) scanStatus = state.status;
+    if (["processing", "done", "failed"].includes(state.status)) {
+      scanStatus = state.status;
+      scanUpdatedAt = new Date().toISOString();
+    }
     sendJson(response, 200, { online: captureDeliveryOnline, status: scanStatus });
     return;
   }
@@ -175,6 +183,29 @@ createServer(async (request, response) => {
 
   if (path === "/api/photo/recent") {
     sendJson(response, 200, { sessions: recentSessions() });
+    return;
+  }
+
+  if (path === "/api/photo/activity" && request.method === "GET") {
+    sendJson(response, 200, { items: recentSessions(), nextCursor: null, hasMore: false });
+    return;
+  }
+
+  if (path === "/api/photo/activity/unseen" && request.method === "GET") {
+    const latestTerminalAt = sessionsByCapture.size > 0 && ["done", "failed"].includes(scanStatus)
+      ? scanUpdatedAt
+      : null;
+    sendJson(response, 200, {
+      hasUnseen: latestTerminalAt !== null && (activitySeenThrough === null || latestTerminalAt > activitySeenThrough),
+      latestTerminalAt,
+    });
+    return;
+  }
+
+  if (path === "/api/photo/activity/seen" && request.method === "POST") {
+    const body = await readJson(request);
+    activitySeenThrough = body.seenThrough;
+    sendJson(response, 200, { acknowledged: true });
     return;
   }
 

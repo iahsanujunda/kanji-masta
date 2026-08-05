@@ -20,7 +20,8 @@ export function useCaptureQueue(userId?: string) {
     const refresh = (force = false) => {
       void queryClient.invalidateQueries({ queryKey: ["local-captures", userId] });
       void queryClient.invalidateQueries({ queryKey: ["local-capture"] });
-      void queryClient.invalidateQueries({ queryKey: ["recent-scans"] });
+      void queryClient.invalidateQueries({ queryKey: ["photo-activity", userId] });
+      void queryClient.invalidateQueries({ queryKey: ["photo-activity-unseen", userId] });
       void queryClient.invalidateQueries({ queryKey: ["capture-storage", userId] });
       void drain(controller.signal, force);
     };

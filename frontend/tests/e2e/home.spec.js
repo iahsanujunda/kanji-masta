@@ -34,3 +34,40 @@ test("authenticated learners see their dashboard and can open the collection", a
   await expect(page).toHaveURL(/\/collection$/);
   await expect(page.getByRole("img", { name: "A low-poly kanji learning tree" })).toBeVisible();
 });
+
+test("Activity drawer visibly enters and exits without an empty-state action", async ({ page, request }) => {
+  await request.post("http://127.0.0.1:18080/__test/reset");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await authenticate(page);
+  await page.goto("/home");
+  const trigger = page.getByRole("button", { name: "Activity" });
+
+  await trigger.click();
+  const drawer = page.getByRole("dialog", { name: "Activity" });
+  await expect(drawer).toBeAttached();
+  expect(["0.3s", "300ms"]).toContain(await drawer.evaluate((node) => getComputedStyle(node).transitionDuration));
+
+  await page.waitForTimeout(100);
+  const entering = await drawer.boundingBox();
+  const viewport = page.viewportSize();
+  expect(entering.y).toBeGreaterThan(viewport.height - entering.height + 1);
+  expect(entering.y).toBeLessThan(viewport.height);
+
+  await page.waitForTimeout(240);
+  const opened = await drawer.boundingBox();
+  expect(Math.abs(opened.y - (viewport.height - opened.height))).toBeLessThan(2);
+  expect(opened.width).toBeLessThanOrEqual(480);
+  await expect(drawer.getByText("No scan activity yet", { exact: true })).toBeVisible();
+  await expect(drawer.getByRole("button", { name: /Capture Japanese/i })).toHaveCount(0);
+
+  const drawerHandle = await drawer.elementHandle();
+  await drawer.getByRole("button", { name: "Close Activity" }).click();
+  await page.waitForTimeout(100);
+  const exiting = await drawerHandle.boundingBox();
+  expect(exiting.y).toBeGreaterThan(viewport.height - exiting.height + 1);
+  expect(exiting.y).toBeLessThan(viewport.height);
+  expect(["0.26s", "260ms"]).toContain(await drawerHandle.evaluate((node) => getComputedStyle(node).transitionDuration));
+  await page.waitForTimeout(200);
+  await expect(drawer).toBeHidden();
+  await expect(trigger).toBeFocused();
+});

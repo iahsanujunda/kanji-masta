@@ -85,6 +85,12 @@ object PhotoSessionTable : Table<Nothing>("photo_session") {
     val updatedAt = timestamp("updated_at")
 }
 
+object UserPhotoActivityStateTable : Table<Nothing>("user_photo_activity_state") {
+    val userId = text("user_id").primaryKey()
+    val seenThrough = timestamp("seen_through")
+    val updatedAt = timestamp("updated_at")
+}
+
 object QuizBankTable : Table<Nothing>("quiz_bank") {
     val id = uuid("id").primaryKey()
     val userId = text("user_id")

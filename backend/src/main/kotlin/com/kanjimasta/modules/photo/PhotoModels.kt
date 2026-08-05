@@ -53,3 +53,30 @@ data class RecentScanItem(
 
 @Serializable
 data class RecentScansResponse(val sessions: List<RecentScanItem>)
+
+@Serializable
+data class PhotoActivityItem(
+    val sessionId: String,
+    val storagePath: String?,
+    val status: String,
+    val createdAt: String,
+    val updatedAt: String,
+    val kanjiCount: Int? = null,
+    val failureCode: String? = null,
+)
+
+@Serializable
+data class PhotoActivityResponse(
+    val items: List<PhotoActivityItem>,
+    val nextCursor: String? = null,
+    val hasMore: Boolean,
+)
+
+@Serializable
+data class PhotoActivityUnseenResponse(
+    val hasUnseen: Boolean,
+    val latestTerminalAt: String? = null,
+)
+
+@Serializable
+data class MarkPhotoActivitySeenRequest(val seenThrough: String)

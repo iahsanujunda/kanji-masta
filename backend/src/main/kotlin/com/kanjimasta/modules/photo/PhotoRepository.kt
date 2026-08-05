@@ -2,6 +2,7 @@ package com.kanjimasta.modules.photo
 
 import com.kanjimasta.core.db.PhotoSessionTable
 import com.kanjimasta.core.db.PhotoSessionStatus
+import com.kanjimasta.core.db.UserPhotoActivityStateTable
 import org.ktorm.database.Database
 import org.ktorm.dsl.*
 import org.ktorm.support.postgresql.insertOrUpdateReturning
@@ -71,6 +72,76 @@ class PhotoRepository(private val db: Database) {
             .limit(10)
             .map(::toPhotoSessionRow)
 
+    fun getActivitySessions(
+        userId: String,
+        limit: Int,
+        beforeCreatedAt: Instant? = null,
+        beforeId: UUID? = null,
+    ): List<PhotoSessionRow> {
+        var condition = PhotoSessionTable.userId eq userId
+        if (beforeCreatedAt != null && beforeId != null) {
+            condition = condition and (
+                (PhotoSessionTable.createdAt less beforeCreatedAt) or
+                    ((PhotoSessionTable.createdAt eq beforeCreatedAt) and (PhotoSessionTable.id less beforeId))
+                )
+        }
+        return db.from(PhotoSessionTable)
+            .select()
+            .where { condition }
+            .orderBy(PhotoSessionTable.createdAt.desc(), PhotoSessionTable.id.desc())
+            .limit(limit)
+            .map(::toPhotoSessionRow)
+    }
+
+    fun getLatestTerminalActivityAt(userId: String): Instant? {
+        val latestUpdatedAt = max(PhotoSessionTable.updatedAt).aliased("latest_terminal_at")
+        return db.from(PhotoSessionTable)
+            .select(latestUpdatedAt)
+            .where {
+                (PhotoSessionTable.userId eq userId) and
+                    (PhotoSessionTable.status inList listOf("DONE", "FAILED", "ERROR"))
+            }
+            .map { it[latestUpdatedAt] }
+            .firstOrNull()
+    }
+
+    fun getActivitySeenThrough(userId: String): Instant? =
+        db.from(UserPhotoActivityStateTable)
+            .select(UserPhotoActivityStateTable.seenThrough)
+            .where { UserPhotoActivityStateTable.userId eq userId }
+            .map { it[UserPhotoActivityStateTable.seenThrough] }
+            .firstOrNull()
+
+    fun markActivitySeen(userId: String, seenThrough: Instant) {
+        val updated = db.update(UserPhotoActivityStateTable) {
+            set(it.seenThrough, seenThrough)
+            where { (it.userId eq userId) and (it.seenThrough less seenThrough) }
+        }
+        if (updated > 0) return
+
+        val exists = db.from(UserPhotoActivityStateTable)
+            .select(UserPhotoActivityStateTable.userId)
+            .where { UserPhotoActivityStateTable.userId eq userId }
+            .limit(1)
+            .totalRecordsInAllPages > 0
+        if (exists) return
+
+        try {
+            db.insert(UserPhotoActivityStateTable) {
+                set(it.userId, userId)
+                set(it.seenThrough, seenThrough)
+            }
+        } catch (error: Exception) {
+            // A concurrent first acknowledgement won the insert. The condition
+            // keeps this retry monotonic if our watermark is newer.
+            val racedUpdate = db.update(UserPhotoActivityStateTable) {
+                set(it.seenThrough, seenThrough)
+                where { (it.userId eq userId) and (it.seenThrough less seenThrough) }
+            }
+            if (racedUpdate == 0 && getActivitySeenThrough(userId) == null) throw error
+        }
+    }
+
     fun updateSessionStatus(sessionId: String, userId: String, status: PhotoSessionStatus) {
         db.update(PhotoSessionTable) {
             set(it.status, status.name)
@@ -104,6 +175,7 @@ class PhotoRepository(private val db: Database) {
         storagePath = row[PhotoSessionTable.storagePath],
         failureCode = row[PhotoSessionTable.failureCode],
         createdAt = row[PhotoSessionTable.createdAt],
+        updatedAt = row[PhotoSessionTable.updatedAt],
     )
 }
 
@@ -123,4 +195,5 @@ data class PhotoSessionRow(
     val storagePath: String? = null,
     val failureCode: String? = null,
     val createdAt: Instant? = null,
+    val updatedAt: Instant? = null,
 )

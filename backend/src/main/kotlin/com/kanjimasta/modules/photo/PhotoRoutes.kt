@@ -42,5 +42,33 @@ fun Route.photoRoutes(photoService: PhotoService) {
             val result = photoService.getRecentScans(user.uid)
             call.respond(result)
         }
+
+        get("/activity") {
+            val user = call.principal<AuthUser>()!!
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 20
+            if (limit !in 1..50) {
+                return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Limit must be between 1 and 50"))
+            }
+            val result = runCatching {
+                photoService.getActivity(user.uid, limit, call.request.queryParameters["cursor"])
+            }.getOrElse {
+                return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid activity cursor"))
+            }
+            call.respond(result)
+        }
+
+        get("/activity/unseen") {
+            val user = call.principal<AuthUser>()!!
+            call.respond(photoService.getActivityUnseen(user.uid))
+        }
+
+        post("/activity/seen") {
+            val user = call.principal<AuthUser>()!!
+            val request = call.receive<MarkPhotoActivitySeenRequest>()
+            val seenThrough = runCatching { java.time.Instant.parse(request.seenThrough) }.getOrNull()
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid seen-through timestamp"))
+            photoService.markActivitySeen(user.uid, seenThrough)
+            call.respond(mapOf("acknowledged" to true))
+        }
     }
 }

@@ -21,15 +21,12 @@ import SpaIcon from "@mui/icons-material/Spa";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import PageHeader from "@/components/PageHeader";
+import PhotoActivityControl from "@/components/activity/PhotoActivityControl";
 import { apiFetch } from "@/lib/api";
-import { supabase } from "@/lib/supabase";
-import { formatTimeLeft, timeAgo } from "@/lib/format";
+import { formatTimeLeft } from "@/lib/format";
 import { getCurrentLesson, isLessonCompleted } from "@/lib/insights";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
-import ActiveScanCard, { type ActiveScanSource } from "@/components/scan/ActiveScanCard";
 import { useAuth } from "@/hooks/useAuth";
-import { useLocalCaptures } from "@/hooks/useCaptureQueue";
-import type { RecentScanItem } from "@/lib/photo";
 
 interface UserSummary {
   kanjiLearning: number;
@@ -46,7 +43,6 @@ interface UserSummary {
 export default function Home() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { data: localCaptures } = useLocalCaptures(user?.id);
   const location = useLocation();
   const navigationState = location.state as { error?: string; quizGenerating?: boolean } | null;
   const [errorBanner, setErrorBanner] = useState<string | null>(() => navigationState?.error ?? null);
@@ -65,15 +61,6 @@ export default function Home() {
     gcTime: 5 * 60_000, // keep in cache 5 min after unmount
     retry: 1,
   });
-  const { data: recentScans } = useQuery({
-    queryKey: ["recent-scans"],
-    queryFn: () => apiFetch<{ sessions: RecentScanItem[] }>("/api/photo/recent"),
-    staleTime: 15_000,
-    refetchInterval: 10_000,
-    refetchOnWindowFocus: "always",
-    refetchOnReconnect: "always",
-  });
-
   const loading = isLoading && !summary;
   const summaryUnavailable = isSummaryError && !summary;
 
@@ -113,11 +100,6 @@ export default function Home() {
   const onboardingComplete = summary?.onboardingComplete ?? false;
   const hasCollectionContent = kanjiLearning + kanjiFamiliar > 0 || wordCount > 0;
   const needsOnboarding = !onboardingComplete && !hasCollectionContent;
-  const activeScan = getNewestActionableScan(localCaptures, recentScans?.sessions);
-  const savedCaptureCount = (localCaptures ?? []).filter((capture) => capture.blob && capture.status !== "server-owned").length;
-  const activeServerSessionId = activeScan?.source === "server" ? activeScan.scan.sessionId : undefined;
-  const remainingRecentScans = (recentScans?.sessions ?? [])
-    .filter((scan) => scan.sessionId !== activeServerSessionId);
 
   return (
     <Box
@@ -134,7 +116,7 @@ export default function Home() {
         title={greeting}
         subtitle={!loading && streak > 0 ? <span style={{ color: "#ff9800", fontWeight: 600 }}>You are on {streak} day streak</span> : undefined}
         right={
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
             <Chip
               icon={<WhatshotIcon sx={{ fontSize: 18 }} />}
               label={loading ? "–" : streak}
@@ -145,6 +127,7 @@ export default function Home() {
                 fontWeight: "bold",
               }}
             />
+            <PhotoActivityControl userId={user?.id} />
             <IconButton
               color="inherit"
               onClick={() => navigate("/settings")}
@@ -323,18 +306,6 @@ export default function Home() {
           </Paper>
         )}
 
-        {activeScan && <ActiveScanCard item={activeScan} />}
-        {savedCaptureCount > 1 && (
-          <Button
-            variant="text"
-            onClick={() => navigate("/captures")}
-            endIcon={<ChevronRightIcon />}
-            sx={{ alignSelf: "flex-start", minHeight: 44, mt: -1, px: 1, color: "#a5b4fc" }}
-          >
-            View all {savedCaptureCount} saved photos
-          </Button>
-        )}
-
         {/* Daily insight card */}
         <Paper
           variant="outlined"
@@ -420,19 +391,6 @@ export default function Home() {
           </Box>
           <ChevronRightIcon sx={{ color: "text.disabled" }} />
         </Paper>
-        {/* Recent scans */}
-        {remainingRecentScans.length > 0 && (
-          <Box>
-            <Typography variant="body2" fontWeight="bold" sx={{ color: "text.secondary", mb: 1.5, px: 0.5 }}>
-              Recent Scans
-            </Typography>
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-              {remainingRecentScans.map((scan) => (
-                <RecentScanCard key={scan.sessionId} scan={scan} />
-              ))}
-            </Box>
-          </Box>
-        )}
       </Box>
 
       {/* Bottom capture button */}
@@ -459,95 +417,4 @@ export default function Home() {
       </Box>
     </Box>
   );
-}
-
-function RecentScanCard({ scan }: { scan: RecentScanItem }) {
-  const navigate = useNavigate();
-  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
-  const isDone = scan.status === "done";
-  const isFailed = scan.status === "failed";
-
-  useEffect(() => {
-    if (!scan.storagePath) return;
-    supabase.storage
-      .from("photos")
-      .createSignedUrl(scan.storagePath, 300)
-      .then(({ data }) => {
-        if (data?.signedUrl) setThumbnailUrl(data.signedUrl);
-      });
-  }, [scan.storagePath]);
-
-  return (
-    <Paper
-      variant="outlined"
-      onClick={() => navigate(`/scans/${scan.sessionId}`)}
-      sx={{
-        borderRadius: 3,
-        p: 2,
-        display: "flex",
-        alignItems: "center",
-        gap: 2,
-        cursor: "pointer",
-        "&:hover": { bgcolor: "action.hover" },
-      }}
-    >
-      <Box
-        component={thumbnailUrl ? "img" : "div"}
-        src={thumbnailUrl ?? undefined}
-        sx={{
-          width: 48,
-          height: 48,
-          borderRadius: 2,
-          objectFit: "cover",
-          bgcolor: "grey.900",
-          border: "1px solid",
-          borderColor: "grey.800",
-          flexShrink: 0,
-        }}
-      />
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <Box
-            sx={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              bgcolor: isFailed ? "error.main" : isDone ? "#10b981" : "#818cf8",
-              flexShrink: 0,
-              ...(!isDone && !isFailed && {
-                "@keyframes pulse": {
-                  "0%, 100%": { opacity: 1 },
-                  "50%": { opacity: 0.4 },
-                },
-                animation: "pulse 2s ease-in-out infinite",
-              }),
-            }}
-          />
-          <Typography variant="body2" fontWeight="bold" noWrap>
-            {isFailed ? "Scan needs attention" : isDone ? `${scan.kanjiCount ?? "?"} kanji found` : "Analysing…"}
-          </Typography>
-        </Box>
-        <Typography variant="caption" color="text.secondary">
-          {timeAgo(scan.createdAt)}
-        </Typography>
-      </Box>
-      <ChevronRightIcon sx={{ color: "text.disabled", flexShrink: 0 }} />
-    </Paper>
-  );
-}
-
-function getNewestActionableScan(
-  localCaptures: import("@/lib/captureQueue").LocalCapture[] | undefined,
-  serverScans: RecentScanItem[] | undefined,
-): ActiveScanSource | undefined {
-  const local = (localCaptures ?? [])
-    .filter((capture) => capture.status !== "server-owned")
-    .map((capture) => ({ source: "local" as const, capture, createdAt: capture.createdAt }));
-  const server = (serverScans ?? [])
-    .map((scan) => ({ source: "server" as const, scan, createdAt: scan.createdAt }));
-  const newest = [...local, ...server].sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
-  if (!newest) return undefined;
-  return newest.source === "local"
-    ? { source: "local", capture: newest.capture }
-    : { source: "server", scan: newest.scan };
 }

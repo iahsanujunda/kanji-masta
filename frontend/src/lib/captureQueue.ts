@@ -33,10 +33,18 @@ interface CaptureMetaEntry {
   value: unknown;
 }
 
+interface StoredLocalCapture extends Omit<LocalCapture, "blob"> {
+  // Legacy records may contain Blob directly. New writes use clone-safe bytes
+  // because WebKit does not reliably persist picker-backed Blob/File values.
+  blob?: Blob;
+  blobBytes?: ArrayBuffer;
+  blobType?: string;
+}
+
 interface CaptureDatabase extends DBSchema {
   captures: {
     key: string;
-    value: LocalCapture;
+    value: StoredLocalCapture;
     indexes: { "by-user-created": [string, string] };
   };
 }
@@ -130,11 +138,25 @@ function announceChange() {
   window.dispatchEvent(new Event(CAPTURE_QUEUE_CHANGED));
 }
 
-function normalized(capture: LocalCapture): LocalCapture {
+function normalized(capture: StoredLocalCapture | LocalCapture): LocalCapture {
+  const stored = capture as StoredLocalCapture;
+  const { blobBytes, blobType, ...record } = stored;
+  const blob = record.blob ?? (blobBytes ? new Blob([blobBytes], { type: blobType }) : undefined);
   return {
-    ...capture,
-    byteSize: capture.byteSize ?? capture.blob?.size ?? 0,
-    updatedAt: capture.updatedAt ?? capture.createdAt,
+    ...record,
+    blob,
+    byteSize: record.byteSize ?? blob?.size ?? 0,
+    updatedAt: record.updatedAt ?? record.createdAt,
+  };
+}
+
+async function stored(capture: LocalCapture): Promise<StoredLocalCapture> {
+  const { blob, ...record } = capture;
+  if (!blob) return record;
+  return {
+    ...record,
+    blobBytes: await blob.arrayBuffer(),
+    blobType: blob.type,
   };
 }
 
@@ -143,15 +165,17 @@ function captureBytes(capture: LocalCapture): number {
 }
 
 export async function saveLocalCapture(capture: LocalCapture): Promise<void> {
+  const nextCapture = normalized(capture);
+  const storedCapture = await stored(nextCapture);
   const db = await database;
   const transaction = db.transaction("captures", "readwrite");
   const existing = await transaction.store.get(capture.id);
   const captures = await transaction.store.index("by-user-created").getAll(
     IDBKeyRange.bound([capture.userId, ""], [capture.userId, "\uffff"]),
   );
-  const others = captures.filter((item) => item.id !== capture.id && item.blob);
-  const nextCount = others.length + (capture.blob ? 1 : 0);
-  const nextBytes = others.reduce((total, item) => total + captureBytes(item), 0) + captureBytes(capture);
+  const others = captures.filter((item) => item.id !== capture.id && (item.blob || item.blobBytes));
+  const nextCount = others.length + (nextCapture.blob ? 1 : 0);
+  const nextBytes = others.reduce((total, item) => total + (item.byteSize ?? item.blob?.size ?? item.blobBytes?.byteLength ?? 0), 0) + captureBytes(nextCapture);
   if (!existing && nextCount > CAPTURE_STORAGE_LIMITS.maxCount) {
     await transaction.done;
     throw new CaptureCapacityError("Your saved-photo queue is full. Remove a saved photo before capturing another.");
@@ -160,7 +184,7 @@ export async function saveLocalCapture(capture: LocalCapture): Promise<void> {
     await transaction.done;
     throw new CaptureCapacityError("Saved photos are using the queue storage limit. Remove one before capturing another.");
   }
-  await transaction.store.put(normalized(capture));
+  await transaction.store.put(storedCapture);
   await transaction.done;
   announceChange();
 }
@@ -186,15 +210,22 @@ export async function updateLocalCapture(
   changes: Partial<LocalCapture>,
 ): Promise<LocalCapture | undefined> {
   const db = await database;
-  const transaction = db.transaction("captures", "readwrite");
-  const current = await transaction.store.get(id);
+  const current = await db.get("captures", id);
   if (!current) {
-    await transaction.done;
     return undefined;
   }
-  const updated = normalized({ ...current, ...changes, updatedAt: new Date().toISOString() });
-  await transaction.store.put(updated);
-  await transaction.done;
+  const updated = normalized({ ...normalized(current), ...changes, updatedAt: new Date().toISOString() });
+  // WebKit may close an IndexedDB transaction while Blob.arrayBuffer() is
+  // pending, so finish serialization before beginning the write operation.
+  // Preserve existing bytes for metadata-only status changes. This avoids
+  // repeatedly copying a potentially large photo while the queue advances.
+  const storedCapture = Object.prototype.hasOwnProperty.call(changes, "blob") || !current.blobBytes
+    ? await stored(updated)
+    : (() => {
+        const { blob: _blob, ...record } = updated;
+        return { ...record, blobBytes: current.blobBytes, blobType: current.blobType };
+      })();
+  await db.put("captures", storedCapture);
   announceChange();
   return updated;
 }

@@ -83,6 +83,9 @@ describe("captureQueue", () => {
   it("commits the photo before storage upload begins", async () => {
     const capture = record();
     await saveLocalCapture(capture);
+    const committed = await getLocalCapture(capture.id);
+    expect(committed?.blob?.type).toBe("image/jpeg");
+    expect(await committed?.blob?.text()).toBe("photo");
     order.push("committed");
 
     await drainCaptureQueue(userId);

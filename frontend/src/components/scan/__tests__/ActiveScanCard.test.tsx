@@ -41,6 +41,7 @@ const cases: Array<{ name: string; item: ActiveScanSource; title: RegExp; destin
   { name: "uploading", item: localItem("uploading"), title: /Uploading saved photo/, destination: "/captures/local-uploading" },
   { name: "starting", item: localItem("starting"), title: /Uploading saved photo/, destination: "/captures/local-starting" },
   { name: "upload failure", item: localItem("failed"), title: /Upload needs attention/, destination: "/captures/local-failed" },
+  { name: "expired auth", item: localItem("needs-auth"), title: /Sign in to continue/, destination: "/captures/local-needs-auth" },
   { name: "processing", item: serverItem("processing"), title: /Analysing your photo/, destination: "/scans/server-processing" },
   { name: "completed", item: serverItem("done"), title: /Scan ready/, destination: "/scans/server-done" },
   { name: "analysis failure", item: serverItem("failed"), title: /Scan needs attention/, destination: "/scans/server-failed" },

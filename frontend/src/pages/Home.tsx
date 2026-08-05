@@ -114,6 +114,7 @@ export default function Home() {
   const hasCollectionContent = kanjiLearning + kanjiFamiliar > 0 || wordCount > 0;
   const needsOnboarding = !onboardingComplete && !hasCollectionContent;
   const activeScan = getNewestActionableScan(localCaptures, recentScans?.sessions);
+  const savedCaptureCount = (localCaptures ?? []).filter((capture) => capture.blob && capture.status !== "server-owned").length;
 
   return (
     <Box
@@ -320,6 +321,16 @@ export default function Home() {
         )}
 
         {activeScan && <ActiveScanCard item={activeScan} />}
+        {savedCaptureCount > 1 && (
+          <Button
+            variant="text"
+            onClick={() => navigate("/captures")}
+            endIcon={<ChevronRightIcon />}
+            sx={{ alignSelf: "flex-start", minHeight: 44, mt: -1, px: 1, color: "#a5b4fc" }}
+          >
+            View all {savedCaptureCount} saved photos
+          </Button>
+        )}
 
         {/* Daily insight card */}
         <Paper

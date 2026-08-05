@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import Home from "../Home";
 import { renderWithProviders } from "@/test/mocks";
+import { deleteLocalCapturesForUser, saveLocalCapture } from "@/lib/captureQueue";
 
 const mockApiFetch = vi.fn();
 vi.mock("@/lib/api", () => ({
@@ -43,8 +44,9 @@ const populatedCollectionWithStaleOnboarding = {
 };
 
 describe("Home", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     mockApiFetch.mockReset();
+    await deleteLocalCapturesForUser("test-user");
   });
 
   it("shows zero state when no words", async () => {
@@ -149,5 +151,35 @@ describe("Home", () => {
     const lesson = screen.getByText("Today's Lesson");
     expect(quiz.compareDocumentPosition(scan) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(scan.compareDocumentPosition(lesson) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("keeps the quiz first and links to queue management when multiple photos are saved", async () => {
+    for (let index = 0; index < 2; index += 1) {
+      const id = `home-queued-${index}`;
+      const blob = new Blob([`photo-${index}`], { type: "image/jpeg" });
+      await saveLocalCapture({
+        id,
+        userId: "test-user",
+        blob,
+        byteSize: blob.size,
+        storagePath: `test-user/${id}.jpg`,
+        status: "pending",
+        attempts: 0,
+        createdAt: new Date(Date.now() + index).toISOString(),
+      });
+    }
+    mockApiFetch.mockImplementation((path: string) =>
+      path === "/api/photo/recent" ? Promise.resolve({ sessions: [] }) : Promise.resolve(activeSummary),
+    );
+
+    renderWithProviders(<Home />);
+
+    const quiz = await screen.findByText("Session Active");
+    const activeScan = await screen.findByRole("button", { name: /Waiting to upload/ });
+    const manageQueue = screen.getByRole("button", { name: /View all 2 saved photos/ });
+    const lesson = screen.getByText("Today's Lesson");
+    expect(quiz.compareDocumentPosition(activeScan) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(activeScan.compareDocumentPosition(manageQueue) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(manageQueue.compareDocumentPosition(lesson) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

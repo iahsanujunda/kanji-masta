@@ -5,7 +5,7 @@ import { Route, Routes, useLocation } from "react-router-dom";
 import Capture from "@/pages/Capture";
 import LocalCaptureDetail from "@/pages/LocalCaptureDetail";
 import ScanDetail from "@/pages/ScanDetail";
-import { deleteLocalCapturesForUser, saveLocalCapture } from "@/lib/captureQueue";
+import { CaptureCapacityError, deleteLocalCapturesForUser, saveLocalCapture } from "@/lib/captureQueue";
 import { renderWithProviders } from "@/test/mocks";
 
 const mockApiFetch = vi.fn();
@@ -68,6 +68,22 @@ describe("capture resilience routes", () => {
     expect(screen.getByRole("button", { name: "Retry saving" })).toBeEnabled();
     expect(screen.queryByText("You can close the app")).not.toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent("/capture");
+  });
+
+  it("links to queue management when existing saved photos fill the limit", async () => {
+    vi.mocked(saveLocalCapture).mockRejectedValueOnce(new CaptureCapacityError("Your saved-photo queue is full."));
+    renderWithProviders(
+      <Routes>
+        <Route path="/capture" element={<Capture />} />
+        <Route path="/captures" element={<div>Queue management</div>} />
+      </Routes>,
+      { route: "/capture" },
+    );
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(["photo"], "station.jpg", { type: "image/jpeg" })] } });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Manage saved photos" }));
+    expect(screen.getByText("Queue management")).toBeInTheDocument();
   });
 
   it.each(["pending", "uploading"] as const)("restores a %s capture from the route after reload", async (status) => {

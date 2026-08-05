@@ -4,9 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
 const drainCaptureQueue = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const cleanupCaptureQueue = vi.hoisted(() => vi.fn(() => Promise.resolve(0)));
 
 vi.mock("@/lib/captureQueue", () => ({
   CAPTURE_QUEUE_CHANGED: "kanji-masta:capture-queue-changed",
+  cleanupCaptureQueue,
   drainCaptureQueue,
   listLocalCaptures: vi.fn(() => Promise.resolve([])),
 }));

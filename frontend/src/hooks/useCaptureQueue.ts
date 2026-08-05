@@ -2,6 +2,7 @@ import { useCallback, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CAPTURE_QUEUE_CHANGED,
+  cleanupCaptureQueue,
   drainCaptureQueue,
   listLocalCaptures,
 } from "@/lib/captureQueue";
@@ -20,6 +21,7 @@ export function useCaptureQueue(userId?: string) {
       void queryClient.invalidateQueries({ queryKey: ["local-captures", userId] });
       void queryClient.invalidateQueries({ queryKey: ["local-capture"] });
       void queryClient.invalidateQueries({ queryKey: ["recent-scans"] });
+      void queryClient.invalidateQueries({ queryKey: ["capture-storage", userId] });
       void drain(controller.signal, force);
     };
     const onQueueChanged = () => refresh();
@@ -28,7 +30,7 @@ export function useCaptureQueue(userId?: string) {
       if (document.visibilityState === "visible") refresh(true);
     };
 
-    refresh(true);
+    void cleanupCaptureQueue(userId).catch(() => 0).finally(() => refresh(true));
     window.addEventListener("online", onReconnect);
     window.addEventListener("focus", onReconnect);
     window.addEventListener(CAPTURE_QUEUE_CHANGED, onQueueChanged);

@@ -518,6 +518,40 @@ or delay the immediate-close contract.
   Supabase session is not automatically available to a closed service worker, and iOS
   cannot support a reliable closed-app upload promise.
 
+#### Milestone 2 implementation
+
+Queue hardening is implemented with these concrete policies:
+
+- The original photo is committed to the existing version-1 capture database before any
+  optional work. Storage-persistence state and aggregate metrics use a separate metadata
+  database so a still-open Milestone 1 tab cannot block a queue database upgrade.
+- After the local commit, the app requests persistent storage on a best-effort basis.
+  Unsupported browsers, denial, and metadata write failures do not block navigation or
+  upload retry.
+- The device queue accepts up to 12 unowned photos or 120 MiB in total. A single original
+  must be no larger than 40 MiB. Reaching a limit leaves every existing Blob untouched and
+  links to `/captures` so the user can explicitly choose what to remove.
+- Thirty days is an attention threshold, not an eviction deadline. Unowned Blobs are never
+  removed by age cleanup. Only blob-free, server-owned handoff records older than 24 hours
+  are automatically removed.
+- Photos larger than 4 MiB are prepared after the original is durable. The browser attempts
+  to resize them to a maximum 2,048-pixel dimension as JPEG at 0.82 quality. The replacement
+  is committed before upload and the original remains the fallback when decoding or resizing
+  is unsupported.
+- `/captures` lists all locally owned photos as Waiting, Uploading, Needs sign-in, or Needs
+  attention. Removal requires confirmation. Home continues to show only the newest active
+  card directly below the quiz card, followed by a queue link when multiple photos are saved.
+- HTTP 401/403 and expired-token failures move a capture to Needs sign-in without deleting
+  its Blob. A forced drain after the same user signs in retries it; other users' queues remain
+  isolated.
+- Metrics are numeric aggregates only: local-save duration, completed queue age, upload
+  attempts/retries, storage failures, authentication failures, and resize byte totals. They
+  contain no image content, signed URLs, storage paths, or capture identifiers.
+
+Production capture delivery from a Service Worker remains disabled. The Android Firefox
+result is unsupported and the Android Chrome result is still inconclusive, so supported and
+unsupported browsers both retain the app-open/online/focus drain as the delivery contract.
+
 #### Milestone 2A — Target-browser Background Sync experiment
 
 Run the experiment before choosing a Service Worker delivery architecture. Scope real-device
@@ -565,9 +599,11 @@ connectivity request failed. It therefore proves registration and retry retentio
 background execution. `navigator.onLine` reported online at queue time; treat that field as a
 hint rather than proof of connectivity.
 
-Milestone 2 tests cover storage-persistence denial, retention limits, multiple pending
-items, auth expiration/recovery, oversized images, queue privacy, and duplicate-safe
-service-worker delivery on browsers where that experiment is enabled.
+Milestone 2 tests cover storage-persistence denial, retention limits without Blob eviction,
+multiple pending items and queue states, auth expiration/recovery, oversized-image fallback
+and committed replacement, queue ordering, explicit deletion, and privacy-safe metrics.
+Duplicate-safe Service Worker delivery tests remain conditional on enabling that experiment;
+the production queue does not currently register capture uploads for Background Sync.
 
 ### Milestone 3 — Interrupted server-work recovery
 

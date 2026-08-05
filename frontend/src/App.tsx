@@ -22,6 +22,7 @@ const Landing = lazy(() => import("@/pages/Landing"));
 const Admin = lazy(() => import("@/pages/Admin"));
 const InsightDetail = lazy(() => import("@/pages/InsightDetail"));
 const LocalCaptureDetail = lazy(() => import("@/pages/LocalCaptureDetail"));
+const CaptureQueue = lazy(() => import("@/pages/CaptureQueue"));
 const ScanDetail = lazy(() => import("@/pages/ScanDetail"));
 
 function Loading() {
@@ -88,6 +89,14 @@ export default function App() {
           element={
             <ProtectedRoute user={user} isLoading={isLoading}>
               <Capture />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/captures"
+          element={
+            <ProtectedRoute user={user} isLoading={isLoading}>
+              <CaptureQueue />
             </ProtectedRoute>
           }
         />

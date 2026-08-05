@@ -22,6 +22,9 @@ function copyFor(source: ActiveScanSource) {
     if (source.capture.status === "failed") {
       return { title: "Upload needs attention", subtitle: "Open to retry", Icon: ErrorOutlineIcon };
     }
+    if (source.capture.status === "needs-auth") {
+      return { title: "Sign in to continue", subtitle: "Photo is saved on this device", Icon: ErrorOutlineIcon };
+    }
     return { title: "Waiting to upload", subtitle: "Saved on this device", Icon: CloudUploadOutlinedIcon };
   }
   if (source.scan.status === "done") {

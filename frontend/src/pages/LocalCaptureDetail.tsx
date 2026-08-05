@@ -49,17 +49,19 @@ export default function LocalCaptureDetail() {
           <Typography color="text.secondary" sx={{ mb: 3 }}>It may have already moved to your recent scans.</Typography>
           <Button onClick={() => navigate("/home")} sx={{ minHeight: 48 }}>Back to Home</Button>
         </Box>
-      ) : capture.status === "failed" ? (
+      ) : capture.status === "failed" || capture.status === "needs-auth" ? (
         <Box role="alert" sx={{ flex: 1, px: 3, display: "flex", flexDirection: "column", justifyContent: "center" }}>
           <ErrorOutlineIcon sx={{ color: "error.light", fontSize: 36, mb: 2 }} />
-          <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>Upload needs attention</Typography>
+          <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>
+            {capture.status === "needs-auth" ? "Sign in to continue" : "Upload needs attention"}
+          </Typography>
           <Typography color="text.secondary" sx={{ mb: 3 }}>{capture.lastError ?? "The saved photo could not be uploaded."}</Typography>
           <Button
             variant="contained"
             onClick={async () => { await retryLocalCapture(capture.id); await refetch(); }}
             sx={{ minHeight: 48, bgcolor: "#10b981", color: "#050508", fontWeight: 700 }}
           >
-            Retry
+            Retry upload
           </Button>
           <Button onClick={() => navigate("/home")} sx={{ minHeight: 48, mt: 1 }}>Back to Home</Button>
         </Box>

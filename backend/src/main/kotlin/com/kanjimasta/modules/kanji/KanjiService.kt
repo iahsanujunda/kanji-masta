@@ -1,6 +1,7 @@
 package com.kanjimasta.modules.kanji
 
 import com.kanjimasta.core.auth.getIdentityToken
+import com.kanjimasta.core.db.PhotoSessionStatus
 import com.kanjimasta.modules.photo.PhotoRepository
 import io.ktor.client.*
 import io.ktor.client.request.*
@@ -10,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
+import java.util.UUID
 
 private val logger = LoggerFactory.getLogger("com.kanjimasta.modules.kanji.KanjiService")
 
@@ -39,7 +41,7 @@ class KanjiService(
         }
 
         // Mark photo session as ingested so it no longer appears in recent scans
-        photoRepository.updateSessionStatus(request.sessionId, "INGESTED")
+        photoRepository.updateSessionStatus(request.sessionId, userId, PhotoSessionStatus.INGESTED)
 
         if (learningKanjiIds.isNotEmpty()) {
             processWordsForKanji(userId, request.sessionId, learningKanjiIds)
@@ -54,7 +56,7 @@ class KanjiService(
      * 4. Create personal UserWords linking to WordMaster
      */
     private suspend fun processWordsForKanji(userId: String, sessionId: String?, kanjiIds: List<String>) {
-        val exampleWordsByKanji = if (sessionId != null) loadExampleWords(sessionId) else emptyMap()
+        val exampleWordsByKanji = if (sessionId != null) loadExampleWords(userId, sessionId) else emptyMap()
         var jobsEnqueued = false
 
         for (kanjiMasterId in kanjiIds) {
@@ -167,8 +169,9 @@ class KanjiService(
         return OnboardingResponse(kanji = items, hasMore = hasMore)
     }
 
-    private suspend fun loadExampleWords(sessionId: String): Map<String, List<ExampleWord>> {
-        val session = photoRepository.getSession(sessionId) ?: return emptyMap()
+    private suspend fun loadExampleWords(userId: String, sessionId: String): Map<String, List<ExampleWord>> {
+        val sessionUuid = runCatching { UUID.fromString(sessionId) }.getOrNull() ?: return emptyMap()
+        val session = photoRepository.getSession(sessionUuid, userId) ?: return emptyMap()
         val rawResponse = session.rawAiResponse ?: return emptyMap()
 
         return try {

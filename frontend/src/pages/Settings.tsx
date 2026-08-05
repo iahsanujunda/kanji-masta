@@ -19,6 +19,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { apiFetch } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
+import { deleteLocalCapturesForUser, listLocalCaptures } from "@/lib/captureQueue";
 
 interface Settings {
   quizAllowancePerSlot: number;
@@ -46,6 +47,19 @@ export default function Settings() {
   };
 
   const handleLogout = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user.id;
+    if (userId) {
+      const captures = await listLocalCaptures(userId);
+      const savedPhotos = captures.filter((capture) => capture.blob).length;
+      if (savedPhotos > 0) {
+        const confirmed = window.confirm(
+          `Logging out will remove ${savedPhotos} saved ${savedPhotos === 1 ? "photo" : "photos"} that have not reached the server. Continue?`,
+        );
+        if (!confirmed) return;
+      }
+      await deleteLocalCapturesForUser(userId);
+    }
     await supabase.auth.signOut();
   };
 

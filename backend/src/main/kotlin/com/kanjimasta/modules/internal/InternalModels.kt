@@ -8,6 +8,7 @@ data class PhotoResultRequest(
     val userId: String,
     val enrichedKanji: String,
     val costMicrodollars: Long,
+    val failureCode: String? = null,
 )
 
 @Serializable

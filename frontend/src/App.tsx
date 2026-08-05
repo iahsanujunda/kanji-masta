@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Box, CircularProgress } from "@mui/material";
 import { useAuth } from "@/hooks/useAuth";
+import { useCaptureQueue } from "@/hooks/useCaptureQueue";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
@@ -20,6 +21,8 @@ const Signup = lazy(() => import("@/pages/Signup"));
 const Landing = lazy(() => import("@/pages/Landing"));
 const Admin = lazy(() => import("@/pages/Admin"));
 const InsightDetail = lazy(() => import("@/pages/InsightDetail"));
+const LocalCaptureDetail = lazy(() => import("@/pages/LocalCaptureDetail"));
+const ScanDetail = lazy(() => import("@/pages/ScanDetail"));
 
 function Loading() {
   return (
@@ -31,6 +34,7 @@ function Loading() {
 
 export default function App() {
   const { user, isLoading } = useAuth();
+  useCaptureQueue(user?.id);
 
   return (
     <Suspense fallback={<Loading />}>
@@ -84,6 +88,22 @@ export default function App() {
           element={
             <ProtectedRoute user={user} isLoading={isLoading}>
               <Capture />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/captures/:clientCaptureId"
+          element={
+            <ProtectedRoute user={user} isLoading={isLoading}>
+              <LocalCaptureDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/scans/:sessionId"
+          element={
+            <ProtectedRoute user={user} isLoading={isLoading}>
+              <ScanDetail />
             </ProtectedRoute>
           }
         />

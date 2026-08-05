@@ -1,468 +1,65 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import {
-  Box,
-  Button,
-  CircularProgress,
-  Paper,
-  Typography,
-} from "@mui/material";
-import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
-import CheckIcon from "@mui/icons-material/Check";
-import StarIcon from "@mui/icons-material/Star";
-import StarOutlineIcon from "@mui/icons-material/StarOutline";
-import CloseIcon from "@mui/icons-material/Close";
-import { supabase } from "@/lib/supabase";
-import { apiFetch } from "@/lib/api";
+import { useNavigate } from "react-router-dom";
+import { Box, Button, LinearProgress, Typography } from "@mui/material";
+import CameraAltOutlinedIcon from "@mui/icons-material/CameraAltOutlined";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import PageHeader from "@/components/PageHeader";
+import { saveLocalCapture } from "@/lib/captureQueue";
+import { supabase } from "@/lib/supabase";
 
-interface ExampleWord {
-  word: string;
-  reading: string;
-  meaning: string;
-}
-
-interface EnrichedKanji {
-  kanjiMasterId: string | null;
-  character: string;
-  recommended: boolean;
-  whyUseful: string;
-  onyomi: string[];
-  kunyomi: string[];
-  meanings: string[];
-  frequency: number | null;
-  exampleWords: ExampleWord[];
-}
-
-interface PhotoSessionResult {
-  sessionId: string;
-  status: "processing" | "done" | "error" | "not_found";
-  kanji?: EnrichedKanji[];
-}
-
-type View = "idle" | "uploading" | "analyzing" | "results";
+type CaptureView = "selecting" | "saving" | "save-failed";
 
 export default function Capture() {
   const navigate = useNavigate();
-  const location = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [view, setView] = useState<View>("idle");
-  const [statusText, setStatusText] = useState("Uploading photo...");
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [kanjiResults, setKanjiResults] = useState<EnrichedKanji[]>([]);
-  const [selections, setSelections] = useState<Record<string, string | null>>({});
-
-  // Check for resume session from navigation state
-  const resumeSessionId = (location.state as { sessionId?: string } | null)?.sessionId;
+  const openedPicker = useRef(false);
+  const [view, setView] = useState<CaptureView>("selecting");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [error, setError] = useState("This photo is not saved yet.");
 
   useEffect(() => {
-    if (resumeSessionId) {
-      // Resume a previously started session — skip file upload, go straight to polling
-      setSessionId(resumeSessionId);
-      setView("analyzing");
-      setStatusText("Loading results...");
-    } else {
-      fileInputRef.current?.click();
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (openedPicker.current) return;
+    openedPicker.current = true;
+    fileInputRef.current?.click();
+  }, []);
 
-  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const persistFile = useCallback(async (file: File) => {
+    setView("saving");
+    setPendingFile(file);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user) throw new Error("Please sign in again before saving this photo.");
+
+      const clientCaptureId = crypto.randomUUID();
+      await saveLocalCapture({
+        id: clientCaptureId,
+        userId: user.id,
+        blob: file,
+        storagePath: `${user.id}/${clientCaptureId}.jpg`,
+        status: "pending",
+        attempts: 0,
+        createdAt: new Date().toISOString(),
+      });
+      navigate(`/captures/${clientCaptureId}`, { replace: true });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "This photo could not be saved on this device.");
+      setView("save-failed");
+    }
+  }, [navigate]);
+
+  const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (!file) {
       navigate("/home");
       return;
     }
+    void persistFile(file);
+  }, [navigate, persistFile]);
 
-    setView("uploading");
-    setStatusText("Uploading photo...");
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-      const filePath = `${user.id}/${crypto.randomUUID()}.jpg`;
-      const { error: uploadError } = await supabase.storage.from("photos").upload(filePath, file);
-      if (uploadError) throw uploadError;
-      const { data: signedData, error: signError } = await supabase.storage.from("photos").createSignedUrl(filePath, 600);
-      if (signError || !signedData?.signedUrl) throw signError || new Error("Failed to create signed URL");
-      const imageUrl = signedData.signedUrl;
-
-      setView("analyzing");
-      setStatusText("AI is scanning image...");
-
-      const result = await apiFetch<{ sessionId: string; status: string }>("/api/photo/analyze", {
-        method: "POST",
-        body: JSON.stringify({ imageUrl, storagePath: filePath }),
-      });
-
-      setSessionId(result.sessionId);
-    } catch (err) {
-      navigate("/home", { state: { error: err instanceof Error ? err.message : "Failed to upload photo" } });
-    }
-  }, [navigate]);
-
-  // Poll for results
-  useEffect(() => {
-    if (!sessionId || view !== "analyzing") return;
-
-    let pollCount = 0;
-    const interval = setInterval(async () => {
-      pollCount++;
-
-      // Update status text as we wait
-      if (pollCount === 2) setStatusText("Extracting kanji...");
-      if (pollCount === 4) setStatusText("Finding daily usage...");
-      if (pollCount > 15) {
-        // 15 polls x 2s = 30s — silently go home, scan continues in background
-        clearInterval(interval);
-        navigate("/home");
-        return;
-      }
-
-      try {
-        const result = await apiFetch<PhotoSessionResult>(`/api/photo/session/${sessionId}`);
-        if (result.status === "done" && result.kanji) {
-          setKanjiResults(result.kanji);
-          setView("results");
-          clearInterval(interval);
-        } else if (result.status === "error") {
-          clearInterval(interval);
-          navigate("/home", { state: { error: "Analysis failed. Please try again." } });
-        }
-      } catch {
-        // Keep polling on network errors
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [sessionId, view, navigate]);
-
-  const toggleSelection = (character: string, type: string) => {
-    setSelections((prev) => ({
-      ...prev,
-      [character]: prev[character] === type ? null : type,
-    }));
-  };
-
-  const handleDone = async () => {
-    if (!sessionId) return;
-
-    const selected = Object.entries(selections)
-      .filter(([, status]) => status !== null)
-      .map(([character, status]) => {
-        const kanji = kanjiResults.find((k) => k.character === character);
-        return { kanjiMasterId: kanji?.kanjiMasterId ?? "", status: status! };
-      })
-      .filter((s) => s.kanjiMasterId);
-
-    if (selected.length > 0) {
-      try {
-        await apiFetch("/api/kanji/session", {
-          method: "POST",
-          body: JSON.stringify({ sessionId, selections: selected }),
-        });
-      } catch (err) {
-        navigate("/home", { state: { error: err instanceof Error ? err.message : "Failed to save selections" } });
-        return;
-      }
-    }
-
-    const hasLearning = selected.some((s) => s.status === "learning");
-    navigate("/", { state: { quizGenerating: hasLearning } });
-  };
-
-  // --- Loading View ---
-  if (view === "uploading" || view === "analyzing") {
-    return (
-      <Box
-        sx={{
-          minHeight: "var(--app-height)",
-          maxWidth: 480,
-          mx: "auto",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          p: 3,
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        <Box
-          sx={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            width: 256,
-            height: 256,
-            bgcolor: "rgba(67, 56, 202, 0.15)",
-            borderRadius: "50%",
-            filter: "blur(48px)",
-          }}
-        />
-        <Box sx={{ position: "relative", zIndex: 1, textAlign: "center" }}>
-          <Box
-            sx={{
-              width: 80,
-              height: 80,
-              bgcolor: "grey.900",
-              borderRadius: "50%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              border: "1px solid",
-              borderColor: "grey.700",
-              mx: "auto",
-              mb: 3,
-              position: "relative",
-            }}
-          >
-            <AutoAwesomeIcon sx={{ fontSize: 40, color: "#818cf8" }} />
-            <CircularProgress
-              size={80}
-              thickness={2}
-              sx={{
-                position: "absolute",
-                color: "#4338ca",
-              }}
-            />
-          </Box>
-          <Typography variant="h6" fontWeight="bold" sx={{ mb: 1 }}>
-            Analyzing Capture
-          </Typography>
-          <Typography variant="body2" sx={{ color: "#818cf8" }}>
-            {statusText}
-          </Typography>
-        </Box>
-      </Box>
-    );
-  }
-
-  // --- Results View ---
-  if (view === "results") {
-    return (
-      <Box
-        sx={{
-          minHeight: "var(--app-height)",
-          maxWidth: 480,
-          mx: "auto",
-          display: "flex",
-          flexDirection: "column",
-          position: "relative",
-        }}
-      >
-        <PageHeader
-          title="Found Kanji"
-          subtitle={`${kanjiResults.length} detected`}
-          right={
-            <Button
-              onClick={() => navigate("/home")}
-              sx={{ minWidth: 0, p: 1, color: "grey.400" }}
-            >
-              <CloseIcon />
-            </Button>
-          }
-        />
-
-        <Box sx={{ flex: 1, px: 3, pb: 16, overflow: "auto", display: "flex", flexDirection: "column", gap: 2.5 }}>
-          {kanjiResults.map((kanji) => {
-            const status = selections[kanji.character];
-
-            return (
-              <Paper
-                key={kanji.character}
-                sx={{
-                  borderRadius: 4,
-                  p: 2.5,
-                  border: "1px solid",
-                  borderColor: "grey.800",
-                  position: "relative",
-                  overflow: "hidden",
-                }}
-              >
-                {kanji.recommended && (
-                  <Box
-                    sx={{
-                      position: "absolute",
-                      top: 0,
-                      right: 0,
-                      bgcolor: "#4338ca",
-                      px: 1.5,
-                      py: 0.5,
-                      borderBottomLeftRadius: 12,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 0.5,
-                    }}
-                  >
-                    <StarIcon sx={{ fontSize: 12, color: "white" }} />
-                    <Typography variant="caption" sx={{ color: "white", fontWeight: 700, fontSize: "0.65rem" }}>
-                      Recommended
-                    </Typography>
-                  </Box>
-                )}
-
-                <Box sx={{ display: "flex", gap: 2.5, mb: 2.5 }}>
-                  <Box
-                    sx={{
-                      bgcolor: "grey.900",
-                      borderRadius: 3,
-                      width: 80,
-                      height: 80,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                      border: "1px solid",
-                      borderColor: "grey.800",
-                    }}
-                  >
-                    <Typography sx={{ fontSize: 48 }}>{kanji.character}</Typography>
-                  </Box>
-
-                  <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                    <Typography
-                      variant="caption"
-                      sx={{ color: "#818cf8", fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", mb: 0.5 }}
-                    >
-                      {kanji.onyomi.join("、")}
-                    </Typography>
-                    <Typography variant="h6" fontWeight="bold" sx={{ textTransform: "capitalize", lineHeight: 1.2, mb: 0.5 }}>
-                      {kanji.meanings[0] || ""}
-                    </Typography>
-                    {kanji.whyUseful && (
-                      <Typography variant="caption" sx={{ color: "text.secondary", lineHeight: 1.3, mb: 1, display: "block" }}>
-                        {kanji.whyUseful}
-                      </Typography>
-                    )}
-                    {kanji.exampleWords[0] && (
-                      <Box sx={{ bgcolor: "rgba(0,0,0,0.3)", px: 1.5, py: 1, borderRadius: 2, border: "1px solid", borderColor: "grey.800" }}>
-                        <Typography variant="body2" component="span" sx={{ mr: 1 }}>
-                          {kanji.exampleWords[0].word}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          ({kanji.exampleWords[0].meaning})
-                        </Typography>
-                      </Box>
-                    )}
-                  </Box>
-                </Box>
-
-                <Box sx={{ display: "flex", gap: 1.5 }}>
-                  <Button
-                    fullWidth
-                    onClick={() => toggleSelection(kanji.character, "familiar")}
-                    startIcon={<CheckIcon sx={{ fontSize: 16 }} />}
-                    sx={{
-                      py: 1.25,
-                      borderRadius: 2,
-                      fontWeight: 600,
-                      fontSize: "0.8rem",
-                      border: "2px solid",
-                      ...(status === "familiar"
-                        ? {
-                            bgcolor: "rgba(16, 185, 129, 0.15)",
-                            color: "#34d399",
-                            borderColor: "rgba(16, 185, 129, 0.4)",
-                          }
-                        : {
-                            bgcolor: "grey.900",
-                            color: "grey.400",
-                            borderColor: "transparent",
-                            "&:hover": { bgcolor: "grey.800" },
-                          }),
-                    }}
-                  >
-                    Already Know
-                  </Button>
-
-                  <Button
-                    fullWidth
-                    onClick={() => toggleSelection(kanji.character, "learning")}
-                    startIcon={<StarOutlineIcon sx={{ fontSize: 16 }} />}
-                    sx={{
-                      py: 1.25,
-                      borderRadius: 2,
-                      fontWeight: 600,
-                      fontSize: "0.8rem",
-                      border: "2px solid",
-                      ...(status === "learning"
-                        ? {
-                            bgcolor: "#4338ca",
-                            color: "white",
-                            borderColor: "#818cf8",
-                            boxShadow: "0 0 15px rgba(79, 70, 229, 0.4)",
-                          }
-                        : {
-                            bgcolor: "grey.900",
-                            color: "grey.300",
-                            borderColor: "transparent",
-                            "&:hover": { bgcolor: "grey.800" },
-                          }),
-                    }}
-                  >
-                    Want to Learn
-                  </Button>
-                </Box>
-              </Paper>
-            );
-          })}
-        </Box>
-
-        <Box
-          sx={{
-            position: "fixed",
-            bottom: 0,
-            left: 0,
-            right: 0,
-            display: "flex",
-            justifyContent: "center",
-            pb: 4,
-            pt: 6,
-            background: (theme) =>
-              `linear-gradient(transparent, ${theme.palette.background.default} 40%)`,
-            pointerEvents: "none",
-          }}
-        >
-          <Button
-            onClick={handleDone}
-            variant="contained"
-            size="large"
-            sx={{
-              pointerEvents: "auto",
-              maxWidth: 480 - 48,
-              width: "100%",
-              mx: 3,
-              py: 2,
-              borderRadius: 8,
-              fontSize: "1.1rem",
-              fontWeight: "bold",
-              bgcolor: "grey.100",
-              color: "grey.900",
-              "&:hover": { bgcolor: "grey.300" },
-            }}
-          >
-            Done
-          </Button>
-        </Box>
-      </Box>
-    );
-  }
-
-  // --- Idle View (file picker only, no visible UI needed) ---
   return (
-    <Box
-      sx={{
-        minHeight: "var(--app-height)",
-        maxWidth: 480,
-        mx: "auto",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        p: 3,
-      }}
-    >
+    <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column" }}>
+      <PageHeader title="New scan" backTo="/home" />
       <input
         ref={fileInputRef}
         type="file"
@@ -471,12 +68,47 @@ export default function Capture() {
         hidden
         onChange={handleFileChange}
       />
-      <Button variant="outlined" onClick={() => fileInputRef.current?.click()}>
-        Select Photo
-      </Button>
-      <Button sx={{ mt: 1 }} onClick={() => navigate("/home")}>
-        Cancel
-      </Button>
+
+      <Box sx={{ flex: 1, px: 3, pb: 6, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+        {view === "saving" ? (
+          <Box role="status" aria-live="polite">
+            <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>Saving photo…</Typography>
+            <Typography color="text.secondary" sx={{ mb: 3 }}>
+              Keep this screen open for a moment.
+            </Typography>
+            <LinearProgress
+              aria-label="Saving photo"
+              sx={{ height: 4, borderRadius: 2, bgcolor: "#1a1a24", "& .MuiLinearProgress-bar": { bgcolor: "#10b981" } }}
+            />
+          </Box>
+        ) : view === "save-failed" ? (
+          <Box role="alert">
+            <ErrorOutlineIcon sx={{ color: "error.light", fontSize: 36, mb: 2 }} />
+            <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>Photo not saved</Typography>
+            <Typography color="text.secondary" sx={{ mb: 3 }}>{error}</Typography>
+            <Button
+              fullWidth
+              variant="contained"
+              disabled={!pendingFile}
+              onClick={() => pendingFile && void persistFile(pendingFile)}
+              sx={{ minHeight: 48, bgcolor: "#10b981", color: "#050508", fontWeight: 700, "&:hover": { bgcolor: "#34d399" } }}
+            >
+              Retry saving
+            </Button>
+            <Button fullWidth onClick={() => navigate("/home")} sx={{ minHeight: 48, mt: 1 }}>
+              Back to Home
+            </Button>
+          </Box>
+        ) : (
+          <Box sx={{ textAlign: "center" }}>
+            <CameraAltOutlinedIcon sx={{ color: "#818cf8", fontSize: 48, mb: 2 }} />
+            <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>Choose a photo</Typography>
+            <Button variant="contained" onClick={() => fileInputRef.current?.click()} sx={{ minHeight: 48, mt: 2 }}>
+              Open camera
+            </Button>
+          </Box>
+        )}
+      </Box>
     </Box>
   );
 }

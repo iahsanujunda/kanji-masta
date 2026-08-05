@@ -86,13 +86,23 @@ def record_user_cost(cur, user_id: str, operation_type: str, operation_id: str, 
     )
 
 
-def update_photo_session(session_id: str, raw_response: str, cost_microdollars: int, user_id: str = ""):
+def update_photo_session(
+    session_id: str,
+    raw_response: str,
+    cost_microdollars: int,
+    user_id: str = "",
+    failure_code: str | None = None,
+):
     with get_conn() as conn:
         with conn.cursor() as cur:
-            status = "DONE" if raw_response and raw_response != "[]" else "ERROR"
+            status = "DONE" if raw_response and raw_response != "[]" else "FAILED"
             cur.execute(
-                "UPDATE photo_session SET raw_ai_response = %s, status = %s, cost_microdollars = %s WHERE id = %s",
-                (raw_response, status, cost_microdollars, session_id),
+                """
+                UPDATE photo_session
+                SET raw_ai_response = %s, status = %s, cost_microdollars = %s, failure_code = %s
+                WHERE id = %s
+                """,
+                (raw_response, status, cost_microdollars, failure_code, session_id),
             )
             record_user_cost(cur, user_id, "PHOTO_ANALYSIS", session_id, cost_microdollars)
 

@@ -124,4 +124,26 @@ describe("Home", () => {
       expect(screen.queryByText("0 saved words")).not.toBeInTheDocument();
     }, { timeout: 2500 });
   });
+
+  it("places the actionable scan directly below the top quiz card", async () => {
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === "/api/photo/recent") {
+        return Promise.resolve({ sessions: [{
+          sessionId: "scan-ready",
+          storagePath: null,
+          status: "done",
+          createdAt: new Date().toISOString(),
+          kanjiCount: 4,
+        }] });
+      }
+      return Promise.resolve(activeSummary);
+    });
+    renderWithProviders(<Home />);
+
+    const quiz = await screen.findByText("Session Active");
+    const scan = await screen.findByText("Scan ready");
+    const lesson = screen.getByText("Today's Lesson");
+    expect(quiz.compareDocumentPosition(scan) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(scan.compareDocumentPosition(lesson) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });

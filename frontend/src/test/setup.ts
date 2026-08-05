@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import "fake-indexeddb/auto";
 import { vi } from "vitest";
 
 // Mock Supabase
@@ -15,6 +16,7 @@ vi.mock("@/lib/supabase", () => ({
     storage: {
       from: () => ({
         upload: vi.fn(() => Promise.resolve({ data: { path: "test/photo.jpg" }, error: null })),
+        createSignedUrl: vi.fn(() => Promise.resolve({ data: { signedUrl: "https://example.com/photo.jpg" }, error: null })),
         getPublicUrl: () => ({ data: { publicUrl: "https://example.com/photo.jpg" } }),
       }),
     },
@@ -27,3 +29,12 @@ global.IntersectionObserver = vi.fn().mockImplementation(() => ({
   unobserve: vi.fn(),
   disconnect: vi.fn(),
 }));
+
+Object.defineProperty(URL, "createObjectURL", {
+  configurable: true,
+  value: vi.fn(() => "blob:test-photo"),
+});
+Object.defineProperty(URL, "revokeObjectURL", {
+  configurable: true,
+  value: vi.fn(),
+});

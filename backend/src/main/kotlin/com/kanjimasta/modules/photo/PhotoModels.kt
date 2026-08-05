@@ -3,7 +3,11 @@ package com.kanjimasta.modules.photo
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class AnalyzePhotoRequest(val imageUrl: String, val storagePath: String? = null)
+data class AnalyzePhotoRequest(
+    val imageUrl: String,
+    val storagePath: String? = null,
+    val clientCaptureId: String? = null,
+)
 
 @Serializable
 data class AnalyzePhotoResponse(val sessionId: String, val status: String)
@@ -13,6 +17,8 @@ data class PhotoSessionResult(
     val sessionId: String,
     val status: String,
     val kanji: List<EnrichedKanji>? = null,
+    val failureCode: String? = null,
+    val storagePath: String? = null,
 )
 
 @Serializable
@@ -42,6 +48,7 @@ data class RecentScanItem(
     val status: String,
     val createdAt: String,
     val kanjiCount: Int? = null,
+    val failureCode: String? = null,
 )
 
 @Serializable

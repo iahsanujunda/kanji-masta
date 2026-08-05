@@ -1,6 +1,8 @@
 package com.kanjimasta.modules.photo
 
 import com.kanjimasta.core.auth.getIdentityToken
+import com.kanjimasta.core.db.PhotoFailureCode
+import com.kanjimasta.core.db.PhotoSessionStatus
 import io.ktor.client.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
@@ -11,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
 import org.slf4j.MDC
+import java.util.UUID
 
 private val logger = LoggerFactory.getLogger("com.kanjimasta.modules.photo.PhotoService")
 
@@ -23,9 +26,19 @@ class PhotoService(
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
 
-    suspend fun startAnalysis(userId: String, imageUrl: String, storagePath: String? = null): AnalyzePhotoResponse {
+    suspend fun startAnalysis(
+        userId: String,
+        imageUrl: String,
+        storagePath: String? = null,
+        clientCaptureId: UUID? = null,
+    ): AnalyzePhotoResponse {
         logger.debug("Creating photo session for user={}", userId)
-        val sessionId = photoRepository.createSession(userId, imageUrl, storagePath)
+        val creation = photoRepository.createSession(userId, imageUrl, storagePath, clientCaptureId)
+        val sessionId = creation.id
+        if (!creation.created) {
+            logger.info("Reusing photo session={} for clientCaptureId={}", sessionId, clientCaptureId)
+            return AnalyzePhotoResponse(sessionId = sessionId, status = PhotoSessionStatus.PROCESSING.apiValue)
+        }
         logger.info("Created photo session={}, calling ai-worker", sessionId)
 
         val url = "$aiWorkerUrl/analyze-photo"
@@ -52,40 +65,69 @@ class PhotoService(
                 logger.info("AI worker call completed for session={}, status={}", sessionId, response.status)
                 if (!response.status.isSuccess()) {
                     logger.error("AI worker returned error for session={}: {}", sessionId, response.bodyAsText())
+                    photoRepository.markFailed(sessionId, userId, PhotoFailureCode.DISPATCH_FAILED)
                 }
             } catch (e: Exception) {
                 logger.error("AI worker call failed for session={}: {}", sessionId, e.message, e)
+                photoRepository.markFailed(sessionId, userId, PhotoFailureCode.DISPATCH_FAILED)
             }
         }
 
         return AnalyzePhotoResponse(sessionId = sessionId, status = "processing")
     }
 
-    suspend fun getSessionResult(sessionId: String): PhotoSessionResult {
-        val session = photoRepository.getSession(sessionId)
-            ?: return PhotoSessionResult(sessionId = sessionId, status = "not_found")
+    suspend fun getSessionResult(userId: String, sessionId: UUID): PhotoSessionResult? {
+        val session = photoRepository.getSession(sessionId, userId) ?: return null
 
-        if (session.status == "ERROR") {
-            return PhotoSessionResult(sessionId = sessionId, status = "error")
+        if (session.status == PhotoSessionStatus.FAILED) {
+            return PhotoSessionResult(
+                sessionId = sessionId.toString(),
+                status = PhotoSessionStatus.FAILED.apiValue,
+                failureCode = session.failureCode,
+                storagePath = session.storagePath,
+            )
+        }
+
+        if (session.status == PhotoSessionStatus.INGESTED) {
+            return PhotoSessionResult(
+                sessionId = sessionId.toString(),
+                status = PhotoSessionStatus.INGESTED.apiValue,
+                storagePath = session.storagePath,
+            )
         }
 
         val rawResponse = session.rawAiResponse
-            ?: return PhotoSessionResult(sessionId = sessionId, status = "processing")
+            ?: return PhotoSessionResult(
+                sessionId = sessionId.toString(),
+                status = PhotoSessionStatus.PROCESSING.apiValue,
+                storagePath = session.storagePath,
+            )
 
         val kanji = try {
             parseEnrichedKanji(rawResponse)
         } catch (e: Exception) {
             logger.error("Failed to parse session={} response: {}", sessionId, e.message)
-            return PhotoSessionResult(sessionId = sessionId, status = "error")
+            photoRepository.markFailed(sessionId.toString(), userId, PhotoFailureCode.INVALID_RESPONSE)
+            return PhotoSessionResult(
+                sessionId = sessionId.toString(),
+                status = PhotoSessionStatus.FAILED.apiValue,
+                failureCode = PhotoFailureCode.INVALID_RESPONSE,
+                storagePath = session.storagePath,
+            )
         }
 
-        return PhotoSessionResult(sessionId = sessionId, status = "done", kanji = kanji)
+        return PhotoSessionResult(
+            sessionId = sessionId.toString(),
+            status = PhotoSessionStatus.DONE.apiValue,
+            kanji = kanji,
+            storagePath = session.storagePath,
+        )
     }
 
     suspend fun getRecentScans(userId: String): RecentScansResponse {
         val sessions = photoRepository.getRecentSessions(userId)
         val items = sessions.map { session ->
-            val kanjiCount = if (session.status == "DONE" && session.rawAiResponse != null) {
+            val kanjiCount = if (session.status == PhotoSessionStatus.DONE && session.rawAiResponse != null) {
                 try {
                     Json.parseToJsonElement(session.rawAiResponse).jsonArray.size
                 } catch (_: Exception) {
@@ -96,9 +138,10 @@ class PhotoService(
             RecentScanItem(
                 sessionId = session.id,
                 storagePath = session.storagePath,
-                status = session.status,
+                status = session.status.apiValue,
                 createdAt = session.createdAt?.toString() ?: "",
                 kanjiCount = kanjiCount,
+                failureCode = session.failureCode,
             )
         }
         return RecentScansResponse(sessions = items)

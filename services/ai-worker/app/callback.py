@@ -14,6 +14,7 @@ async def send_photo_result(
     user_id: str,
     enriched_json: str,
     cost: int,
+    failure_code: str | None = None,
 ) -> bool:
     """Send photo analysis result to backend via callback. Returns True on success."""
     headers = {"X-Internal-Key": callback_key} if callback_key else {}
@@ -23,6 +24,7 @@ async def send_photo_result(
             "userId": user_id,
             "enrichedKanji": enriched_json,
             "costMicrodollars": cost,
+            "failureCode": failure_code,
         }, headers=headers)
     if resp.status_code != 200:
         logger.error("Photo result callback failed: status=%d body=%s", resp.status_code, resp.text)

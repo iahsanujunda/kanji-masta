@@ -83,6 +83,23 @@ def test_update_photo_session(client, db_conn):
     assert cost_row["cost_microdollars"] == 12345
 
 
+def test_update_photo_session_writes_failed_for_empty_result(client, db_conn):
+    session_id = str(uuid.uuid4())
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO photo_session (id, user_id, image_url) VALUES (%s, 'test-user', 'https://example.com/img.jpg')",
+            (session_id,),
+        )
+
+    db.update_photo_session(session_id, "", 0, failure_code="invalid_response")
+
+    with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("SELECT status, failure_code FROM photo_session WHERE id = %s", (session_id,))
+        row = cur.fetchone()
+    assert row["status"] == "FAILED"
+    assert row["failure_code"] == "invalid_response"
+
+
 def test_get_pending_jobs_empty(client):
     jobs = db.get_pending_jobs()
     assert jobs == []

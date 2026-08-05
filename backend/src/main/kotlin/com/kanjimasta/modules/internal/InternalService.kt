@@ -15,10 +15,12 @@ class InternalService(private val db: Database) {
     fun handlePhotoResult(request: PhotoResultRequest) {
         db.useTransaction {
             // 1. Update photo_session
-            val status = if (request.enrichedKanji.isNotBlank() && request.enrichedKanji != "[]") "DONE" else "ERROR"
+            val hasResult = request.enrichedKanji.isNotBlank() && request.enrichedKanji != "[]"
+            val status = if (hasResult) PhotoSessionStatus.DONE else PhotoSessionStatus.FAILED
             db.update(PhotoSessionTable) {
                 set(it.rawAiResponse, request.enrichedKanji)
-                set(it.status, status)
+                set(it.status, status.name)
+                if (!hasResult) set(it.failureCode, request.failureCode ?: PhotoFailureCode.INVALID_RESPONSE)
                 set(it.costMicrodollars, request.costMicrodollars)
                 where { it.id eq UUID.fromString(request.sessionId) }
             }
@@ -93,7 +95,8 @@ class InternalService(private val db: Database) {
     fun cleanupStalePhotoSessions(): Int {
         val cutoff = Instant.now().minus(1, ChronoUnit.HOURS)
         return db.update(PhotoSessionTable) {
-            set(it.status, "FAILED")
+            set(it.status, PhotoSessionStatus.FAILED.name)
+            set(it.failureCode, PhotoFailureCode.TIMED_OUT)
             where { (it.status eq "PROCESSING") and (it.updatedAt less cutoff) }
         }
     }

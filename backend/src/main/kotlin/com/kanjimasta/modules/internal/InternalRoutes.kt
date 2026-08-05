@@ -5,6 +5,8 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import org.slf4j.LoggerFactory
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 private val logger = LoggerFactory.getLogger("com.kanjimasta.modules.internal.InternalRoutes")
 
@@ -46,7 +48,10 @@ fun Route.internalRoutes(internalService: InternalService, internalKey: String) 
             if (!requireInternalKey(internalKey)) return@post
             val count = internalService.cleanupStalePhotoSessions()
             logger.info("Cleanup: marked {} stale photo sessions as FAILED", count)
-            call.respond(mapOf("status" to "ok", "failed" to count))
+            call.respond(buildJsonObject {
+                put("status", "ok")
+                put("failed", count)
+            })
         }
     }
 }

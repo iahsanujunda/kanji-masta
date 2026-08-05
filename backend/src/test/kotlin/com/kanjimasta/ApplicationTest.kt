@@ -39,7 +39,10 @@ object TestDatabase {
 
 private val testLogger = LoggerFactory.getLogger("TestModule")
 
-fun Application.testModule(db: Database) {
+fun Application.testModule(
+    db: Database,
+    authUser: AuthUser = AuthUser(uid = TEST_USER_ID, email = TEST_USER_EMAIL),
+) {
     configureSerialization()
     install(StatusPages) {
         exception<Throwable> { call, cause ->
@@ -50,7 +53,7 @@ fun Application.testModule(db: Database) {
     install(Authentication) {
         bearer("supabase") {
             authenticate {
-                AuthUser(uid = TEST_USER_ID, email = TEST_USER_EMAIL)
+                authUser
             }
         }
     }

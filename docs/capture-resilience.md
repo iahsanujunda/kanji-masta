@@ -180,6 +180,28 @@ the device immediately and then hands it to a secure, resumable server session. 
 2 hardens the queue and explores best-effort closed-app delivery. Milestone 3 improves
 interrupted server work. Milestone 4 adds notification convenience.
 
+### Implementation status — 2026-08-05
+
+Milestone 1 is implemented across the frontend, backend, worker, and schema:
+
+- the browser commits the captured Blob to an authenticated IndexedDB queue before any
+  storage or API request;
+- foreground retries run on startup, reconnect, focus, visibility return, and a bounded
+  retry timer using the deterministic user/capture storage path;
+- the server atomically reuses `(user_id, client_capture_id)`, scopes session reads to
+  the authenticated owner, and exposes lowercase statuses;
+- `/captures/:clientCaptureId` and `/scans/:sessionId` restore local and server work
+  without `location.state`;
+- Home merges the newest local/server item directly below the quiz card; and
+- backend, worker, and frontend regressions cover the persistence boundary, idempotent
+  retry, ownership, status normalization, route restoration, and Home ordering.
+
+The checked-in schema change is intentionally the **expand** migration only. The
+`ERROR` → `FAILED` data cleanup and status constraint remain a separate contract
+migration to ship after the updated backend and worker have been deployed and old
+writers are no longer running. Service Worker Background Sync and notifications remain
+later milestones; neither is required for reopen-and-resume behavior.
+
 ### Milestone 1 — Immediate-close capture and secure resumable sessions
 
 This is the first release. It includes the minimum IndexedDB queue and idempotent analysis

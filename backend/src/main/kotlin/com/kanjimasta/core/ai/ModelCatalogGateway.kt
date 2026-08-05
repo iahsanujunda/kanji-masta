@@ -11,6 +11,7 @@ data class CatalogModel(
     val outputModalities: List<String>,
     val contextLength: Int? = null,
     val supportedParameters: List<String> = emptyList(),
+    val reasoningEfforts: List<String> = emptyList(),
     val promptPrice: String? = null,
     val completionPrice: String? = null,
 )

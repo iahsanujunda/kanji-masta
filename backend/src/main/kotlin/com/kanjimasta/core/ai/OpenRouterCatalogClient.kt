@@ -3,20 +3,13 @@ package com.kanjimasta.core.ai
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.header
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
-import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
-import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonArray
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
@@ -56,57 +49,7 @@ class OpenRouterCatalogClient(
                 ?: return ModelValidationResult(false, "model_unavailable")
             if (!model.supports(workload)) return ModelValidationResult(false, "unsupported_model")
         }
-        for (workload in REQUIRED_WORKLOADS) {
-            val valid = runCatching { smokeTest(workload, models.getValue(workload)) }.getOrDefault(false)
-            if (!valid) return ModelValidationResult(false, "smoke_test_failed")
-        }
         return ModelValidationResult(true)
-    }
-
-    private suspend fun smokeTest(workload: String, modelId: String): Boolean {
-        val content = if (workload == "photo_analysis") {
-            buildJsonArray {
-                add(buildJsonObject { put("type", "text"); put("text", "Return only an empty JSON array.") })
-                add(buildJsonObject {
-                    put("type", "image_url")
-                    put("image_url", buildJsonObject { put("url", TINY_GIF_DATA_URL) })
-                })
-            }
-        } else {
-            kotlinx.serialization.json.JsonPrimitive("Return only an empty JSON array.")
-        }
-        val body = buildJsonObject {
-            put("model", modelId)
-            put("max_tokens", 8)
-            put("messages", buildJsonArray {
-                add(buildJsonObject {
-                    put("role", "user")
-                    put("content", content)
-                })
-            })
-            put("response_format", buildJsonObject {
-                put("type", "json_schema")
-                put("json_schema", buildJsonObject {
-                    put("name", "admin_model_validation")
-                    put("strict", true)
-                    put("schema", buildJsonObject {
-                        put("type", "array")
-                        put("maxItems", 0)
-                    })
-                })
-            })
-        }
-        val response = httpClient.post("${baseUrl.trimEnd('/')}/api/v1/chat/completions") {
-            header(HttpHeaders.Authorization, "Bearer $apiKey")
-            contentType(ContentType.Application.Json)
-            setBody(body.toString())
-        }
-        if (!response.status.isSuccess()) return false
-        val responseJson = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-        val output = responseJson["choices"]?.jsonArray?.firstOrNull()?.jsonObject
-            ?.get("message")?.jsonObject?.get("content")?.jsonPrimitive?.contentOrNull
-            ?: return false
-        return Json.parseToJsonElement(output) is JsonArray
     }
 
     private suspend fun getCatalog(): List<CatalogModel> = cacheMutex.withLock {
@@ -131,6 +74,7 @@ class OpenRouterCatalogClient(
             val item = element.jsonObject
             val architecture = item.objectOrEmpty("architecture")
             val pricing = item.objectOrEmpty("pricing")
+            val reasoning = item.objectOrEmpty("reasoning")
             CatalogModel(
                 id = item.string("id"),
                 canonicalSlug = item.stringOrNull("canonical_slug") ?: item.string("id"),
@@ -139,6 +83,7 @@ class OpenRouterCatalogClient(
                 outputModalities = architecture.stringList("output_modalities"),
                 contextLength = item["context_length"]?.jsonPrimitive?.intOrNull,
                 supportedParameters = item.stringList("supported_parameters"),
+                reasoningEfforts = reasoning.stringList("supported_efforts"),
                 promptPrice = pricing.stringOrNull("prompt"),
                 completionPrice = pricing.stringOrNull("completion"),
             )
@@ -146,9 +91,15 @@ class OpenRouterCatalogClient(
 
     private fun CatalogModel.supports(workload: String): Boolean {
         val requiredInputs = if (workload == "photo_analysis") setOf("text", "image") else setOf("text")
+        val supportsStructuredResponse = supportedParameters.any {
+            it == "structured_outputs" || it == "response_format"
+        }
+        val supportsMediumReasoning = "reasoning" in supportedParameters &&
+            (reasoningEfforts.isEmpty() || "medium" in reasoningEfforts)
         return inputModalities.containsAll(requiredInputs) &&
             "text" in outputModalities &&
-            supportedParameters.any { it == "structured_outputs" || it == "response_format" }
+            supportsStructuredResponse &&
+            supportsMediumReasoning
     }
 
     private fun JsonObject.string(key: String): String = getValue(key).jsonPrimitive.content
@@ -160,7 +111,5 @@ class OpenRouterCatalogClient(
     private companion object {
         const val CACHE_MILLIS = 10 * 60 * 1000L
         val REQUIRED_WORKLOADS = listOf("photo_analysis", "quiz_generation", "word_discovery")
-        const val TINY_GIF_DATA_URL =
-            "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
     }
 }

@@ -31,7 +31,8 @@ class OpenRouterCatalogClientTest {
                         "input_modalities": ["text", "image"],
                         "output_modalities": ["text"]
                       },
-                      "supported_parameters": ["structured_outputs"],
+                      "supported_parameters": ["structured_outputs", "reasoning"],
+                      "reasoning": {"supported_efforts": ["high", "medium", "low"]},
                       "pricing": {"prompt": "0.1", "completion": "0.2"}
                     },
                     {
@@ -42,7 +43,8 @@ class OpenRouterCatalogClientTest {
                         "input_modalities": ["text"],
                         "output_modalities": ["text"]
                       },
-                      "supported_parameters": ["structured_outputs"]
+                      "supported_parameters": ["structured_outputs", "reasoning"],
+                      "reasoning": {"supported_efforts": ["high", "medium", "low"]}
                     }
                   ]
                 }""".trimIndent(),
@@ -78,20 +80,16 @@ class OpenRouterCatalogClientTest {
     }
 
     @Test
-    fun `validation smoke tests every workload contract`() = runBlocking {
-        var smokeRequests = 0
+    fun `validation uses catalog metadata without completion requests`() = runBlocking {
+        val requests = mutableListOf<HttpRequestData>()
         val engine = MockEngine { request ->
-            if (request.url.encodedPath == "/api/v1/models/user") {
-                respondOk(
-                    """{"data":[
-                      {"id":"vision/model","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]},"supported_parameters":["structured_outputs"]},
-                      {"id":"text/model","architecture":{"input_modalities":["text"],"output_modalities":["text"]},"supported_parameters":["structured_outputs"]}
-                    ]}""",
-                )
-            } else {
-                smokeRequests += 1
-                respondOk("""{"choices":[{"message":{"content":"[]"}}]}""")
-            }
+            requests += request
+            respondOk(
+                """{"data":[
+                  {"id":"vision/model","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]},"supported_parameters":["structured_outputs","reasoning"],"reasoning":{"supported_efforts":["high","medium","low"]}},
+                  {"id":"text/model","architecture":{"input_modalities":["text"],"output_modalities":["text"]},"supported_parameters":["response_format","reasoning"],"reasoning":{"supports_max_tokens":true}}
+                ]}""",
+            )
         }
         val client = OpenRouterCatalogClient(HttpClient(engine), "secret", "https://openrouter.test")
 
@@ -104,6 +102,34 @@ class OpenRouterCatalogClientTest {
         )
 
         assertTrue(result.valid)
-        assertEquals(3, smokeRequests)
+        assertEquals(listOf("/api/v1/models/user"), requests.map { it.url.encodedPath })
+    }
+
+    @Test
+    fun `catalog rejects models missing required documented capability`() = runBlocking {
+        val engine = MockEngine {
+            respondOk(
+                """{"data":[
+                  {"id":"valid/model","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]},"supported_parameters":["structured_outputs","reasoning"],"reasoning":{"supported_efforts":["high","medium","low"]}},
+                  {"id":"no-image/model","architecture":{"input_modalities":["text"],"output_modalities":["text"]},"supported_parameters":["structured_outputs","reasoning"],"reasoning":{"supported_efforts":["medium"]}},
+                  {"id":"no-structured/model","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]},"supported_parameters":["reasoning"],"reasoning":{"supported_efforts":["medium"]}},
+                  {"id":"no-reasoning/model","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]},"supported_parameters":["structured_outputs"]},
+                  {"id":"no-medium/model","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]},"supported_parameters":["structured_outputs","reasoning"],"reasoning":{"supported_efforts":["high","low"]}}
+                ]}""",
+            )
+        }
+        val client = OpenRouterCatalogClient(HttpClient(engine), "secret", "https://openrouter.test")
+
+        val models = client.search("photo_analysis", null)
+        val rejected = client.validate(
+            mapOf(
+                "photo_analysis" to "no-medium/model",
+                "quiz_generation" to "valid/model",
+                "word_discovery" to "valid/model",
+            ),
+        )
+
+        assertEquals(listOf("valid/model"), models.map { it.id })
+        assertEquals(ModelValidationResult(false, "unsupported_model"), rejected)
     }
 }

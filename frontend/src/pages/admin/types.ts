@@ -68,6 +68,7 @@ export interface CatalogModel {
   outputModalities: string[];
   contextLength?: number | null;
   supportedParameters: string[];
+  reasoningEfforts?: string[];
   promptPrice?: string | null;
   completionPrice?: string | null;
 }

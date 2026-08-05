@@ -254,13 +254,15 @@ The model drawer is labelled **Search OpenRouter models**.
    catalog in memory; typing does not create one OpenRouter request per keypress.
 5. Workload filtering is enforced again on the backend:
    - photo analysis requires image input and text output;
-   - quiz generation and word discovery require text input and text output; and
-   - validation checks the response/structured-output features used by the actual client.
+   - quiz generation and word discovery require text input and text output;
+   - every model requires documented structured-response support; and
+   - every model must accept the worker's `medium` reasoning level. OpenRouter's normalized
+     reasoning capability is accepted when the catalog does not publish an explicit effort list.
 6. The response exposes only safe fields:
 
 ```text
 id, canonicalSlug, name, inputModalities, outputModalities,
-contextLength, supportedParameters, promptPrice, completionPrice
+contextLength, supportedParameters, reasoningEfforts, promptPrice, completionPrice
 ```
 
 The frontend does not receive OpenRouter response headers, account information, provider
@@ -305,10 +307,13 @@ environment configuration.
 atomically supersedes the old active row and saves the new active row. Validation includes:
 
 - exact catalog presence for the current OpenRouter account;
-- required input/output modalities and parameters;
-- a bounded, low-token smoke request for each workload contract, including a tiny static image
-  fixture for photo analysis; and
-- parse validation using the same structured-response parser as production.
+- required input/output modalities;
+- documented structured-response support; and
+- documented compatibility with the worker's `medium` reasoning setting.
+
+Submission never calls a completion endpoint, so checking or changing a configuration has no
+model-token cost. Catalog metadata cannot guarantee the quality of a model's eventual output;
+runtime failures remain visible and recoverable through the durable job control panel.
 
 A rejected submission is not saved and does not replace the healthy active version. If the
 active configuration is missing or production health checks show the active pipeline cannot
@@ -466,7 +471,7 @@ schema redesign.
 | Job execution | Rerun can duplicate provider calls | Unique attempt number, transactional claim, idempotent terminal writes |
 | Stored photos | Old signed URLs may be expired | Rerun uses `storage_path` and fresh server-side access |
 | Quiz generation | Existing retry resets history | Migrate to attempt history before enabling new UI |
-| Model behavior | Bad model could break every new job of a role | Validate before writing, smoke requests, atomic replacement, retained history |
+| Model behavior | Bad model could break every new job of a role | Catalog capability checks, atomic replacement, retained history, recoverable job failures |
 | Existing running work | Activation during execution | Model/version snapshot per attempt |
 | OpenRouter account | Search/validation adds API traffic | Backend cache, debounce, fixed host, bounded timeout |
 | Credentials | Catalog requires API key | Backend-only call; response/log redaction; no key in frontend bundle |
@@ -509,8 +514,9 @@ Add coverage to `AdminIntegrationTest` and focused service tests for:
 - catalog cache prevents one provider request per frontend query; and
 - status reports down/operational for every defined invariant.
 
-Use Ktor `MockEngine` for OpenRouter catalog and smoke-validation responses. Use
-Testcontainers for transaction, uniqueness, and concurrent claim behavior.
+Use Ktor `MockEngine` to prove validation reads only the OpenRouter catalog and never calls a
+completion endpoint. Use Testcontainers for transaction, uniqueness, and concurrent claim
+behavior.
 
 ### 11.2 Worker tests
 
@@ -607,7 +613,7 @@ browser chrome, safe areas, and swipe physics are not fully reproduced by deskto
 ### Phase 3 — Model catalog and versioned configuration
 
 1. Add backend-only OpenRouter catalog client and cache.
-2. Add draft validation, smoke requests, activation, and rollback.
+2. Add catalog-only capability validation, activation, and rollback.
 3. Change Python worker client creation to consume attempt snapshots.
 4. Prove parity before the later Kotlin consumer replaces it.
 

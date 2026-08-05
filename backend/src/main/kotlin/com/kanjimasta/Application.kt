@@ -6,7 +6,6 @@ import com.kanjimasta.core.email.ResendClient
 import com.kanjimasta.core.storage.SupabaseStorageSigner
 import com.kanjimasta.modules.admin.AdminRepository
 import com.kanjimasta.modules.admin.AdminService
-import com.kanjimasta.core.ai.BootstrapModelConfig
 import com.kanjimasta.core.ai.OpenRouterCatalogClient
 import com.kanjimasta.modules.internal.InternalService
 import com.kanjimasta.core.plugins.configureCors
@@ -87,15 +86,6 @@ fun Application.module() {
         apiKey = environment.config.propertyOrNull("openrouter.apiKey")?.getString() ?: "",
         baseUrl = environment.config.propertyOrNull("openrouter.baseUrl")?.getString() ?: "https://openrouter.ai",
     )
-    val bootstrapDefaultModel = environment.config.propertyOrNull("openrouter.defaultModel")?.getString()
-    fun bootstrapRole(name: String): String? =
-        environment.config.propertyOrNull(name)?.getString()?.takeIf { it.isNotBlank() }
-            ?: bootstrapDefaultModel?.takeIf { it.isNotBlank() }
-    val bootstrapModelConfig = BootstrapModelConfig(
-        photoAnalysisModel = bootstrapRole("openrouter.analyzeModel"),
-        quizGenerationModel = bootstrapRole("openrouter.quizModel"),
-        wordDiscoveryModel = bootstrapRole("openrouter.discoveryModel"),
-    )
     val adminService = AdminService(
         adminRepository,
         jobDispatcher = { type, id, userId ->
@@ -106,7 +96,6 @@ fun Application.module() {
             }
         },
         modelCatalogGateway = openRouterCatalog,
-        bootstrapModelConfig = bootstrapModelConfig,
     )
     val internalService = InternalService(database)
 

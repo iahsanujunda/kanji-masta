@@ -20,21 +20,6 @@ data class ModelValidationResult(
     val failureCode: String? = null,
 )
 
-data class BootstrapModelConfig(
-    val photoAnalysisModel: String?,
-    val quizGenerationModel: String?,
-    val wordDiscoveryModel: String?,
-) {
-    val complete: Boolean
-        get() = !photoAnalysisModel.isNullOrBlank() &&
-            !quizGenerationModel.isNullOrBlank() &&
-            !wordDiscoveryModel.isNullOrBlank()
-
-    companion object {
-        val EMPTY = BootstrapModelConfig(null, null, null)
-    }
-}
-
 interface ModelCatalogGateway {
     suspend fun search(workload: String, query: String?): List<CatalogModel>
     suspend fun validate(models: Map<String, String>): ModelValidationResult

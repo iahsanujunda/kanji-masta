@@ -57,14 +57,12 @@ GEMINI_API_KEY=...
 # OpenRouter
 AI_PROVIDER=openrouter
 OPENROUTER_API_KEY=...
-OPENROUTER_MODEL=provider/model
 OPENROUTER_REASONING_EFFORT=medium
 ```
 
-`OPENROUTER_MODEL` is used for every operation. You can instead set
-`OPENROUTER_ANALYZE_MODEL`, `OPENROUTER_QUIZ_MODEL`, and
-`OPENROUTER_DISCOVERY_MODEL` independently; the analyze model must support
-image input.
+Model IDs are configured only through **Admin → Jobs → Model settings** and stored as the
+single active database configuration. Until all three roles are submitted successfully, the
+system reports down and workers reject new provider work.
 
 ---
 

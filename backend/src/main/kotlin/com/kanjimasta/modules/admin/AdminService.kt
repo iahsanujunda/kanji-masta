@@ -1,7 +1,6 @@
 package com.kanjimasta.modules.admin
 
 import com.kanjimasta.core.ai.ModelCatalogGateway
-import com.kanjimasta.core.ai.BootstrapModelConfig
 import java.time.Instant
 import java.util.UUID
 
@@ -9,24 +8,22 @@ class AdminService(
     private val adminRepository: AdminRepository,
     private val jobDispatcher: suspend (String, UUID, String) -> Boolean = { _, _, _ -> true },
     private val modelCatalogGateway: ModelCatalogGateway,
-    private val bootstrapModelConfig: BootstrapModelConfig,
 ) {
 
     suspend fun searchModels(workload: String, query: String?): ModelsResponse =
         ModelsResponse(modelCatalogGateway.search(workload, query))
 
-    suspend fun validateModelConfig(request: ModelConfigRequest, adminUserId: String): ModelConfigItem {
-        val result = modelCatalogGateway.validate(request.asWorkloads())
-        return adminRepository.createModelConfig(request, adminUserId, result.valid, result.failureCode)
+    suspend fun saveModelConfig(request: ModelConfigRequest, adminUserId: String): ModelConfigItem? {
+        val validation = modelCatalogGateway.validate(request.asWorkloads())
+        if (!validation.valid) return null
+        return adminRepository.saveActiveModelConfig(request, adminUserId)
     }
-
-    fun activateModelConfig(version: Long): ModelConfigItem? = adminRepository.activateModelConfig(version)
 
     fun getModelConfigs(): ModelConfigsResponse = ModelConfigsResponse(adminRepository.getModelConfigs())
 
     fun getStatus(): AdminStatusResponse = AdminStatusResponse(
         status = runCatching {
-            (adminRepository.getActiveModelConfig() != null || bootstrapModelConfig.complete) &&
+            adminRepository.getActiveModelConfig() != null &&
                 !adminRepository.hasHardStaleJobs()
         }.getOrDefault(false).let { if (it) "operational" else "down" },
         checkedAt = Instant.now().toString(),

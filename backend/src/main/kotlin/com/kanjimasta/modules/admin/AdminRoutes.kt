@@ -29,22 +29,15 @@ fun Route.adminRoutes(adminService: AdminService, adminUserId: String) {
             call.respond(adminService.getModelConfigs())
         }
 
-        post("/model-config/validate") {
-            val admin = requireAdmin(adminUserId) ?: return@post
+        put("/model-config") {
+            val admin = requireAdmin(adminUserId) ?: return@put
             val request = runCatching { call.receive<ModelConfigRequest>() }.getOrNull()
-                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid model configuration"))
+                ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid model configuration"))
             if (request.asWorkloads().values.any { it.isBlank() || it.length > 240 }) {
-                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid model configuration"))
+                return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid model configuration"))
             }
-            call.respond(adminService.validateModelConfig(request, admin.uid))
-        }
-
-        post("/model-config/{version}/activate") {
-            requireAdmin(adminUserId) ?: return@post
-            val version = call.parameters["version"]?.toLongOrNull()
-                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid version"))
-            val config = adminService.activateModelConfig(version)
-                ?: return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "Configuration cannot be activated"))
+            val config = adminService.saveModelConfig(request, admin.uid)
+                ?: return@put call.respond(HttpStatusCode.UnprocessableEntity, mapOf("error" to "Model configuration rejected"))
             call.respond(config)
         }
 

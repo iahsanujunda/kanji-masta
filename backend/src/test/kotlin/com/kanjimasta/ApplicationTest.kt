@@ -2,7 +2,6 @@ package com.kanjimasta
 
 import com.kanjimasta.core.auth.AuthUser
 import com.kanjimasta.core.ai.ModelCatalogGateway
-import com.kanjimasta.core.ai.BootstrapModelConfig
 import com.kanjimasta.core.ai.UnavailableModelCatalogGateway
 import com.kanjimasta.core.plugins.configureRouting
 import com.kanjimasta.core.plugins.configureSerialization
@@ -47,11 +46,6 @@ fun Application.testModule(
     authUser: AuthUser = AuthUser(uid = TEST_USER_ID, email = TEST_USER_EMAIL),
     adminJobDispatcher: suspend (String, java.util.UUID, String) -> Boolean = { _, _, _ -> true },
     modelCatalogGateway: ModelCatalogGateway = UnavailableModelCatalogGateway,
-    bootstrapModelConfig: BootstrapModelConfig = BootstrapModelConfig(
-        photoAnalysisModel = "bootstrap/photo",
-        quizGenerationModel = "bootstrap/quiz",
-        wordDiscoveryModel = "bootstrap/discovery",
-    ),
 ) {
     configureSerialization()
     install(StatusPages) {
@@ -94,7 +88,6 @@ fun Application.testModule(
         adminRepository,
         adminJobDispatcher,
         modelCatalogGateway,
-        bootstrapModelConfig,
     )
     val internalService = com.kanjimasta.modules.internal.InternalService(db)
 

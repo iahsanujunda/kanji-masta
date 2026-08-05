@@ -27,13 +27,11 @@ export const adminApi = {
     if (query.trim()) params.set("q", query.trim());
     return apiFetch<{ models: CatalogModel[] }>(`/api/admin/models?${params}`, { signal });
   },
-  validateConfig: (body: { photoAnalysisModel: string; quizGenerationModel: string; wordDiscoveryModel: string }) =>
-    apiFetch<ModelConfig>("/api/admin/model-config/validate", {
-      method: "POST",
+  saveModelConfig: (body: { photoAnalysisModel: string; quizGenerationModel: string; wordDiscoveryModel: string }) =>
+    apiFetch<ModelConfig>("/api/admin/model-config", {
+      method: "PUT",
       body: JSON.stringify(body),
     }),
-  activateConfig: (version: number) =>
-    apiFetch<ModelConfig>(`/api/admin/model-config/${version}/activate`, { method: "POST" }),
   invites: (signal?: AbortSignal) =>
     apiFetch<{ invites: InviteItem[] }>("/api/admin/invites", { signal }),
   createInvite: (email: string, sendEmail: boolean) =>

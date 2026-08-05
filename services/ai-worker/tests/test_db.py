@@ -1,4 +1,5 @@
 """Unit tests for the database query layer."""
+import pathlib
 import uuid
 
 import psycopg2
@@ -6,6 +7,60 @@ import psycopg2.extras
 import pytest
 
 from app import db
+
+
+def test_default_model_config_seed_is_safe_and_idempotent(db_conn):
+    migration = (
+        pathlib.Path(__file__).resolve().parents[3]
+        / "supabase"
+        / "migrations"
+        / "20260806000000_seed_active_ai_model_config.sql"
+    ).read_text()
+
+    with db_conn.cursor() as cur:
+        cur.execute("DELETE FROM ai_model_config")
+        cur.execute(migration)
+        cur.execute(
+            """
+            SELECT status, photo_analysis_model, quiz_generation_model,
+                   word_discovery_model, validation_status, created_by
+            FROM ai_model_config
+            WHERE status = 'active'
+            """
+        )
+        assert cur.fetchall() == [
+            (
+                "active",
+                "qwen/qwen3.7-flash",
+                "qwen/qwen3.7-flash",
+                "qwen/qwen3.7-flash",
+                "passed",
+                "system:migration",
+            )
+        ]
+
+        cur.execute(migration)
+        cur.execute("SELECT count(*) FROM ai_model_config")
+        assert cur.fetchone()[0] == 1
+
+        cur.execute("UPDATE ai_model_config SET status = 'superseded'")
+        cur.execute(
+            """
+            INSERT INTO ai_model_config (
+                status, photo_analysis_model, quiz_generation_model,
+                word_discovery_model, validation_status, created_by
+            ) VALUES ('active', 'admin/photo', 'admin/quiz', 'admin/words', 'passed', 'admin')
+            """
+        )
+        cur.execute(migration)
+        cur.execute(
+            """
+            SELECT photo_analysis_model, quiz_generation_model, word_discovery_model
+            FROM ai_model_config
+            WHERE status = 'active'
+            """
+        )
+        assert cur.fetchall() == [("admin/photo", "admin/quiz", "admin/words")]
 
 
 def test_database_uses_phase3_failure_count_constraint(db_conn):

@@ -65,6 +65,16 @@ const adminJob = {
   createdAt: "2026-08-05T00:00:00.000Z",
   updatedAt: "2026-08-05T00:01:00.000Z",
 };
+const initialModelConfig = {
+  version: 1,
+  status: "active",
+  validationStatus: "passed",
+  photoAnalysisModel: "vision/current",
+  quizGenerationModel: "text/current",
+  wordDiscoveryModel: "text/current",
+  createdAt: adminJob.createdAt,
+};
+let activeModelConfig = { ...initialModelConfig };
 
 function resetCaptureState() {
   captureDeliveryOnline = false;
@@ -74,6 +84,7 @@ function resetCaptureState() {
   analyzeCalls = 0;
   requestCounts.clear();
   sessionsByCapture.clear();
+  activeModelConfig = { ...initialModelConfig };
 }
 
 function recentSessions() {
@@ -171,7 +182,14 @@ createServer(async (request, response) => {
   }
 
   if (path === "/api/admin/model-config") {
-    sendJson(response, 200, { configs: [{ version: 1, status: "active", validationStatus: "passed", photoAnalysisModel: "vision/current", quizGenerationModel: "text/current", wordDiscoveryModel: "text/current", createdAt: adminJob.createdAt }] });
+    if (request.method === "PUT") {
+      const body = await readJson(request);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      activeModelConfig = { ...activeModelConfig, ...body, version: activeModelConfig.version + 1 };
+      sendJson(response, 200, activeModelConfig);
+      return;
+    }
+    sendJson(response, 200, { configs: [activeModelConfig] });
     return;
   }
 

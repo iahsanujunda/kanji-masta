@@ -5,7 +5,6 @@ import com.kanjimasta.core.db.PhotoSessionTable
 import com.kanjimasta.core.db.QuizGenerationJobTable
 import com.kanjimasta.core.db.UserCostTable
 import com.kanjimasta.core.ai.CatalogModel
-import com.kanjimasta.core.ai.BootstrapModelConfig
 import com.kanjimasta.core.ai.ModelCatalogGateway
 import com.kanjimasta.core.ai.ModelValidationResult
 import io.ktor.client.request.*
@@ -23,7 +22,7 @@ import kotlin.test.assertTrue
 class AdminIntegrationTest : com.kanjimasta.support.PersistenceTest() {
 
     @Test
-    fun `validated model configuration activates atomically and drives status`() = testApplication {
+    fun `submitting a valid model configuration activates atomically and drives status`() = testApplication {
         val catalog = object : ModelCatalogGateway {
             override suspend fun search(workload: String, query: String?) = emptyList<CatalogModel>()
             override suspend fun validate(models: Map<String, String>) = ModelValidationResult(true)
@@ -32,7 +31,6 @@ class AdminIntegrationTest : com.kanjimasta.support.PersistenceTest() {
             testModule(
                 TestDatabase.db,
                 modelCatalogGateway = catalog,
-                bootstrapModelConfig = BootstrapModelConfig.EMPTY,
             )
         }
         val client = jsonClient()
@@ -42,7 +40,7 @@ class AdminIntegrationTest : com.kanjimasta.support.PersistenceTest() {
         }
         assertEquals("down", Json.parseToJsonElement(down.bodyAsText()).jsonObject["status"]!!.jsonPrimitive.content)
 
-        val validated = client.post("/api/admin/model-config/validate") {
+        val saved = client.put("/api/admin/model-config") {
             header(HttpHeaders.Authorization, "Bearer test-token")
             contentType(ContentType.Application.Json)
             setBody(
@@ -53,14 +51,8 @@ class AdminIntegrationTest : com.kanjimasta.support.PersistenceTest() {
                 }""".trimIndent(),
             )
         }
-        assertEquals(HttpStatusCode.OK, validated.status)
-        val version = Json.parseToJsonElement(validated.bodyAsText()).jsonObject["version"]!!.jsonPrimitive.long
-
-        val activated = client.post("/api/admin/model-config/$version/activate") {
-            header(HttpHeaders.Authorization, "Bearer test-token")
-        }
-        assertEquals(HttpStatusCode.OK, activated.status)
-        assertEquals("active", Json.parseToJsonElement(activated.bodyAsText()).jsonObject["status"]!!.jsonPrimitive.content)
+        assertEquals(HttpStatusCode.OK, saved.status)
+        assertEquals("active", Json.parseToJsonElement(saved.bodyAsText()).jsonObject["status"]!!.jsonPrimitive.content)
 
         val status = client.get("/api/admin/status") {
             header(HttpHeaders.Authorization, "Bearer test-token")
@@ -76,17 +68,14 @@ class AdminIntegrationTest : com.kanjimasta.support.PersistenceTest() {
         }
         application { testModule(TestDatabase.db, modelCatalogGateway = catalog) }
         val client = jsonClient()
-        val validated = client.post("/api/admin/model-config/validate") {
+        val saved = client.put("/api/admin/model-config") {
             header(HttpHeaders.Authorization, "Bearer test-token")
             contentType(ContentType.Application.Json)
             setBody(
                 """{"photoAnalysisModel":"vision/v2","quizGenerationModel":"text/v2","wordDiscoveryModel":"text/v2"}""",
             )
         }
-        val version = Json.parseToJsonElement(validated.bodyAsText()).jsonObject["version"]!!.jsonPrimitive.long
-        client.post("/api/admin/model-config/$version/activate") {
-            header(HttpHeaders.Authorization, "Bearer test-token")
-        }
+        val version = Json.parseToJsonElement(saved.bodyAsText()).jsonObject["version"]!!.jsonPrimitive.long
         val photoId = UUID.randomUUID()
         TestDatabase.db.insert(PhotoSessionTable) {
             set(it.id, photoId)
@@ -112,7 +101,7 @@ class AdminIntegrationTest : com.kanjimasta.support.PersistenceTest() {
     }
 
     @Test
-    fun `failed validation preserves active config and a superseded version can roll back`() = testApplication {
+    fun `rejected model configuration is not saved and preserves the active config`() = testApplication {
         var validationPasses = true
         val catalog = object : ModelCatalogGateway {
             override suspend fun search(workload: String, query: String?) = emptyList<CatalogModel>()
@@ -121,33 +110,23 @@ class AdminIntegrationTest : com.kanjimasta.support.PersistenceTest() {
         }
         application { testModule(TestDatabase.db, modelCatalogGateway = catalog) }
         val client = jsonClient()
-        suspend fun validate(photo: String): Long {
-            val response = client.post("/api/admin/model-config/validate") {
+        suspend fun submit(photo: String) = client.put("/api/admin/model-config") {
                 header(HttpHeaders.Authorization, "Bearer test-token")
                 contentType(ContentType.Application.Json)
                 setBody("""{"photoAnalysisModel":"$photo","quizGenerationModel":"text/model","wordDiscoveryModel":"text/model"}""")
             }
-            return Json.parseToJsonElement(response.bodyAsText()).jsonObject["version"]!!.jsonPrimitive.long
-        }
-        suspend fun activate(version: Long) = client.post("/api/admin/model-config/$version/activate") {
-            header(HttpHeaders.Authorization, "Bearer test-token")
-        }
 
-        val first = validate("vision/one")
-        assertEquals(HttpStatusCode.OK, activate(first).status)
-        val second = validate("vision/two")
-        assertEquals(HttpStatusCode.OK, activate(second).status)
+        assertEquals(HttpStatusCode.OK, submit("vision/one").status)
         validationPasses = false
-        validate("vision/broken")
+        assertEquals(HttpStatusCode.UnprocessableEntity, submit("vision/broken").status)
 
-        val rollback = activate(first)
-        assertEquals(HttpStatusCode.OK, rollback.status)
         val configs = client.get("/api/admin/model-config") {
             header(HttpHeaders.Authorization, "Bearer test-token")
         }
-        val active = Json.parseToJsonElement(configs.bodyAsText()).jsonObject["configs"]!!.jsonArray
-            .single { it.jsonObject["status"]!!.jsonPrimitive.content == "active" }.jsonObject
-        assertEquals(first, active["version"]!!.jsonPrimitive.long)
+        val savedConfigs = Json.parseToJsonElement(configs.bodyAsText()).jsonObject["configs"]!!.jsonArray
+        assertEquals(1, savedConfigs.size)
+        val active = savedConfigs.single().jsonObject
+        assertEquals("active", active["status"]!!.jsonPrimitive.content)
         assertEquals("vision/one", active["photoAnalysisModel"]!!.jsonPrimitive.content)
     }
 

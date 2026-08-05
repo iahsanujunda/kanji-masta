@@ -36,10 +36,6 @@ self:
 openrouter:
   apiKey: "$OPENROUTER_API_KEY:"
   baseUrl: "$OPENROUTER_BASE_URL:https://openrouter.ai"
-  defaultModel: "$OPENROUTER_MODEL:"
-  analyzeModel: "$OPENROUTER_ANALYZE_MODEL:"
-  quizModel: "$OPENROUTER_QUIZ_MODEL:"
-  discoveryModel: "$OPENROUTER_DISCOVERY_MODEL:"
 
 claude:
   apiKey: "$CLAUDE_API_KEY:"

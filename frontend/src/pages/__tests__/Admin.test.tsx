@@ -3,8 +3,10 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Admin from "../Admin";
 import { renderWithProviders } from "@/test/mocks";
+import { ApiError } from "@/lib/api";
 
 const mockApiFetch = vi.hoisted(() => vi.fn());
+const mockModelSave = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
   apiFetch: (...args: unknown[]) => mockApiFetch(...args),
@@ -23,13 +25,16 @@ const job = {
   createdAt: "2026-08-05T00:00:00Z",
   updatedAt: "2026-08-05T00:01:00Z",
 };
+const activeModelConfig = { version: 1, status: "active", validationStatus: "passed", photoAnalysisModel: "vision/current", quizGenerationModel: "text/current", wordDiscoveryModel: "text/current", createdAt: job.createdAt };
+let modelConfigs = [activeModelConfig];
 
 function installApi() {
-  mockApiFetch.mockImplementation((path: string) => {
+  mockApiFetch.mockImplementation((path: string, init?: RequestInit) => {
     if (path === "/api/admin/status") return Promise.resolve({ status: "down", checkedAt: new Date().toISOString() });
     if (path.startsWith("/api/admin/jobs/photo_analysis/photo-1")) return Promise.resolve({ job, attempts: [{ id: "attempt-1", attemptNumber: 1, status: "processing", trigger: "initial", createdBy: "system", createdAt: job.createdAt }] });
     if (path.startsWith("/api/admin/jobs")) return Promise.resolve({ jobs: [job, { ...job, id: "quiz-1", type: "quiz_generation", status: "done", summary: "Quiz generation · 駅" }], counts: { pending: 0, processing: 1, done: 1, failed: 0 } });
-    if (path === "/api/admin/model-config") return Promise.resolve({ configs: [{ version: 1, status: "active", validationStatus: "passed", photoAnalysisModel: "vision/current", quizGenerationModel: "text/current", wordDiscoveryModel: "text/current", createdAt: job.createdAt }] });
+    if (path === "/api/admin/model-config" && init?.method === "PUT") return mockModelSave(JSON.parse(String(init.body)));
+    if (path === "/api/admin/model-config") return Promise.resolve({ configs: modelConfigs });
     if (path.startsWith("/api/admin/models")) return Promise.resolve({ models: [{ id: "qwen/qwen-vision", canonicalSlug: "qwen/qwen-vision", name: "Qwen Vision", inputModalities: ["text", "image"], outputModalities: ["text"], supportedParameters: ["structured_outputs"] }] });
     if (path === "/api/admin/invites") return Promise.resolve({ invites: [] });
     if (path === "/api/admin/cost") return Promise.resolve({ totalMicrodollars: 0, totalDollars: "0.00", byUser: [], byDay: [] });
@@ -40,6 +45,9 @@ function installApi() {
 describe("Admin control plane", () => {
   beforeEach(() => {
     mockApiFetch.mockReset();
+    mockModelSave.mockReset();
+    modelConfigs = [activeModelConfig];
+    mockModelSave.mockResolvedValue({ version: 2, status: "active", validationStatus: "passed", photoAnalysisModel: "qwen/qwen-vision", quizGenerationModel: "text/current", wordDiscoveryModel: "text/current", createdAt: job.createdAt });
     installApi();
   });
 
@@ -50,6 +58,27 @@ describe("Admin control plane", () => {
     expect(await screen.findByRole("button", { name: "View Photo analysis job photo-1" })).toBeInTheDocument();
     expect(screen.getByText("Quiz generation · 駅")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Admin sections" })).toBeInTheDocument();
+  });
+
+  it("puts the active model configuration before job controls", async () => {
+    renderWithProviders(<Admin />);
+
+    const modelSettings = await screen.findByText("Model settings");
+    const firstJob = await screen.findByRole("button", { name: "View Photo analysis job photo-1" });
+
+    expect(modelSettings.compareDocumentPosition(firstJob) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("vision/current")).toBeInTheDocument();
+    expect(screen.getAllByText("text/current")).toHaveLength(2);
+  });
+
+  it("explains when no database model configuration is active", async () => {
+    modelConfigs = [];
+
+    renderWithProviders(<Admin />);
+
+    expect(await screen.findByText("No active model configuration. Choose all three models, then submit.")).toBeInTheDocument();
+    expect(screen.getAllByText("Choose model")).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
   });
 
   it("opens job actions through the shared animated bottom drawer", async () => {
@@ -77,6 +106,45 @@ describe("Admin control plane", () => {
     await waitFor(() => expect(mockApiFetch.mock.calls.some(([path]) => String(path).includes("q=qw"))).toBe(true), { timeout: 900 });
     expect(await screen.findByText("Qwen Vision")).toBeInTheDocument();
     expect(mockApiFetch.mock.calls.some(([path]) => String(path).includes("openrouter.ai"))).toBe(false);
+  });
+
+  it("submits changed models with progress and confirms success", async () => {
+    let finishSave!: (value: unknown) => void;
+    mockModelSave.mockReturnValue(new Promise((resolve) => { finishSave = resolve; }));
+    const user = userEvent.setup();
+    renderWithProviders(<Admin />);
+
+    await user.click(await screen.findByRole("button", { name: "Change Photo analysis model" }));
+    await user.click(await screen.findByRole("button", { name: /Qwen Vision/ }));
+    const submit = screen.getByRole("button", { name: "Submit" });
+    await user.click(submit);
+
+    expect(within(submit).getByRole("progressbar")).toBeInTheDocument();
+    expect(submit).toBeDisabled();
+
+    finishSave({ version: 2, status: "active", validationStatus: "passed", photoAnalysisModel: "qwen/qwen-vision", quizGenerationModel: "text/current", wordDiscoveryModel: "text/current", createdAt: job.createdAt });
+
+    expect(await screen.findByText("Model configuration saved.")).toBeInTheDocument();
+    expect(screen.getByText("qwen/qwen-vision")).toBeInTheDocument();
+    expect(mockModelSave).toHaveBeenCalledWith({
+      photoAnalysisModel: "qwen/qwen-vision",
+      quizGenerationModel: "text/current",
+      wordDiscoveryModel: "text/current",
+    });
+  });
+
+  it("keeps rejected selections editable and reports validation failure", async () => {
+    mockModelSave.mockRejectedValue(new ApiError(422, { error: "Model configuration rejected" }));
+    const user = userEvent.setup();
+    renderWithProviders(<Admin />);
+
+    await user.click(await screen.findByRole("button", { name: "Change Photo analysis model" }));
+    await user.click(await screen.findByRole("button", { name: /Qwen Vision/ }));
+    await user.click(screen.getByRole("button", { name: "Submit" }));
+
+    expect(await screen.findByText("The selected models are not valid.")).toBeInTheDocument();
+    expect(screen.getByText("qwen/qwen-vision")).toBeInTheDocument();
+    expect(screen.queryByText("Model configuration saved.")).not.toBeInTheDocument();
   });
 
   it("uses the same bottom drawer for invite creation", async () => {

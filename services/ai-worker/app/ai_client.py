@@ -56,7 +56,7 @@ def get_ai_client(model_config: dict[str, Any] | None = None) -> AIClient:
     if provider == "gemini":
         from .gemini import GeminiAIClient
 
-        return GeminiAIClient.from_env()
+        return GeminiAIClient.from_env(model_config)
     if provider == "openrouter":
         from .openrouter import OpenRouterAIClient
 

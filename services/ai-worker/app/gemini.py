@@ -14,9 +14,9 @@ class GeminiAIClient:
     def __init__(
         self,
         client: genai.Client,
-        analyze_model: str = "gemini-3.1-pro-preview",
-        quiz_model: str = "gemini-3.1-pro-preview",
-        discovery_model: str = "gemini-2.0-flash",
+        analyze_model: str,
+        quiz_model: str,
+        discovery_model: str,
     ):
         self._client = client
         self._analyze_model = analyze_model
@@ -24,21 +24,21 @@ class GeminiAIClient:
         self._discovery_model = discovery_model
 
     @classmethod
-    def from_env(cls) -> "GeminiAIClient":
+    def from_env(cls, model_config: dict | None = None) -> "GeminiAIClient":
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             raise RuntimeError("GEMINI_API_KEY not configured")
+        config = model_config or {}
+        analyze_model = config.get("photoAnalysisModel")
+        quiz_model = config.get("quizGenerationModel")
+        discovery_model = config.get("wordDiscoveryModel")
+        if not all((analyze_model, quiz_model, discovery_model)):
+            raise RuntimeError("An active database model configuration is required")
         return cls(
             client=genai.Client(api_key=api_key),
-            analyze_model=os.environ.get(
-                "GEMINI_ANALYZE_MODEL", "gemini-3.1-pro-preview"
-            ),
-            quiz_model=os.environ.get(
-                "GEMINI_QUIZ_MODEL", "gemini-3.1-pro-preview"
-            ),
-            discovery_model=os.environ.get(
-                "GEMINI_DISCOVERY_MODEL", "gemini-2.0-flash"
-            ),
+            analyze_model=analyze_model,
+            quiz_model=quiz_model,
+            discovery_model=discovery_model,
         )
 
     def analyze_image(

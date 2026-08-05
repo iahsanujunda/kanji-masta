@@ -11,60 +11,27 @@ import java.util.UUID
 
 class AdminRepository(private val db: Database) {
 
-    fun createModelConfig(
+    fun saveActiveModelConfig(
         request: ModelConfigRequest,
         adminUserId: String,
-        validationPassed: Boolean,
-        failureCode: String?,
     ): ModelConfigItem = db.useTransaction {
         val now = Instant.now()
-        val version = db.insertReturning(AiModelConfigTable, AiModelConfigTable.version) {
-            set(it.status, if (validationPassed) "draft" else "rejected")
-            set(it.photoAnalysisModel, request.photoAnalysisModel)
-            set(it.quizGenerationModel, request.quizGenerationModel)
-            set(it.wordDiscoveryModel, request.wordDiscoveryModel)
-            set(it.validationStatus, if (validationPassed) "passed" else "failed")
-            set(it.failureCode, failureCode)
-            set(it.createdBy, adminUserId)
-            set(it.validatedAt, now)
-        } ?: error("Model configuration version was not generated")
-        getModelConfig(version) ?: error("Created model configuration is missing")
-    }
-
-    fun activateModelConfig(version: Long): ModelConfigItem? = db.useTransaction {
-        val target = getModelConfig(version) ?: return@useTransaction null
-        if (target.status !in setOf("draft", "superseded") || target.validationStatus != "passed") {
-            return@useTransaction null
-        }
-        if (target.status == "draft") {
-            val latestDraft = db.from(AiModelConfigTable)
-                .select(AiModelConfigTable.version)
-                .where {
-                    (AiModelConfigTable.status eq "draft") and
-                        (AiModelConfigTable.validationStatus eq "passed")
-                }
-                .orderBy(AiModelConfigTable.version.desc())
-                .limit(1)
-                .map { it[AiModelConfigTable.version] }
-                .firstOrNull()
-            if (latestDraft != version) return@useTransaction null
-        }
-
         db.update(AiModelConfigTable) {
             set(it.status, "superseded")
             where { it.status eq "active" }
         }
-        val activated = db.update(AiModelConfigTable) {
+        val version = db.insertReturning(AiModelConfigTable, AiModelConfigTable.version) {
             set(it.status, "active")
-            set(it.activatedAt, Instant.now())
-            where {
-                (it.version eq version) and
-                    (it.status inList listOf("draft", "superseded")) and
-                    (it.validationStatus eq "passed")
-            }
-        }
-        if (activated != 1) error("Model configuration changed during activation")
-        getModelConfig(version)
+            set(it.photoAnalysisModel, request.photoAnalysisModel)
+            set(it.quizGenerationModel, request.quizGenerationModel)
+            set(it.wordDiscoveryModel, request.wordDiscoveryModel)
+            set(it.validationStatus, "passed")
+            set(it.failureCode, null)
+            set(it.createdBy, adminUserId)
+            set(it.validatedAt, now)
+            set(it.activatedAt, now)
+        } ?: error("Model configuration version was not generated")
+        getModelConfig(version) ?: error("Saved model configuration is missing")
     }
 
     fun getModelConfigs(): List<ModelConfigItem> = db.from(AiModelConfigTable)

@@ -35,11 +35,28 @@ async function assertVisibleDrawerMotion(page, trigger, drawerName, dismissName 
   await expect(trigger).toBeFocused();
 }
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page, request }) => {
+  await request.post("http://127.0.0.1:18080/__test/reset");
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await authenticate(page);
   await page.goto("/admin");
   await expect(page.getByText("Operational", { exact: true })).toBeVisible();
+});
+
+test("model settings lead the jobs panel and submit the active selection", async ({ page }) => {
+  const modelSettings = page.getByText("Model settings", { exact: true });
+  const firstJob = page.getByRole("button", { name: /View Photo analysis job/ });
+  await expect(modelSettings).toBeVisible();
+  await expect(page.getByText("vision/current", { exact: true })).toBeVisible();
+  expect((await modelSettings.boundingBox()).y).toBeLessThan((await firstJob.boundingBox()).y);
+
+  await page.getByRole("button", { name: "Change Photo analysis model" }).click();
+  await page.getByRole("button", { name: /Qwen Vision/ }).click();
+  const submit = page.getByRole("button", { name: "Submit" });
+  await submit.click();
+  await expect(submit.getByRole("progressbar")).toBeVisible();
+  await expect(page.getByText("Model configuration saved.", { exact: true })).toBeVisible();
+  await expect(page.getByText("qwen/qwen-vision", { exact: true })).toBeVisible();
 });
 
 test("job, model, and invite drawers visibly enter and exit", async ({ page }) => {

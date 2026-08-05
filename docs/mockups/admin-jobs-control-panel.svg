@@ -178,10 +178,8 @@
   <text x="1396" y="715" class="muted tiny">Dictionary enrichment</text>
   <text x="1404" y="740" class="indigoPale tiny mono">google/gemini-3.1-pro</text>
   <path d="m1681 730 6 6-6 6" fill="none" stroke="#818cf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="1376" y="780" width="160" height="48" rx="12" class="raised" stroke="rgba(255,255,255,.09)"/>
-  <text x="1456" y="810" text-anchor="middle" class="text small" font-weight="800">Validate</text>
-  <rect x="1548" y="780" width="166" height="48" rx="12" fill="#10b981"/>
-  <text x="1631" y="810" text-anchor="middle" class="darkText small" font-weight="850">Save &amp; activate</text>
+  <rect x="1376" y="780" width="338" height="48" rx="12" fill="#10b981"/>
+  <text x="1545" y="810" text-anchor="middle" class="darkText small" font-weight="850">Submit</text>
   <use href="#bottom-nav-jobs" x="1350" y="150"/>
 
   <!-- ROW TRANSITION -->

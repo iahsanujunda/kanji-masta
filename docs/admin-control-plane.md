@@ -38,9 +38,8 @@ plane:
   destroys the operational history needed to understand repeated failures.
 - There is no Admin action to terminalize a stuck photo session, so `PROCESSING` can remain on
   the user's Home page indefinitely.
-- OpenRouter model IDs are deployment environment variables. A missing role-specific variable
-  can crash work after dispatch, while Admin has no way to see or validate the effective
-  configuration.
+- Model IDs are outside Admin control. A missing role can crash work after dispatch, while
+  Admin has no way to see or validate the effective configuration.
 - Admin dialogs use centered MUI `Dialog` components. The rest of the product is mobile-first,
   and focused Admin actions should use a reachable bottom drawer.
 
@@ -290,20 +289,20 @@ Enforce at most one `active` row with a partial unique index. Activation superse
 row and activates the new row in one transaction. Previous versions remain available for
 audit and rollback.
 
-The source precedence is:
+The active database row is the only source of model IDs. No environment-variable fallback is
+consulted. A missing active configuration means `System down` and no new job dispatch.
 
-1. active database configuration;
-2. existing `OPENROUTER_ANALYZE_MODEL`, `OPENROUTER_QUIZ_MODEL`,
-   `OPENROUTER_DISCOVERY_MODEL`, or `OPENROUTER_MODEL` only as bootstrap fallback; and
-3. no complete configuration means `System down` and no new job dispatch.
+Fresh databases receive a conditional active seed using `qwen/qwen3.7-flash` for all three
+workloads. The seed is idempotent and does nothing when an administrator-selected active row
+already exists, so deployment never replaces an explicit configuration choice.
 
 `OPENROUTER_API_KEY`, site URL, app name, timeout, and other secrets/runtime controls remain
 environment configuration.
 
-### 6.3 Validation and activation
+### 6.3 Atomic submission
 
-`POST /api/admin/model-config/validate` creates or updates a draft and validates all three
-models. Validation includes:
+`PUT /api/admin/model-config` validates all three models and, only when every check passes,
+atomically supersedes the old active row and saves the new active row. Validation includes:
 
 - exact catalog presence for the current OpenRouter account;
 - required input/output modalities and parameters;
@@ -311,10 +310,9 @@ models. Validation includes:
   fixture for photo analysis; and
 - parse validation using the same structured-response parser as production.
 
-`POST /api/admin/model-config/{version}/activate` succeeds only for the latest draft with
-`validation_status=passed`. A failed draft does not replace the healthy active version and
-does not make global status down. If the active configuration is missing or production health
-checks show the active pipeline cannot start, global status becomes `System down`.
+A rejected submission is not saved and does not replace the healthy active version. If the
+active configuration is missing or production health checks show the active pipeline cannot
+start, global status becomes `System down`.
 
 Every new `job_attempt` snapshots `model_config_version` and `model_id`; in-flight attempts do
 not switch models when a new configuration activates.
@@ -337,7 +335,7 @@ reason codes, but the Admin header does not render them.
 
 Status is down when any required invariant fails, including:
 
-- no complete active/bootstrap model configuration;
+- no complete active database model configuration;
 - the durable dispatcher/executor is unavailable;
 - the stale reconciler has stopped advancing its heartbeat;
 - the oldest active job exceeds the hard stale threshold without terminalization; or
@@ -429,7 +427,7 @@ refresh the job when a `409` reports concurrent change.
 | `backend/.../core/db/Tables.kt` | Add `JobAttemptTable` and `AiModelConfigTable`; map new columns/enums |
 | `backend/.../modules/admin/AdminModels.kt` | Replace quiz-only job DTO with typed unified jobs, attempts, status, model catalog/config DTOs |
 | `backend/.../modules/admin/AdminRepository.kt` | Read photo + quiz jobs, merge/sort, query attempts/config versions; remove destructive retry reset |
-| `backend/.../modules/admin/AdminService.kt` | Add conditional fail/rerun, health, catalog search, validate/activate orchestration |
+| `backend/.../modules/admin/AdminService.kt` | Add conditional fail/rerun, health, catalog search, and atomic configuration submission |
 | `backend/.../modules/admin/AdminRoutes.kt` | Add status, unified filters/detail/actions, models, and model-config endpoints |
 | `backend/.../Application.kt` | Wire catalog/config/job-control dependencies and server-held OpenRouter configuration |
 | `backend/.../core/plugins/Routing.kt` | Pass the expanded Admin service without crossing module boundaries |
@@ -438,7 +436,7 @@ refresh the job when a `409` reports concurrent change.
 | `services/ai-worker/app/db.py` | Claim/finish attempts and load active configuration transactionally |
 | `services/ai-worker/app/photo_job.py` | Use fresh storage access and the attempt's model snapshot; terminalize uncaught startup/config failures |
 | quiz-generation worker routes | Use attempt records and snapshotted quiz model |
-| `Makefile`, `.env.example`, deploy config | Keep API key/runtime secrets; document role-model env values as bootstrap fallback, not live source of truth |
+| `Makefile`, `.env.example`, deploy config | Keep API keys and non-model runtime controls; remove model-ID variables |
 | `frontend/src/pages/Admin.tsx` | Split into mobile components, Query hooks, real status, unified jobs, models, and drawers |
 | `frontend/playwright.config.js` | Add mobile Chromium, Firefox, and WebKit projects for Admin interaction coverage |
 | `frontend/tests/e2e/fake-api.mjs` | Add Admin job/status/catalog/config fixtures and deterministic mutation controls |
@@ -468,7 +466,7 @@ schema redesign.
 | Job execution | Rerun can duplicate provider calls | Unique attempt number, transactional claim, idempotent terminal writes |
 | Stored photos | Old signed URLs may be expired | Rerun uses `storage_path` and fresh server-side access |
 | Quiz generation | Existing retry resets history | Migrate to attempt history before enabling new UI |
-| Model behavior | Bad model could break every new job of a role | Draft validation, smoke requests, atomic activation, rollback version |
+| Model behavior | Bad model could break every new job of a role | Validate before writing, smoke requests, atomic replacement, retained history |
 | Existing running work | Activation during execution | Model/version snapshot per attempt |
 | OpenRouter account | Search/validation adds API traffic | Backend cache, debounce, fixed host, bounded timeout |
 | Credentials | Catalog requires API key | Backend-only call; response/log redaction; no key in frontend bundle |
@@ -479,8 +477,9 @@ schema redesign.
 | Accessibility | Motion/focus can block operation | Focus restoration, Escape/backdrop, reduced motion, keyboard tests |
 | Platform migration | Python and Kotlin could interpret config differently | One DB contract and parity tests before retiring Python |
 
-Rollout must preserve the existing active model configuration. Do not deploy a schema or
-consumer that requires a database config row before the bootstrap fallback is available.
+Rollout must establish an active database configuration before deploying workers that require
+it. Apply the database migrations (including the conditional default seed) before deploying
+the worker; an administrator can replace the seed through Admin at any time.
 
 ---
 
@@ -502,6 +501,7 @@ Add coverage to `AdminIntegrationTest` and focused service tests for:
 - duplicate rerun requests create only one next attempt;
 - photo rerun uses `storage_path`, obtains fresh access, and rejects a missing object;
 - active config is unique and activation supersedes the previous version atomically;
+- fresh-database model seeding is idempotent and preserves an existing active configuration;
 - failed validation leaves the old active version unchanged;
 - new attempts snapshot the active version/model;
 - catalog endpoint filters by workload and returns only the safe DTO;
@@ -516,9 +516,8 @@ Testcontainers for transaction, uniqueness, and concurrent claim behavior.
 
 During the current Python-worker phase, add tests for:
 
-- complete active DB config overrides bootstrap model environment variables;
-- no DB config falls back to the existing complete environment configuration;
-- incomplete DB and environment configuration fails before provider work and terminalizes the
+- active DB config is the only source of model IDs;
+- missing or incomplete DB configuration fails before provider work and terminalizes the
   claimed attempt;
 - photo/quiz/discovery select the correct role model;
 - a running attempt keeps its snapshotted model after activation of a new version;
@@ -595,7 +594,7 @@ browser chrome, safe areas, and swipe physics are not fully reproduced by deskto
 
 1. Add `job_attempt` and `ai_model_config` with constraints and Ktorm mappings.
 2. Backfill best-effort attempt rows for existing photo and quiz records.
-3. Keep environment model configuration as bootstrap fallback.
+3. Seed the first active database configuration without replacing an existing active row.
 4. Deploy readers before enabling Admin mutations.
 
 ### Phase 2 — Job observability and recovery

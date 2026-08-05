@@ -56,6 +56,7 @@ export default function JobsTab() {
 
   return (
     <Box sx={{ display: "grid", gap: 1.5 }}>
+      <ModelSettings />
       <Box sx={{ display: "flex", gap: .75, overflowX: "auto", pb: .5, scrollbarWidth: "none" }}>
         {filters.map((item) => <Chip key={item} clickable label={item.replace("-", " ")} onClick={() => setFilter(item)} sx={{ flexShrink: 0, height: 36, textTransform: "capitalize", bgcolor: filter === item ? "#4338ca" : "#15151e", color: filter === item ? "white" : "grey.400", border: "1px solid #292938" }} />)}
       </Box>
@@ -74,8 +75,6 @@ export default function JobsTab() {
           <Typography sx={{ color: "grey.500", fontSize: 12, mt: 2 }}>Attempt {job.attempts}/{job.maxAttempts} · Updated {new Date(job.updatedAt || job.createdAt).toLocaleString()}</Typography>
         </Button>
       ))}
-      <ModelSettings />
-
       <AdminBottomDrawer open={selected !== null && action === null} title="Job details" onClose={() => setSelected(null)}>
         {detail.isLoading && <Box sx={{ py: 5, textAlign: "center" }}><CircularProgress size={24} /></Box>}
         {detail.isError && <Alert severity="error" action={<Button onClick={() => detail.refetch()}>Retry</Button>}>Job details are unavailable.</Alert>}

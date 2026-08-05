@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Alert, Box, Button, CircularProgress, TextField, Typography } from "@mui/material";
+import { Alert, Box, Button, CircularProgress, Skeleton, TextField, Typography } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import AdminBottomDrawer from "@/pages/admin/AdminBottomDrawer";
 import { adminApi } from "@/pages/admin/api";
 import { useAuth } from "@/hooks/useAuth";
-import type { CatalogModel } from "@/pages/admin/types";
+import { ApiError } from "@/lib/api";
+import type { CatalogModel, ModelConfig } from "@/pages/admin/types";
 
 type Workload = "photo_analysis" | "quiz_generation" | "word_discovery";
 type Draft = { photoAnalysisModel: string; quizGenerationModel: string; wordDiscoveryModel: string };
@@ -19,8 +20,9 @@ export default function ModelSettings() {
   const { user } = useAuth();
   const userId = user?.id ?? "";
   const queryClient = useQueryClient();
-  const configs = useQuery({ queryKey: ["admin-model-config", userId], queryFn: ({ signal }) => adminApi.modelConfigs(signal), enabled: Boolean(user) });
-  const source = configs.data?.configs.find((item) => item.status === "draft") ?? configs.data?.configs.find((item) => item.status === "active");
+  const configKey = ["admin-model-config", userId] as const;
+  const configs = useQuery({ queryKey: configKey, queryFn: ({ signal }) => adminApi.modelConfigs(signal), enabled: Boolean(user) });
+  const source = configs.data?.configs.find((item) => item.status === "active");
   const [draftOverride, setDraftOverride] = useState<Draft | null>(null);
   const draft: Draft = draftOverride ?? (source ? {
     photoAnalysisModel: source.photoAnalysisModel,
@@ -46,23 +48,31 @@ export default function ModelSettings() {
 
   const refresh = async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["admin-model-config", userId] }),
       queryClient.invalidateQueries({ queryKey: ["admin-status", userId] }),
       queryClient.invalidateQueries({ queryKey: ["admin-jobs", userId] }),
     ]);
   };
-  const validate = useMutation({
-    mutationFn: () => adminApi.validateConfig(draft),
-    onSuccess: async () => { setDraftOverride(null); await refresh(); },
+  const save = useMutation({
+    mutationFn: () => adminApi.saveModelConfig(draft),
+    onSuccess: async (saved) => {
+      queryClient.setQueryData<{ configs: ModelConfig[] }>(configKey, (current) => ({
+        configs: [
+          saved,
+          ...(current?.configs ?? []).filter((item) => item.version !== saved.version && item.status !== "active"),
+        ],
+      }));
+      setDraftOverride(null);
+      await refresh();
+    },
   });
-  const activatable = configs.data?.configs.find((item) => item.status === "draft" && item.validationStatus === "passed");
-  const activate = useMutation({ mutationFn: (version: number) => adminApi.activateConfig(version), onSuccess: refresh });
   const complete = Object.values(draft).every(Boolean);
+  const changed = !source || (Object.keys(draft) as Array<keyof Draft>).some((key) => draft[key] !== source[key]);
 
   const selectModel = (model: CatalogModel) => {
     if (!workload) return;
     const key = workloadCopy[workload].key;
     setDraftOverride({ ...draft, [key]: model.id });
+    save.reset();
     setWorkload(null);
     setQuery("");
     setDebounced("");
@@ -72,9 +82,11 @@ export default function ModelSettings() {
     <Box sx={{ bgcolor: "#0f0f16", border: "1px solid #242431", borderRadius: 3, p: 2, display: "grid", gap: 1.25 }}>
       <Box>
         <Typography sx={{ color: "white", fontWeight: 850 }}>Model settings</Typography>
-        <Typography sx={{ color: "grey.500", fontSize: 12 }}>Validated changes apply only to new attempts.</Typography>
+        <Typography sx={{ color: "grey.500", fontSize: 12 }}>Active models. Changes apply only to new attempts.</Typography>
       </Box>
-      {(Object.keys(workloadCopy) as Workload[]).map((role) => {
+      {configs.isLoading ? [...Array(3)].map((_, index) => (
+        <Skeleton key={index} variant="rounded" height={56} sx={{ borderRadius: 2, bgcolor: "#1a1a24" }} />
+      )) : (Object.keys(workloadCopy) as Workload[]).map((role) => {
         const config = workloadCopy[role];
         return (
           <Button key={role} aria-label={`Change ${config.label} model`} onClick={() => { setWorkload(role); setQuery(""); setDebounced(""); }} sx={{ minHeight: 56, border: "1px solid #292938", borderRadius: 2, px: 1.5, justifyContent: "space-between", textTransform: "none", color: "grey.200" }}>
@@ -86,11 +98,18 @@ export default function ModelSettings() {
           </Button>
         );
       })}
-      {(validate.isError || activate.isError) && <Alert severity="error">The model configuration could not be saved.</Alert>}
-      <Box sx={{ display: "grid", gridTemplateColumns: activatable ? "1fr 1fr" : "1fr", gap: 1 }}>
-        <Button disabled={!complete || validate.isPending} onClick={() => validate.mutate()} sx={{ minHeight: 44, bgcolor: "#1a1a24", color: "grey.100", textTransform: "none", fontWeight: 800 }}>Validate draft</Button>
-        {activatable && <Button disabled={activate.isPending} onClick={() => activate.mutate(activatable.version)} sx={{ minHeight: 44, bgcolor: "#10b981", color: "#050508", textTransform: "none", fontWeight: 900 }}>Activate v{activatable.version}</Button>}
-      </Box>
+      {configs.isError && <Alert severity="error">Current model configuration is unavailable.</Alert>}
+      {configs.isSuccess && !source && <Alert severity="warning">No active model configuration. Choose all three models, then submit.</Alert>}
+      {save.isError && <Alert severity="error">{save.error instanceof ApiError && save.error.status === 422 ? "The selected models are not valid." : "The model configuration could not be saved."}</Alert>}
+      {save.isSuccess && <Alert severity="success">Model configuration saved.</Alert>}
+      <Button
+        aria-label="Submit"
+        disabled={!complete || !changed || save.isPending}
+        onClick={() => save.mutate()}
+        sx={{ minHeight: 48, bgcolor: "#10b981", color: "#050508", textTransform: "none", fontWeight: 900, "&:hover": { bgcolor: "#34d399" }, "&.Mui-disabled": { bgcolor: "#1a1a24", color: "grey.600" } }}
+      >
+        {save.isPending ? <CircularProgress size={20} color="inherit" aria-label="Saving model configuration" /> : "Submit"}
+      </Button>
 
       <AdminBottomDrawer open={workload !== null} title="Search OpenRouter models" onClose={() => setWorkload(null)}>
         <TextField

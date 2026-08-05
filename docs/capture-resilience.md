@@ -518,6 +518,41 @@ or delay the immediate-close contract.
   Supabase session is not automatically available to a closed service worker, and iOS
   cannot support a reliable closed-app upload promise.
 
+#### Milestone 2A — Target-browser Background Sync experiment
+
+Run the experiment before choosing a Service Worker delivery architecture. Scope real-device
+testing to the browsers used by current users:
+
+- iOS Safari;
+- iOS Chrome;
+- iOS Firefox;
+- Android Chrome; and
+- Android Firefox.
+
+Safari has no Android counterpart. Desktop browser emulation is only a probe smoke test; it
+does not prove mobile lock-screen or closed-window execution. The deployed probe at
+`/capture-sync-probe/index.html` records Service Worker and one-off Background Sync capability, queues a
+connectivity check, and records the number and visibility of window clients when the `sync`
+event runs.
+
+For each browser, run once as a regular browser tab and, where installation is offered, once
+as an installed web app:
+
+1. Open the probe online and install its isolated Service Worker.
+2. Enable airplane mode, queue the test, then lock the phone or close the browser window.
+3. Restore connectivity without reopening the probe and wait up to five minutes.
+4. Reopen the probe and copy its JSON report.
+
+Record `unsupported` as a valid result. A supported run passes only when the connectivity
+request completes with zero visible window clients. A run that completes only after reopening
+is `foreground-fallback`, not background delivery. Do not use viewport/device emulation as a
+pass result.
+
+The experiment permits a production spike only if supported browsers complete duplicate-safe
+delivery without a visible client and unsupported browsers retain the Milestone 1 app-open
+queue. Authentication expiry, explicit logout, account switching, and realistic photo sizes
+remain mandatory staging tests before enabling real capture uploads in the worker.
+
 Milestone 2 tests cover storage-persistence denial, retention limits, multiple pending
 items, auth expiration/recovery, oversized images, queue privacy, and duplicate-safe
 service-worker delivery on browsers where that experiment is enabled.

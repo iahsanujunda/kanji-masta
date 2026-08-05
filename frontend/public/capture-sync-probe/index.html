@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#050508" />
+    <link rel="manifest" href="./manifest.json" />
+    <title>Capture Background Sync Probe</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #050508; color: #f4f4f5; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: #050508; }
+      main { width: min(100%, 480px); margin: 0 auto; padding: 32px 20px max(40px, env(safe-area-inset-bottom)); }
+      h1 { margin: 0 0 8px; font-size: clamp(1.7rem, 7vw, 2.2rem); line-height: 1.1; }
+      h2 { margin: 0 0 14px; font-size: 1rem; }
+      p, li { color: #a1a1aa; line-height: 1.55; }
+      .eyebrow { margin: 0 0 10px; color: #6ee7b7; font-size: .78rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+      .card { margin-top: 20px; padding: 20px; border: 1px solid #1a1a24; border-radius: 18px; background: #0f0f16; }
+      .grid { display: grid; gap: 10px; }
+      .row { display: flex; justify-content: space-between; gap: 18px; padding: 10px 0; border-bottom: 1px solid #1a1a24; }
+      .row:last-child { border-bottom: 0; }
+      .row span:first-child { color: #a1a1aa; }
+      .value { text-align: right; font-weight: 750; overflow-wrap: anywhere; }
+      .good { color: #34d399; }
+      .warn { color: #fbbf24; }
+      .bad { color: #fca5a5; }
+      ol { margin: 0; padding-left: 22px; }
+      button { width: 100%; min-height: 48px; margin-top: 10px; border: 1px solid #292936; border-radius: 14px; background: #1a1a24; color: white; font: inherit; font-weight: 750; }
+      button.primary { border-color: #10b981; background: #10b981; color: #050508; }
+      button:disabled { opacity: .45; }
+      button:focus-visible { outline: 3px solid #818cf8; outline-offset: 2px; }
+      textarea { width: 100%; min-height: 190px; padding: 12px; border: 1px solid #292936; border-radius: 12px; background: #0a0a0f; color: #d4d4d8; font: .75rem/1.45 ui-monospace, monospace; resize: vertical; }
+      .note { font-size: .85rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Milestone 2A</p>
+      <h1>Background Sync Probe</h1>
+      <p>This isolated test checks real browser capability. It does not upload a photo or access your account.</p>
+
+      <section class="card" aria-labelledby="capability-title">
+        <h2 id="capability-title">Capability</h2>
+        <div class="grid">
+          <div class="row"><span>Browser</span><span class="value" id="browser">Detecting…</span></div>
+          <div class="row"><span>Connection</span><span class="value" id="connection">Detecting…</span></div>
+          <div class="row"><span>Service Worker</span><span class="value" id="service-worker">Checking…</span></div>
+          <div class="row"><span>Background Sync</span><span class="value" id="background-sync">Checking…</span></div>
+          <div class="row"><span>Outcome</span><span class="value" id="outcome">Not queued</span></div>
+        </div>
+        <button id="install">Install or recheck probe</button>
+      </section>
+
+      <section class="card" aria-labelledby="steps-title">
+        <h2 id="steps-title">Real-device test</h2>
+        <ol>
+          <li>Open this page online and confirm the probe is installed.</li>
+          <li>Enable airplane mode while leaving this page open.</li>
+          <li>Tap <strong>Queue offline test</strong>.</li>
+          <li>Lock the phone or close the browser, then restore connectivity without reopening this page.</li>
+          <li>Wait up to five minutes, reopen this page, and copy the report.</li>
+        </ol>
+        <button class="primary" id="queue" disabled>Queue offline test</button>
+        <button id="refresh">Refresh result</button>
+        <p class="note">If Background Sync is unsupported, stop after copying the report. That is a valid result.</p>
+      </section>
+
+      <section class="card" aria-labelledby="report-title">
+        <h2 id="report-title">Report</h2>
+        <textarea id="report" readonly aria-label="Probe JSON report"></textarea>
+        <button id="copy">Copy report</button>
+      </section>
+    </main>
+
+    <script>
+      const DATABASE_NAME = "capture-resilience-sync-probe";
+      const STORE_NAME = "runs";
+      const CURRENT_RUN = "current";
+      const SYNC_TAG = "capture-resilience-background-sync";
+      let registration = null;
+      let capability = { serviceWorker: false, backgroundSync: false };
+
+      const elements = Object.fromEntries([
+        "browser", "connection", "service-worker", "background-sync", "outcome",
+        "install", "queue", "refresh", "report", "copy",
+      ].map((id) => [id, document.getElementById(id)]));
+
+      function browserName() {
+        const ua = navigator.userAgent;
+        if (/FxiOS/i.test(ua)) return "iOS Firefox";
+        if (/CriOS/i.test(ua)) return "iOS Chrome";
+        if (/iPhone|iPad|iPod/i.test(ua) && /Safari/i.test(ua)) return "iOS Safari";
+        if (/Android/i.test(ua) && /Firefox/i.test(ua)) return "Android Firefox";
+        if (/Android/i.test(ua) && /Chrome/i.test(ua)) return "Android Chrome";
+        return "Outside target matrix";
+      }
+
+      function setValue(element, text, tone = "") {
+        element.textContent = text;
+        element.className = `value ${tone}`.trim();
+      }
+
+      function openDatabase() {
+        return new Promise((resolve, reject) => {
+          const request = indexedDB.open(DATABASE_NAME, 1);
+          request.onupgradeneeded = () => {
+            if (!request.result.objectStoreNames.contains(STORE_NAME)) {
+              request.result.createObjectStore(STORE_NAME, { keyPath: "id" });
+            }
+          };
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+      }
+
+      async function storeRun(run) {
+        const database = await openDatabase();
+        await new Promise((resolve, reject) => {
+          const transaction = database.transaction(STORE_NAME, "readwrite");
+          transaction.objectStore(STORE_NAME).put(run);
+          transaction.oncomplete = resolve;
+          transaction.onerror = () => reject(transaction.error);
+        });
+        database.close();
+      }
+
+      async function loadRun() {
+        const database = await openDatabase();
+        const run = await new Promise((resolve, reject) => {
+          const request = database.transaction(STORE_NAME).objectStore(STORE_NAME).get(CURRENT_RUN);
+          request.onsuccess = () => resolve(request.result ?? null);
+          request.onerror = () => reject(request.error);
+        });
+        database.close();
+        return run;
+      }
+
+      function baseReport(run) {
+        return {
+          probeVersion: 1,
+          browser: browserName(),
+          userAgent: navigator.userAgent,
+          platform: navigator.platform,
+          standalone: window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true,
+          serviceWorkerSupported: capability.serviceWorker,
+          backgroundSyncSupported: capability.backgroundSync,
+          onlineNow: navigator.onLine,
+          run,
+        };
+      }
+
+      async function render() {
+        const run = await loadRun().catch(() => null);
+        const outcome = !capability.backgroundSync
+          ? "unsupported"
+          : run?.outcome ?? run?.status ?? "not queued";
+        setValue(elements.outcome, outcome, outcome === "background-pass" ? "good" : outcome === "unsupported" ? "bad" : "warn");
+        elements.report.value = JSON.stringify(baseReport(run), null, 2);
+      }
+
+      function renderConnection() {
+        setValue(elements.connection, navigator.onLine ? "Online" : "Offline", navigator.onLine ? "good" : "warn");
+      }
+
+      async function installProbe() {
+        setValue(elements["service-worker"], "Checking…");
+        if (!("serviceWorker" in navigator)) {
+          capability = { serviceWorker: false, backgroundSync: false };
+          setValue(elements["service-worker"], "Unsupported", "bad");
+          setValue(elements["background-sync"], "Unsupported", "bad");
+          await render();
+          return;
+        }
+        try {
+          registration = await navigator.serviceWorker.register("./sw.js", { scope: "./" });
+          registration = await navigator.serviceWorker.ready;
+          capability.serviceWorker = true;
+          capability.backgroundSync = "sync" in registration;
+          setValue(elements["service-worker"], "Supported", "good");
+          setValue(elements["background-sync"], capability.backgroundSync ? "Supported" : "Unsupported", capability.backgroundSync ? "good" : "bad");
+          elements.queue.disabled = !capability.backgroundSync;
+        } catch (error) {
+          capability = { serviceWorker: false, backgroundSync: false };
+          setValue(elements["service-worker"], "Registration failed", "bad");
+          setValue(elements["background-sync"], "Unavailable", "bad");
+        }
+        await render();
+      }
+
+      async function queueProbe() {
+        if (!registration || !("sync" in registration)) return;
+        const run = {
+          id: CURRENT_RUN,
+          runId: crypto.randomUUID(),
+          browser: browserName(),
+          queuedAt: new Date().toISOString(),
+          queuedWhileOnline: navigator.onLine,
+          status: "queued",
+          outcome: null,
+        };
+        await storeRun(run);
+        try {
+          await registration.sync.register(SYNC_TAG);
+          await render();
+        } catch (error) {
+          await storeRun({
+            ...run,
+            status: "registration-failed",
+            lastError: error instanceof Error ? error.message : "Sync registration failed",
+          });
+          await render();
+        }
+      }
+
+      async function copyReport() {
+        try {
+          await navigator.clipboard.writeText(elements.report.value);
+          elements.copy.textContent = "Copied";
+        } catch {
+          elements.report.select();
+          document.execCommand("copy");
+          elements.copy.textContent = "Copied";
+        }
+        setTimeout(() => { elements.copy.textContent = "Copy report"; }, 1500);
+      }
+
+      elements.browser.textContent = browserName();
+      renderConnection();
+      elements.install.addEventListener("click", installProbe);
+      elements.queue.addEventListener("click", queueProbe);
+      elements.refresh.addEventListener("click", render);
+      elements.copy.addEventListener("click", copyReport);
+      window.addEventListener("online", () => { renderConnection(); void render(); });
+      window.addEventListener("offline", () => { renderConnection(); void render(); });
+      void installProbe();
+      setInterval(() => { void render(); }, 2000);
+    </script>
+  </body>
+</html>

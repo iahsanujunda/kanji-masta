@@ -18,7 +18,7 @@ export default function LocalCaptureDetail() {
   const { user } = useAuth();
   const { data: capture, isLoading, refetch } = useQuery({
     queryKey: ["local-capture", clientCaptureId],
-    queryFn: () => getLocalCapture(clientCaptureId!),
+    queryFn: async () => (await getLocalCapture(clientCaptureId!)) ?? null,
     enabled: Boolean(clientCaptureId),
   });
   const imageUrl = useMemo(

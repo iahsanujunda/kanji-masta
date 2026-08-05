@@ -118,7 +118,11 @@ function errorStatus(error: unknown): number | undefined {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Upload did not finish";
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
+    return error.message;
+  }
+  return "Upload did not finish";
 }
 
 function objectAlreadyExists(error: unknown): boolean {
@@ -134,20 +138,20 @@ function retryable(error: unknown): boolean {
 
 let activeDrain: Promise<void> | null = null;
 
-export function drainCaptureQueue(userId: string, signal?: AbortSignal): Promise<void> {
+export function drainCaptureQueue(userId: string, signal?: AbortSignal, force = false): Promise<void> {
   if (activeDrain) return activeDrain;
-  activeDrain = drain(userId, signal).finally(() => {
+  activeDrain = drain(userId, signal, force).finally(() => {
     activeDrain = null;
   });
   return activeDrain;
 }
 
-async function drain(userId: string, signal?: AbortSignal): Promise<void> {
+async function drain(userId: string, signal?: AbortSignal, force = false): Promise<void> {
   const captures = await listLocalCaptures(userId);
   for (const capture of captures) {
     if (signal?.aborted) return;
     if (capture.status === "server-owned" || capture.status === "failed" || !capture.blob) continue;
-    if (capture.nextAttemptAt && new Date(capture.nextAttemptAt) > new Date()) continue;
+    if (!force && capture.nextAttemptAt && new Date(capture.nextAttemptAt) > new Date()) continue;
     await processCapture(capture, signal);
   }
 }

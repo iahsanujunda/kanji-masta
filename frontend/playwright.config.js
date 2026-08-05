@@ -6,6 +6,7 @@ const apiOrigin = "http://127.0.0.1:18080";
 export default defineConfig({
   testDir: "./tests/e2e",
   outputDir: "./test-results",
+  workers: 1,
   reporter: [["list"]],
   use: {
     ...devices["Pixel 7"],

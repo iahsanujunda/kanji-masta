@@ -57,6 +57,34 @@ class InternalIntegrationTest : com.kanjimasta.support.PersistenceTest() {
     }
 
     @Test
+    fun `POST internal empty photo-result marks session failed with provided code`() = testApplication {
+        application { testModule(TestDatabase.db) }
+        val sessionId = UUID.randomUUID()
+        TestDatabase.db.insert(PhotoSessionTable) {
+            set(it.id, sessionId)
+            set(it.userId, "internal-test-user")
+            set(it.imageUrl, "https://example.com/failed.jpg")
+        }
+
+        val response = jsonClient().post("/api/internal/photo-result") {
+            header("X-Internal-Key", "test-internal-key")
+            contentType(ContentType.Application.Json)
+            setBody(
+                """{"sessionId":"$sessionId","userId":"internal-test-user","enrichedKanji":"[]","costMicrodollars":0,"failureCode":"provider_failed"}""",
+            )
+        }
+        assertEquals(HttpStatusCode.OK, response.status)
+
+        val failed = TestDatabase.db.from(PhotoSessionTable)
+            .select(PhotoSessionTable.status, PhotoSessionTable.failureCode)
+            .where { PhotoSessionTable.id eq sessionId }
+            .map { it[PhotoSessionTable.status] to it[PhotoSessionTable.failureCode] }
+            .first()
+        assertEquals("FAILED", failed.first)
+        assertEquals("provider_failed", failed.second)
+    }
+
+    @Test
     fun `POST internal quiz-result inserts quizzes and updates job`() = testApplication {
         application { testModule(TestDatabase.db) }
         val client = jsonClient()

@@ -43,7 +43,10 @@ export default function Capture() {
       });
       navigate(`/captures/${clientCaptureId}`, { replace: true });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "This photo could not be saved on this device.");
+      const message = typeof cause === "object" && cause !== null && "message" in cause && typeof cause.message === "string"
+        ? cause.message
+        : "This photo could not be saved on this device.";
+      setError(message);
       setView("save-failed");
     }
   }, [navigate]);

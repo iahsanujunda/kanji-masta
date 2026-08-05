@@ -70,6 +70,8 @@ export default function Home() {
     queryFn: () => apiFetch<{ sessions: RecentScanItem[] }>("/api/photo/recent"),
     staleTime: 15_000,
     refetchInterval: 10_000,
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
   });
 
   const loading = isLoading && !summary;

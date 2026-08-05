@@ -1,10 +1,10 @@
 """Integration tests for FastAPI routes (real DB, mocked Gemini)."""
 import json
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import psycopg2.extras
-from app.ai_client import AIResult
+from app.ai_client import AIClientError, AIResult
 
 
 def test_health(client):
@@ -53,6 +53,67 @@ def test_analyze_photo(client, db_conn, mock_ai_client):
         row = cur.fetchone()
     assert row["raw_ai_response"] is not None
     assert row["cost_microdollars"] > 0
+
+
+def test_analyze_photo_provider_failure_marks_session_failed(client, db_conn, mock_ai_client):
+    session_id = str(uuid.uuid4())
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO photo_session (id, user_id, image_url) VALUES (%s, 'test-user', 'https://example.com/img.jpg')",
+            (session_id,),
+        )
+    mock_ai_client.analyze_image.side_effect = AIClientError("provider failed")
+    image_response = MagicMock(status_code=200, content=b"fake-image", headers={"content-type": "image/jpeg"})
+    image_http = AsyncMock()
+    image_http.get = AsyncMock(return_value=image_response)
+
+    with patch("app.main.httpx.AsyncClient") as http_client:
+        http_client.return_value.__aenter__ = AsyncMock(return_value=image_http)
+        http_client.return_value.__aexit__ = AsyncMock(return_value=None)
+        response = client.post("/analyze-photo", json={
+            "imageUrl": "https://example.com/img.jpg",
+            "userId": "test-user",
+            "sessionId": session_id,
+        })
+
+    assert response.status_code == 500
+    with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("SELECT status, failure_code FROM photo_session WHERE id = %s", (session_id,))
+        row = cur.fetchone()
+    assert row["status"] == "FAILED"
+    assert row["failure_code"] == "invalid_response"
+
+
+def test_analyze_photo_failure_callback_carries_failed_status(client, mock_ai_client):
+    mock_ai_client.analyze_image.side_effect = AIClientError("provider failed")
+    image_response = MagicMock(status_code=200, content=b"fake-image", headers={"content-type": "image/jpeg"})
+    image_http = AsyncMock()
+    image_http.get = AsyncMock(return_value=image_response)
+
+    with (
+        patch("app.main.httpx.AsyncClient") as http_client,
+        patch("app.callback.send_photo_result", new_callable=AsyncMock, return_value=True) as callback,
+    ):
+        http_client.return_value.__aenter__ = AsyncMock(return_value=image_http)
+        http_client.return_value.__aexit__ = AsyncMock(return_value=None)
+        response = client.post("/analyze-photo", json={
+            "imageUrl": "https://example.com/img.jpg",
+            "userId": "test-user",
+            "sessionId": "failure-session",
+            "callbackUrl": "https://backend.example/api/internal/photo-result",
+            "callbackKey": "internal-key",
+        })
+
+    assert response.status_code == 500
+    callback.assert_awaited_once_with(
+        "https://backend.example/api/internal/photo-result",
+        "internal-key",
+        "failure-session",
+        "test-user",
+        "",
+        0,
+        failure_code="invalid_response",
+    )
 
 
 def test_generate_quizzes_no_jobs(client, mock_ai_client):

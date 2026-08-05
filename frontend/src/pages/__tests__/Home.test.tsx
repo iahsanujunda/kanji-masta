@@ -125,15 +125,19 @@ describe("Home", () => {
     }, { timeout: 2500 });
   });
 
-  it("places the actionable scan directly below the top quiz card", async () => {
+  it.each([
+    ["processing", "Analysing your photo"],
+    ["done", "Scan ready"],
+    ["failed", "Scan needs attention"],
+  ] as const)("places the %s scan directly below the top quiz card", async (status, scanTitle) => {
     mockApiFetch.mockImplementation((path: string) => {
       if (path === "/api/photo/recent") {
         return Promise.resolve({ sessions: [{
-          sessionId: "scan-ready",
+          sessionId: `scan-${status}`,
           storagePath: null,
-          status: "done",
+          status,
           createdAt: new Date().toISOString(),
-          kanjiCount: 4,
+          kanjiCount: status === "done" ? 4 : null,
         }] });
       }
       return Promise.resolve(activeSummary);
@@ -141,7 +145,7 @@ describe("Home", () => {
     renderWithProviders(<Home />);
 
     const quiz = await screen.findByText("Session Active");
-    const scan = await screen.findByText("Scan ready");
+    const scan = await screen.findByRole("button", { name: new RegExp(scanTitle) });
     const lesson = screen.getByText("Today's Lesson");
     expect(quiz.compareDocumentPosition(scan) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(scan.compareDocumentPosition(lesson) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

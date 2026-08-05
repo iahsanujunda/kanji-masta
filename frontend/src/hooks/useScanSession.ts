@@ -1,9 +1,10 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import type { PhotoSessionResult } from "@/lib/photo";
 
 export function useScanSession(sessionId?: string) {
-  return useQuery({
+  const query = useQuery({
     queryKey: ["photo-session", sessionId],
     queryFn: () => apiFetch<PhotoSessionResult>(`/api/photo/session/${sessionId}`),
     enabled: Boolean(sessionId),
@@ -14,4 +15,21 @@ export function useScanSession(sessionId?: string) {
     refetchOnReconnect: true,
     retry: 1,
   });
+  const status = query.data?.status;
+  const refetch = query.refetch;
+
+  useEffect(() => {
+    if (!sessionId || status !== "processing") return;
+    const refetchWhenVisible = () => {
+      if (document.visibilityState === "visible") void refetch();
+    };
+    window.addEventListener("focus", refetchWhenVisible);
+    document.addEventListener("visibilitychange", refetchWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refetchWhenVisible);
+      document.removeEventListener("visibilitychange", refetchWhenVisible);
+    };
+  }, [refetch, sessionId, status]);
+
+  return query;
 }

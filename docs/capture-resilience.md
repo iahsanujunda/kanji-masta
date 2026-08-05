@@ -455,6 +455,12 @@ Playwright mobile-flow test:
 7. Change the fake API response to `done` and regain focus.
 8. Open the card and verify the results render.
 
+Automated coverage for this checklist lives in `PhotoIntegrationTest`,
+`InternalIntegrationTest`, the AI-worker route tests, the frontend capture queue/hook/page
+test suites, and `tests/e2e/capture-resilience.spec.js`. The browser fixture tracks successful
+uploads, analyze calls, and distinct sessions so the interruption flow also asserts one upload
+and one idempotent server session.
+
 Run:
 
 ```bash

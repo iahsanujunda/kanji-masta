@@ -147,7 +147,7 @@ def mock_ai_client(monkeypatch):
         model="test-model",
     )
 
-    monkeypatch.setattr("app.main.get_ai_client", lambda: mock_client)
+    monkeypatch.setattr("app.main.get_ai_client", lambda *_args, **_kwargs: mock_client)
     return mock_client
 
 

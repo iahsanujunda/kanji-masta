@@ -8,11 +8,61 @@ import io.ktor.server.testing.*
 import kotlinx.serialization.json.*
 import org.ktorm.dsl.*
 import java.util.UUID
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class InternalIntegrationTest : com.kanjimasta.support.PersistenceTest() {
+
+    @Test
+    fun `stale reconciler terminalizes quiz job and attempt`() = testApplication {
+        val kanjiId = UUID.randomUUID()
+        val jobId = UUID.randomUUID()
+        TestDatabase.db.insert(KanjiMasterTable) {
+            set(it.id, kanjiId)
+            set(it.character, "停")
+            set(it.onyomi, listOf("テイ"))
+            set(it.kunyomi, emptyList())
+            set(it.meanings, listOf("stop"))
+        }
+        TestDatabase.db.insert(QuizGenerationJobTable) {
+            set(it.id, jobId)
+            set(it.userId, "stale-user")
+            set(it.kanjiId, kanjiId)
+            set(it.status, JobStatus.PROCESSING)
+            set(it.updatedAt, Instant.now().minus(26, ChronoUnit.HOURS))
+        }
+        TestDatabase.db.insert(JobAttemptTable) {
+            set(it.id, UUID.randomUUID())
+            set(it.jobType, "quiz_generation")
+            set(it.jobId, jobId)
+            set(it.attemptNumber, 1)
+            set(it.status, "processing")
+            set(it.trigger, "initial")
+            set(it.createdBy, "system")
+        }
+        application { testModule(TestDatabase.db) }
+
+        val response = jsonClient().post("/api/internal/cron/cleanup-photo-sessions") {
+            header("X-Internal-Key", "test-internal-key")
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        val jobStatus = TestDatabase.db.from(QuizGenerationJobTable)
+            .select(QuizGenerationJobTable.status)
+            .where { QuizGenerationJobTable.id eq jobId }
+            .map { it[QuizGenerationJobTable.status] }
+            .single()
+        val attemptStatus = TestDatabase.db.from(JobAttemptTable)
+            .select(JobAttemptTable.status, JobAttemptTable.failureCode)
+            .where { JobAttemptTable.jobId eq jobId }
+            .map { it[JobAttemptTable.status] to it[JobAttemptTable.failureCode] }
+            .single()
+        assertEquals(JobStatus.FAILED, jobStatus)
+        assertEquals("failed" to PhotoFailureCode.TIMED_OUT, attemptStatus)
+    }
 
     @Test
     fun `POST internal photo-result updates session and records cost`() = testApplication {
@@ -83,6 +133,15 @@ class InternalIntegrationTest : com.kanjimasta.support.PersistenceTest() {
             set(it.userId, "internal-test-user")
             set(it.imageUrl, "https://example.com/failed.jpg")
         }
+        TestDatabase.db.insert(JobAttemptTable) {
+            set(it.id, UUID.randomUUID())
+            set(it.jobType, "photo_analysis")
+            set(it.jobId, sessionId)
+            set(it.attemptNumber, 1)
+            set(it.status, "processing")
+            set(it.trigger, "initial")
+            set(it.createdBy, "system")
+        }
 
         val response = jsonClient().post("/api/internal/photo-result") {
             header("X-Internal-Key", "test-internal-key")
@@ -100,6 +159,13 @@ class InternalIntegrationTest : com.kanjimasta.support.PersistenceTest() {
             .first()
         assertEquals("FAILED", failed.first)
         assertEquals("provider_failed", failed.second)
+        val attempt = TestDatabase.db.from(JobAttemptTable)
+            .select(JobAttemptTable.status, JobAttemptTable.failureCode)
+            .where { JobAttemptTable.jobId eq sessionId }
+            .map { it[JobAttemptTable.status] to it[JobAttemptTable.failureCode] }
+            .single()
+        assertEquals("failed", attempt.first)
+        assertEquals("provider_failed", attempt.second)
     }
 
     @Test

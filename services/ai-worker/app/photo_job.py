@@ -32,7 +32,11 @@ async def run_photo_job(session_id: str) -> bool:
         callbackUrl=callback_url,
         callbackKey=os.environ.get("INTERNAL_API_KEY", ""),
     )
-    ok, _ = await process_photo(request, ctx)
+    model_config = db.get_active_model_config()
+    if session.get("modelId"):
+        model_config = dict(model_config or {})
+        model_config["photoAnalysisModel"] = session["modelId"]
+    ok, _ = await process_photo(request, ctx, model_config)
     return ok
 
 

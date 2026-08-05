@@ -10,6 +10,7 @@ database:
 
 supabase:
   url: "$SUPABASE_URL:"
+  serviceRoleKey: "$SUPABASE_SERVICE_ROLE_KEY:"
 
 cors:
   allowedOrigins: "$CORS_ALLOWED_ORIGINS:"
@@ -31,6 +32,14 @@ internal:
 
 self:
   url: "$SELF_URL:"
+
+openrouter:
+  apiKey: "$OPENROUTER_API_KEY:"
+  baseUrl: "$OPENROUTER_BASE_URL:https://openrouter.ai"
+  defaultModel: "$OPENROUTER_MODEL:"
+  analyzeModel: "$OPENROUTER_ANALYZE_MODEL:"
+  quizModel: "$OPENROUTER_QUIZ_MODEL:"
+  discoveryModel: "$OPENROUTER_DISCOVERY_MODEL:"
 
 claude:
   apiKey: "$CLAUDE_API_KEY:"

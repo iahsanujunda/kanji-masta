@@ -9,13 +9,16 @@ export default defineConfig({
   workers: 1,
   reporter: [["list"]],
   use: {
-    ...devices["Pixel 7"],
-    browserName: "firefox",
     baseURL: webOrigin,
     headless: true,
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },
+  projects: [
+    { name: "mobile-chromium", use: { ...devices["Pixel 7"], browserName: "chromium" } },
+    { name: "mobile-firefox", use: { ...devices["Pixel 7"], browserName: "firefox" } },
+    { name: "mobile-webkit", use: { ...devices["iPhone 13"], browserName: "webkit" } },
+  ],
   webServer: [
     {
       command: "node tests/e2e/fake-api.mjs",

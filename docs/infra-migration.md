@@ -1,283 +1,531 @@
-# Infrastructure Migration — Fly.io + Cloudflare Pages
+# Infrastructure Migration — Consolidate to Kotlin, then move to Fly.io + Cloudflare Pages
 
-_Move the Ktor backend and AI worker from Cloud Run to Fly.io, move the static frontend from GCS to Cloudflare Pages, and retain Supabase for database, authentication, and storage_
+_Fold the Python AI worker into the Kotlin/Ktor codebase (Milestone 1), then optionally move
+the runtime from Cloud Run + GCS to Fly.io + Cloudflare Pages (Milestone 2). Supabase remains
+the database, auth, and storage provider throughout._
 
 ---
 
-## 1. Objective
+## 0. Two independent milestones
 
-Migrate the application runtime without moving application data:
+This document describes **two milestones that ship and stand on their own.** Do not treat the
+first as merely a stepping stone to the second.
 
-- Run the Ktor backend on a public Fly.io Machine with 1 GB of memory initially.
-- Run the FastAPI AI worker on a separate private Fly.io Machine with 512 MB of memory.
-- Route backend-to-worker traffic over Fly.io private IPv6 networking.
-- Host the React/Vite frontend on Cloudflare Pages.
-- Keep Supabase as the PostgreSQL database, authentication provider, and photo storage provider.
-- Preserve the existing `shuukanhq.com` frontend domain.
-- Introduce `api.shuukanhq.com` as the stable public API hostname.
-- Replace Cloud Run-specific service authentication and deployment commands.
-- Migrate all scheduled jobs away from Google Cloud infrastructure.
+- **Milestone 1 — Kotlin consolidation (on Cloud Run).** Delete the Python worker; run one
+  Kotlin image as a Cloud Run **service** (API + inline AI) plus Kotlin Cloud Run **Jobs**
+  (photo analysis, quiz generation) that write results directly to Postgres. This is a
+  **complete, durable, indefinitely-livable architecture.** It fixes the two-language /
+  two-database-layer problem that motivates the whole effort, and **feature work proceeds on
+  it** with no dependency on Milestone 2. If Milestone 2 never happens, Milestone 1 is still a
+  strictly better place to be than today.
+
+- **Milestone 2 — Fly.io + Cloudflare Pages (optional, later).** Replace the Cloud Run Jobs
+  with an always-on in-process **queue drainer**, replace Google Cloud Scheduler with an
+  in-process scheduler, and move the runtime to Fly.io + Cloudflare Pages. This changes only
+  the *runtime platform* and the *durable-execution mechanism* — the Kotlin code, the AI
+  clients, the durable database records, and the direct-write result handling all carry over
+  unchanged from Milestone 1.
+
+The single most important sequencing decision is already made: **Milestone 1 is a resting
+state, not a transition.** The Kotlin Cloud Run Jobs it introduces are the durable-execution
+model until and unless Milestone 2 is undertaken.
+
+---
+
+## 1. Why consolidate (motivation)
+
+This migration begins with a language consolidation, and the consolidation carries the
+justification. Do it first; the platform move is smaller and cleaner once there is one
+application instead of two.
+
+**1. Remove a second language and a duplicated database layer.** The AI worker's
+[`services/ai-worker/app/db.py`](../services/ai-worker/app/db.py) is ~438 lines that
+re-implement, in psycopg2, database access the Ktor backend already expresses in Ktorm
+against the *same* Supabase tables. Today every schema change is applied in two places, in
+two languages, with two connection pools, two Docker images, and two deploy targets, plus a
+backend↔worker authentication handshake and result callbacks between them. Consolidating to
+one Kotlin codebase deletes all of that surface. This is the primary reason and it needs no
+qualification.
+
+**2. Move a large class of schema errors from production to the compiler — with one honest
+caveat.** In the Python worker, a mistyped column in a SQL string or a wrong key on a result
+row is a *runtime* error, often a production one. In Ktorm those are typed properties on
+`Table` objects: column typos, type mismatches, nullability, and rename-refactors are caught
+by the compiler and IDE before anything runs. That is the class of error that actually
+recurs, and it is the daily inner-loop win.
+
+The honest caveat: Ktorm does **not** verify at compile time that your declared `Table`
+objects match the *actual* Postgres schema. A migration that adds a column the code doesn't
+declare, or a declared type that disagrees with the database, surfaces at query execution —
+caught by the Testcontainers integration tests, exactly as today. So the accurate claim is:
+consolidation collapses **two hand-maintained schema mappings into one and puts the compiler
+in front of the survivor**; the mapping-vs-real-database check stays where it already lives,
+in the integration suite that both stacks already run.
+
+**3. Developer velocity.** A single Kotlin codebase with one build, one test command, and one
+mental model is faster and more pleasant to work in than a Kotlin/Python split. This is a
+tiebreaker, not the load-bearing reason, but it is why this is worth doing now rather than
+never.
+
+**What consolidation costs.** Essentially nothing in ecosystem terms. The worker has no Python
+lock-in — its runtime dependencies are FastAPI, uvicorn, psycopg2, and pydantic once the
+Gemini path is dropped (see below), and images are handled as raw `bytes` → base64 → data URL,
+all trivial in Kotlin. The AI call is OpenRouter, which is a plain JSON POST — gpipi already
+proves the Kotlin port (`OpenRouterClient`, strict-JSON structured extraction). Prompts become
+Kotlin constants; pydantic models become data classes; the worker queries become Ktorm.
+
+**Drop Gemini during the port.** The provider abstraction and the `gemini.py` /
+`google-genai` path are retired rather than ported — OpenRouter is now the only AI provider in
+use, including for photo-analysis vision (`openrouter.py` already carries the image
+`analyze_image` path). This removes the `google-genai` dependency and the one Kotlin-side
+inconvenience the two-provider design would have created (Gemini has no official Kotlin SDK).
+The result is a single `OpenRouterClient` with no `AI_PROVIDER` switch. Re-adding a second
+provider later is a small, isolated change if it is ever wanted.
+
+---
+
+## 2. Objective
+
+Migrate the application runtime and topology without moving application data:
+
+- Fold the Python AI worker into the Kotlin/Ktor codebase as **inline services** (for
+  interactive work) plus an **always-on queue drainer** (for durable background work).
+- Replace the Cloud Run photo-analysis **Job** and the worker's synchronous AI HTTP
+  endpoints with a Postgres-backed job queue drained by the always-on worker process.
+- Replace Google Cloud Scheduler with an **in-process Ktor scheduler that enqueues** work.
+- Deploy the single Kotlin image to **one Fly.io app with two process groups** (`web` and
+  `worker`).
+- Host the React/Vite frontend on **Cloudflare Pages**.
+- Keep **Supabase** as PostgreSQL, auth, and photo storage.
+- Preserve the `shuukanhq.com` frontend domain; introduce `api.shuukanhq.com` as the stable
+  API hostname.
+- Retire Cloud Run, Cloud Run Jobs, GCS frontend hosting, and Google Cloud Scheduler.
 - Provide a staged cutover with a DNS-based rollback path.
 
-This is primarily a runtime and deployment migration. No schema or production-data migration is required.
+No schema or production-data migration is required. The database contract that already backs
+durability — `photo_session` and `quiz_generation_job` rows created before dispatch,
+idempotent terminal writes, and stale-state cleanup — is preserved and becomes the queue.
 
 ---
 
-## 2. Target architecture
+## 3. Architecture: before, after Milestone 1, after Milestone 2
 
-```text
-Browser
-  ├── static application ───────────────> Cloudflare Pages
-  │                                        shuukanhq.com
-  │
-  ├── authenticated API requests ───────> Fly.io backend
-  │                                        api.shuukanhq.com
-  │                                        Ktor, 1 GB
-  │                                             │
-  │                                  Fly private IPv6 / 6PN
-  │                                             │
-  └── direct Supabase client calls              v
-                                           Fly.io AI worker
-                                           FastAPI, 512 MB
+Three states, because you will live on the middle one indefinitely.
 
-Backend and AI worker ───────────────────> Supabase PostgreSQL
-Browser ─────────────────────────────────> Supabase Auth + Storage
-AI worker ───────────────────────────────> Gemini or OpenRouter
-Backend ─────────────────────────────────> Resend
+### 3.1 Before — current production (Cloud Run + Python)
+
+```mermaid
+flowchart TB
+  Browser([Browser / Mobile PWA])
+  subgraph CF[Cloudflare]
+    CDN[CDN → shuukanhq.com]
+  end
+  subgraph GCP["Google Cloud · asia-east1"]
+    GCS[("GCS bucket<br/>static frontend")]
+    BE["Cloud Run service<br/>Ktor backend · JVM"]
+    WK["Cloud Run service<br/>AI worker · FastAPI / Python"]
+    JOB["Cloud Run Job<br/>photo analysis · Python"]
+    SCH["Google Cloud Scheduler<br/>cron triggers"]
+  end
+  subgraph SB["Supabase · AWS"]
+    PG[("Postgres")]
+    AUTH["Auth"]
+    ST["Storage · photos"]
+  end
+  subgraph EXT["External APIs"]
+    AI["OpenRouter"]
+    RS["Resend"]
+  end
+  Browser --> CDN
+  CDN -. serves .-> GCS
+  Browser -->|API| BE
+  Browser -->|direct| AUTH
+  Browser -->|upload| ST
+  BE -->|HTTP + WORKER_API_KEY| WK
+  BE -->|Jobs API dispatch| JOB
+  WK -->|callback + INTERNAL_API_KEY| BE
+  JOB -->|callback + INTERNAL_API_KEY| BE
+  SCH -->|HTTP| WK
+  SCH -->|HTTP| BE
+  BE --> PG
+  WK --> PG
+  JOB --> PG
+  WK --> AI
+  JOB --> AI
+  BE --> RS
 ```
 
-### Fly.io applications
+### 3.2 After Milestone 1 — consolidated Kotlin on Cloud Run (the resting state)
 
-Use two separate Fly Apps in the same Fly organization and primary region:
+This is where feature work happens. One Kotlin image runs as a Cloud Run service plus Kotlin
+Cloud Run Jobs. The separate Python worker service is gone; the Jobs write results directly to
+Postgres through the shared Ktorm code, so there are no result callbacks and no
+application-to-application secrets. The platform is still Google Cloud.
 
-| Application | Exposure | Initial size | Runtime |
-|-------------|----------|--------------|---------|
-| Backend | Public HTTPS through Fly Proxy | `shared-cpu-1x`, 1 GB | Ktor/JVM |
-| AI worker | Private 6PN only; no public service | `shared-cpu-1x`, 512 MB | FastAPI/Uvicorn |
-
-The backend and worker should start in the same region. Region selection should match the Supabase AWS region because most application requests perform database work. Use Fly `nrt` when Supabase is in `ap-northeast-1`; otherwise select the nearest Fly region to the actual Supabase region and verify database latency before cutover.
-
-Both Machines should remain running during the initial migration and soak period. Autostop is unsafe for the current long-running/background request pattern because Fly Proxy only observes inbound traffic and cannot see application work continuing after the initiating browser request has completed.
-
-### Stable hostnames
-
-| Purpose | Hostname |
-|---------|----------|
-| Production frontend | `https://shuukanhq.com` |
-| Production API | `https://api.shuukanhq.com` |
-| Backend private address | `http://<backend-fly-app>.internal:8080` |
-| AI worker private address | `http://<worker-fly-app>.internal:8080` |
-
-The frontend should use `api.shuukanhq.com`, not a provider-specific `.fly.dev` hostname. Future backend migrations can then happen without rebuilding the frontend solely to change `VITE_API_URL`.
-
----
-
-## 3. Current-state gaps
-
-The existing containers are portable, but the repository contains several Cloud Run and GCS assumptions that must change.
-
-### 3.1 Backend-to-worker authentication is Cloud Run-specific
-
-`backend/src/main/kotlin/com/kanjimasta/core/auth/CloudRunAuth.kt` calls the Google metadata server to obtain an identity token. That metadata server is unavailable on Fly.io. Leaving the call in place would cause failed lookups or avoidable latency before worker requests.
-
-Required changes:
-
-- Remove the Google metadata-server identity-token flow.
-- Add a dedicated `WORKER_API_KEY` secret to both Fly Apps.
-- Send the key on every backend-to-worker request, for example with `X-Worker-Key`.
-- Reject missing or invalid keys in the AI worker.
-- Keep the worker private-only even after application-layer authentication is added.
-- Add tests for missing, invalid, and valid worker keys.
-
-The existing `INTERNAL_API_KEY` remains suitable for worker-to-backend callback authentication. Keeping separate keys makes the two trust directions independently rotatable.
-
-### 3.2 The AI worker does not listen on private IPv6
-
-The worker currently starts Uvicorn with `--host 0.0.0.0`. Fly `.internal` DNS resolves to 6PN IPv6 addresses, and a private service must listen on IPv6 to be reachable directly.
-
-Required changes:
-
-- Bind Uvicorn to `::` or the Machine's `fly-local-6pn` address.
-- Do not add `[http_service]` or public `[[services]]` configuration to the worker app.
-- Do not allocate public IP addresses for the worker.
-- Verify AAAA resolution of `<worker-fly-app>.internal` from the backend Machine.
-- Verify `GET /health` and all worker operations over the private hostname.
-
-### 3.3 The backend must listen on private IPv6 for callbacks
-
-The worker sends results back to backend callback routes protected by `INTERNAL_API_KEY`.
-
-Use private callback routing:
-
-```text
-SELF_URL=http://<backend-fly-app>.internal:8080
+```mermaid
+flowchart TB
+  Browser([Browser / Mobile PWA])
+  subgraph CF[Cloudflare]
+    CDN["CDN → shuukanhq.com"]
+  end
+  subgraph GCP["Google Cloud · asia-east1 · one Kotlin image"]
+    GCS[("GCS bucket · static frontend")]
+    BE["Cloud Run service · Ktor / JVM<br/>API + inline word discovery"]
+    PJOB["Cloud Run Job · photo analysis (Kotlin)"]
+    QJOB["Cloud Run Job · quiz generation (Kotlin)"]
+    SCH["Google Cloud Scheduler · cron"]
+  end
+  subgraph SB["Supabase · AWS"]
+    PG[("Postgres")]
+    AUTH["Auth"]
+    ST["Storage · photos"]
+  end
+  subgraph EXT["External APIs"]
+    AI["OpenRouter"]
+    RS["Resend"]
+  end
+  Browser --> CDN
+  CDN -. serves .-> GCS
+  Browser -->|API| BE
+  Browser -->|direct| AUTH
+  Browser -->|upload| ST
+  BE -->|Jobs API dispatch| PJOB
+  BE -->|Jobs API dispatch| QJOB
+  SCH -->|OIDC dispatch| BE
+  BE --> PG
+  PJOB -->|write result directly| PG
+  QJOB -->|write result directly| PG
+  BE --> AI
+  PJOB --> AI
+  QJOB --> AI
+  BE --> RS
 ```
 
-Bind Ktor to `::` so the same listener accepts Fly Proxy traffic and direct 6PN callback traffic. Verify both paths inside Fly before cutover. Do not route callbacks through the public API hostname.
+### 3.3 After Milestone 2 — Fly.io + Cloudflare Pages
 
-### 3.4 Scheduled jobs are not represented as deployable infrastructure
+```mermaid
+flowchart TB
+  Browser([Browser / Mobile PWA])
+  subgraph CF[Cloudflare]
+    PAGES["Pages → shuukanhq.com"]
+  end
+  subgraph FLY["Fly.io · one app · region nrt · one Kotlin image"]
+    WEB["web process · JVM · public<br/>api.shuukanhq.com<br/>API + inline AI + scheduler"]
+    WORKER["worker process · JVM · no public service<br/>always-on queue drainer"]
+  end
+  subgraph SB["Supabase · AWS"]
+    PG[("Postgres<br/>+ job queue")]
+    AUTH["Auth"]
+    ST["Storage · photos"]
+  end
+  subgraph EXT["External APIs"]
+    AI["OpenRouter"]
+    RS["Resend"]
+  end
+  Browser --> PAGES
+  Browser -->|API| WEB
+  Browser -->|direct| AUTH
+  Browser -->|upload| ST
+  WEB -->|"INSERT pending (+ NOTIFY)"| PG
+  WORKER -->|"LISTEN + claim (SKIP LOCKED)"| PG
+  WORKER -->|write terminal result| PG
+  WEB --> PG
+  WORKER --> AI
+  WEB --> AI
+  WEB --> RS
+```
 
-The repository exposes scheduled operations but does not contain the scheduler configuration that invokes them:
+### 3.4 Component inventory
 
-- `POST /cron/generate-quizzes`
-- `POST /cron/check-regen`
-- `POST /api/internal/cron/cleanup-photo-sessions`
+| Concern | Before (Python, Cloud Run) | After Milestone 1 (Kotlin, Cloud Run) | After Milestone 2 (Kotlin, Fly) |
+|---|---|---|---|
+| Static frontend | GCS bucket (GCP) | GCS bucket (GCP) | Cloudflare Pages |
+| CDN / DNS | Cloudflare CDN | Cloudflare CDN | Cloudflare |
+| API backend | Cloud Run service · Ktor/JVM | Cloud Run service · Ktor/JVM | Fly `web` process · Ktor/JVM |
+| Inline AI (word discovery) | Cloud Run worker · Python | Cloud Run service · inline Kotlin | Fly `web` process · inline Kotlin |
+| Durable photo analysis | Cloud Run **Job** · Python | Cloud Run **Job** · Kotlin | Fly `worker` · drainer (Kotlin) |
+| Quiz generation | Cloud Run worker · Python | Cloud Run **Job** · Kotlin | Fly `worker` · drainer (Kotlin) |
+| Cron scheduling | Google Cloud Scheduler | Google Cloud Scheduler | in-process Ktor scheduler |
+| Database / Auth / Storage | Supabase | Supabase | Supabase |
+| AI provider | Gemini / OpenRouter | OpenRouter (Kotlin) | OpenRouter (Kotlin) |
+| Email | Resend | Resend | Resend |
 
-A scheduler outside the Fly organization cannot call a private `.internal` worker address.
+**What Milestone 1 changes (the move you actually live on):**
 
-Use one in-process scheduler in the Ktor backend. It is smaller than operating Fly Cron Manager and supports exact schedules and an explicit time zone, unlike Fly Scheduled Machines, which only provide fuzzy hourly/daily/weekly/monthly intervals in UTC.
+- Languages: **2 → 1** (Python deleted; Kotlin only).
+- Database-access layers: **2 → 1** (Ktorm only; psycopg2 removed).
+- Container images: **2 → 1** (one Kotlin image runs the service and both Jobs via different
+  entrypoints).
+- Runtime deployables: **2 Cloud Run services + 1 Job → 1 Cloud Run service + 2 Jobs**, all
+  from that one image; the separate worker service is gone.
+- Cross-service secrets: **Supabase JWT + `WORKER_API_KEY` + `INTERNAL_API_KEY` → Supabase JWT
+  only**. Jobs write results directly to Postgres, so there is no worker HTTP call and no
+  callback, hence no application-to-application secret.
+- AI provider: **two-provider (Gemini / OpenRouter) → OpenRouter only**; the `google-genai`
+  dependency and the `AI_PROVIDER` switch are removed.
+- Cloud provider: **still Google Cloud.** Nothing about the platform changes yet.
 
-Required changes:
+**What Milestone 2 adds on top (optional, later):**
 
-- Read `SCHEDULER_ENABLED` at startup and default it to `false` when absent.
-- Do not create scheduler tasks when `SCHEDULER_ENABLED=false`; emit one startup log that confirms the disabled state.
-- Start the scheduler from the Ktor application lifecycle only when `SCHEDULER_ENABLED=true`.
-- Configure every schedule and its IANA time zone in version-controlled application configuration.
-- Use `pg_try_advisory_xact_lock` inside a short scheduler-claim transaction rather than holding a session advisory lock on a leased Hikari connection.
-- In the same claim transaction, create or claim a durable execution record keyed by task and scheduled occurrence. The unique claim prevents a second instance from running the task after the transaction-scoped lock releases.
-- Assign a stable, documented lock identifier to each scheduled operation.
-- Skip the execution when another instance holds the lock.
-- Invoke the private worker endpoints for quiz generation and regeneration checks.
-- Invoke the backend cleanup service for stale photo sessions and quiz jobs.
-- Log the task name, scheduled time, start time, duration, result count, and failure.
-- Ensure each operation is safe to retry.
-- Release scheduler resources during graceful shutdown.
-- Test two backend instances attempting the same schedule and prove only one performs the work.
+- Durable execution: **Cloud Run Jobs → one always-on `worker` process draining a queue.**
+- Cron: **Google Cloud Scheduler → in-process Ktor scheduler (enqueuer).**
+- Frontend host: **GCS → Cloudflare Pages.**
+- Compute topology: **1 Cloud Run service + 2 Jobs → 1 Fly app with 2 process groups.**
+- Cloud provider: **Google Cloud removed entirely** (runtime path becomes Cloudflare + Fly +
+  Supabase).
 
-The transaction-scoped advisory lock and durable execution claim are required even with one backend Machine so later scaling or overlapping deployments do not create duplicate runs. Do not hold a database transaction open while waiting for an AI worker HTTP request.
+### 3.5 Durable vs inline — the split that holds across both milestones
 
-The advisory lock does not coordinate with the existing Google Cloud Scheduler because those HTTP-triggered paths do not acquire it. `SCHEDULER_ENABLED=false` is therefore the cross-platform overlap control during Phases B and C.
+The division of labour is the same in both milestones; only the *mechanism* for durable work
+changes (Cloud Run Job in Milestone 1, queue drainer in Milestone 2). Fast, interactive,
+user-is-waiting work stays a direct in-process call on the backend either way — routing it
+through a job or queue would only add latency for no durability benefit.
 
-### 3.5 Durable records exist, but stale-state recovery is incomplete
+| Work | Nature | Placement | Milestone 1 mechanism | Milestone 2 mechanism |
+|---|---|---|---|---|
+| Photo analysis | slow, durable, user locks the phone | durable | Kotlin Cloud Run Job | drainer |
+| Quiz generation | backed by a durable `quiz_generation_job` row; batch/cron | durable | Kotlin Cloud Run Job | drainer |
+| Word discovery | interactive; user waits for the result | inline | inline in the service | inline on `web` |
+| Cron (generate quizzes, check-regen, cleanup) | scheduled | trigger | Cloud Scheduler → dispatch Job | scheduler → enqueue |
 
-The dispatch paths already create durable database records before contacting the worker:
+### 3.6 Milestone 2 shape — one codebase, three roles
 
-- `PhotoService.startAnalysis()` inserts a `photo_session` row with the default `PROCESSING` status before launching the worker request.
-- quiz selection inserts `quiz_generation_job` rows with `PENDING` status before `triggerQuizGeneration()` contacts the worker.
-- the worker marks a quiz job `PROCESSING` before making the AI call.
+For reference, the Milestone 2 end state runs the single Kotlin image as three roles. The
+`web` and `worker` roles are separate Fly process groups from the same deploy; the scheduler
+is a component inside `web`. (In Milestone 1 the same responsibilities exist, but "durable
+work" is a Cloud Run Job dispatched by the service rather than a `worker` process.)
 
-An outbox is therefore not a prerequisite for this migration and must not be introduced in Phase A. The immediate gap is that an interrupted quiz job can remain `PROCESSING` indefinitely. Photo sessions already have an hourly cleanup path that marks stale `PROCESSING` rows failed, but quiz jobs have no equivalent reaper.
-
-Ship the following as a separate reliability release on Cloud Run before starting the Fly migration:
-
-- Detect stale `PROCESSING` quiz jobs using `updated_at` and a documented timeout.
-- Mark stale jobs `FAILED`, increment `attempts`, and record a recovery reason.
-- Surface stale, failed, and long-running work in the admin Jobs page.
-- Make the admin retry action the documented recovery path.
-- Add equivalent admin visibility and recovery for failed photo sessions, or explicitly provide a user-visible rescan action using the stored image.
-- Ensure a retried quiz job returns to `PENDING`, immediately triggers private worker processing, and requires no manual database edits.
-- Test status transitions and retry behavior around process restarts.
-- Exercise the admin recovery flow in production while the existing Cloud Run runtime and Cloud Logging remain the known-good platform.
-
-A transactional outbox or database-polling worker may be considered only after the new infrastructure has completed its soak period.
-
-### 3.6 Public API requests do not wait for AI completion
-
-The current Ktor dispatch paths create their database record and then call the worker from a separate coroutine. The browser-facing request returns without waiting for the AI request to finish. Cloudflare's origin request timeout therefore does not apply to photo analysis or quiz generation completion.
-
-Keep the Cloudflare proxy enabled for `api.shuukanhq.com` to retain fast DNS/origin rollback. Add a regression test proving the dispatch endpoints return promptly while worker processing continues, and confirm normal synchronous API routes remain comfortably below Cloudflare's origin timeout.
-
-### 3.7 Deployment commands target Google Cloud
-
-The current `Makefile`:
-
-- builds and pushes images to Google Artifact Registry;
-- deploys backend and worker services with `gcloud run deploy`;
-- discovers Cloud Run service URLs;
-- uploads the frontend to a GCS bucket.
-
-These commands must be replaced or retained temporarily under clearly named legacy targets during the rollback window.
-
-### 3.8 Documentation is stale
-
-`README.md` still describes older Firebase and Cloud Run architecture in several places. Deployment, architecture, environment-variable, and project-structure documentation must be updated after the new deployment path is working.
+| Role | Fly process | Exposure | Responsibility |
+|---|---|---|---|
+| Request-serving backend | `web` | public HTTPS | Serve the API; run **inline AI** for interactive work; host the scheduler |
+| Queue drainer | `worker` | none | Drain durable jobs from the Postgres queue; call AI; write terminal results |
+| Scheduler | (inside `web`) | none | On a locked schedule, **enqueue** cron work as `PENDING` rows |
 
 ---
 
-## 4. Repository changes
+## 4. The execution model: always-on queue drainer
 
-### 4.1 Fly backend configuration
+### 4.1 Why the drainer, not a spawned per-job Machine
 
-Add `backend/fly.toml` containing:
+Fly has no Cloud Run Jobs primitive, so the per-invocation model must change regardless of
+language. The two candidates were an always-on drainer and spawning a run-to-completion Fly
+Machine per job. The drainer was chosen because:
 
-- the final Fly app name;
-- primary region;
-- Dockerfile build configuration;
+- **JVM stays warm.** A spawned per-job JVM Machine pays JVM boot + classloading + framework
+  init on every job — a 20–40% overhead on a several-second AI call, paid forever, and
+  directly at odds with the reason for adopting the JVM. The drainer pays that cost once.
+- **The handoff failure boundary is cleaner.** With the drainer, "dispatch" is an `INSERT`
+  into the same database the request already writes to — no second external system that can
+  fail between the durable write and the dispatch. Spawning a Machine keeps an external
+  dispatch call and its split-brain window.
+- **Fewer moving parts.** No Machine lifecycle, no orphaned-Machine cleanup, one persistent
+  process to observe and tail.
+
+The drainer's own drawbacks are accepted and mitigated in §4.5.
+
+### 4.2 Enqueue
+
+The `web` process creates the durable row exactly as it does today, then does **not** call a
+worker:
+
+- `PhotoService` inserts a `photo_session` row with `PROCESSING`/`PENDING` status before
+  returning to the browser (it already does this).
+- Quiz selection and the scheduler insert `quiz_generation_job` rows with `PENDING`.
+- Optionally, the enqueuing transaction issues a Postgres `NOTIFY` on a well-known channel to
+  wake the drainer immediately.
+
+The browser-facing request returns as soon as the row is committed. Cloudflare's origin
+timeout never applies to AI completion.
+
+### 4.3 Drain
+
+The `worker` process runs a bounded pool of drain coroutines:
+
+- It `LISTEN`s on the notify channel for low-latency wake-ups **and** polls on a short
+  interval as a backstop, because a `NOTIFY` issued while the worker is disconnected (deploy,
+  restart) is lost. `LISTEN` requires its own dedicated connection.
+- Each coroutine claims a row with `SELECT … FOR UPDATE SKIP LOCKED`, sets it to `PROCESSING`
+  with a lease deadline and increments `attempts`, and commits the claim before starting the
+  slow AI work — never holding a transaction open across the AI call.
+- It performs the AI call (OpenRouter) with hard per-call timeouts.
+- It writes the terminal result **directly** to Postgres by calling the same Kotlin service
+  and repository code the backend uses. There is no callback HTTP and no `INTERNAL_API_KEY`;
+  applying a result is an in-process function call within the drainer.
+- Terminal writes are idempotent: a duplicate completion is ignored and cost is recorded once
+  (the existing callback idempotency, relocated).
+
+### 4.4 Recover
+
+- A **short lease/visibility timeout** returns a row whose worker died mid-job to `PENDING`
+  for re-claim, giving fast liveness recovery.
+- A **long stale reaper** (the existing 25h photo path, plus the new quiz-job equivalent)
+  converts abandoned rows to `FAILED` with a bounded `failure_code`, surfaced on the admin
+  Jobs page for manual rerun.
+- Because every job is claimed idempotently and re-runnable, an interrupted drainer loses no
+  work; the durable row is the source of truth.
+
+### 4.5 Accepted drawbacks and required mitigations
+
+The drainer's downsides are bounded but real, and each mitigation below is part of the
+Definition of Done, not a follow-up:
+
+- **Fixed-width throughput / head-of-line blocking.** The drainer processes at a fixed
+  concurrency. Make the pool width **configurable** (start at 3–5) so a burst or a slow job
+  type can be tuned without a redesign. At current volume this width essentially never
+  blocks; the ceiling is understood and adjustable.
+- **Single-process silent stall.** A wedged drainer stalls all async work without producing
+  an HTTP error. Required: hard per-job/per-AI-call timeouts; a liveness signal for the drain
+  loop; and **queue-depth and oldest-`PENDING`-age alerting as the primary health metric** —
+  the operator watches queue lag, not request error rate.
+- **Always-on cost / no scale-to-zero.** The `worker` process has no inbound HTTP, so Fly
+  Proxy cannot manage its lifecycle; it must run continuously (autostop off). This is the
+  accepted cost of the model.
+- **You own retry/idempotency.** The lease + reaper + idempotent terminal write are your
+  code, not a platform feature. This is a port, not an invention — the durable record,
+  attempt claim, idempotent completion, and reaper already ship (see
+  [`capture-resilience.md`](capture-resilience.md) Milestone 3); the change is relocating the
+  claim key from `CLOUD_RUN_TASK_ATTEMPT` to a database lease.
+
+---
+
+## 5. Current-state gaps
+
+The containers are portable, but several assumptions must change. Compared with the earlier
+two-app plan, all worker-authentication, worker-private-networking, and worker-callback gaps
+are **removed** because there is no separate worker service.
+
+### 5.1 Two database layers and two languages (resolved by consolidation)
+
+Addressed in Phase A. The Python worker (`openrouter.py`, `prompts.py`, `db.py`, `main.py`,
+`photo_job.py`, `callback.py`) is ported into the Kotlin codebase; `gemini.py` and the
+provider abstraction are dropped, not ported (§1). The Python source is removed from the repo
+and the deployed Cloud Run service is retired per the retention rule in Phase A.
+
+### 5.2 Cloud Run Job dispatch and worker HTTP endpoints
+
+`PhotoService` dispatches a Cloud Run Job via the Google Jobs API, and `KanjiService` calls
+the worker's `/generate-quizzes` HTTP endpoint. These change across the two milestones:
+
+- **Milestone 1:** the `/generate-quizzes` HTTP call is removed — quiz generation becomes a
+  Kotlin Cloud Run Job dispatched the same way photo analysis already is. The
+  metadata-server identity-token flow in
+  [`core/auth/CloudRunAuth.kt`](../backend/src/main/kotlin/com/kanjimasta/core/auth/CloudRunAuth.kt)
+  authenticated calls to the *worker service*; it is removed with that service. Jobs-API
+  dispatch still uses the backend's Google service-account credentials.
+- **Milestone 2:** the Jobs and their Jobs-API dispatch are replaced by queue rows drained by
+  the always-on `worker` process, and all remaining Google authentication disappears.
+
+### 5.3 Scheduled jobs are not deployable infrastructure
+
+Cron currently arrives as HTTP from Google Cloud Scheduler to worker/backend endpoints. A
+scheduler outside Fly cannot reach an internal process, and there is no worker HTTP endpoint
+to call anymore. Replace it with **one in-process Ktor scheduler** on `web` that *enqueues*
+work:
+
+- Read `SCHEDULER_ENABLED` at startup; default `false`; emit one startup log confirming state.
+- Start the scheduler from the Ktor lifecycle only when `SCHEDULER_ENABLED=true`.
+- Configure every schedule and its IANA time zone in version-controlled application config.
+- Claim each scheduled occurrence with `pg_try_advisory_xact_lock` inside a short
+  transaction, and in the same transaction create a durable execution record keyed by task
+  and occurrence, so a second `web` instance cannot double-enqueue.
+- The scheduled task's action is to **insert `PENDING` queue rows** (and cleanup service
+  calls), not to make an AI call or an outbound HTTP request. Do not hold a transaction open
+  while doing work.
+- Log task name, scheduled time, start time, duration, enqueued count, and failure.
+- Release scheduler resources on graceful shutdown.
+
+The advisory lock is required even with one `web` Machine so later scaling or overlapping
+deploys do not double-enqueue. `SCHEDULER_ENABLED=false` is the cross-platform overlap
+control while Google Cloud Scheduler is still active during cutover.
+
+### 5.4 Durable records exist; the queue formalizes them
+
+The dispatch paths already create durable rows before contacting the worker, and photo
+sessions already have an hourly stale-cleanup path. The queue model uses these same rows as
+its work items. The one net-new reliability item is the **quiz-job reaper** (interrupted quiz
+jobs can currently remain `PROCESSING` indefinitely), plus admin visibility and rerun for
+both photo and quiz failures. Ship that as Phase 0 on the current stack before any language
+or platform change. A transactional outbox is explicitly **not** introduced; the durable row
+plus the reaper is sufficient.
+
+### 5.5 Public API requests already return before AI completion
+
+The current dispatch paths return before AI work finishes, so Cloudflare's origin timeout
+does not gate completion. The queue preserves this — enqueue-and-return is even more clearly
+decoupled. Keep the Cloudflare proxy on `api.shuukanhq.com` for fast DNS/origin rollback, and
+add a regression test proving the enqueue endpoints return promptly while drain work
+continues.
+
+### 5.6 Deployment commands target Google Cloud
+
+The `Makefile` builds/pushes to Google Artifact Registry, deploys with `gcloud run deploy`,
+deploys a Cloud Run Job, discovers Cloud Run URLs, and uploads the frontend to GCS. All are
+replaced (§6.6), retained temporarily as `deploy-legacy-*` during the rollback window.
+
+### 5.7 Documentation is stale
+
+`README.md` and `docs/architecture.md` describe the older Cloud Run / two-service / Python
+worker architecture and must be updated once the new path works.
+
+---
+
+## 6. Repository changes
+
+### 6.1 Fly application configuration (one app, two processes)
+
+Add `fly.toml` at the backend/app root containing:
+
+- the final Fly app name and primary region;
+- Dockerfile build for the single Kotlin image;
 - `internal_port = 8080`;
-- forced HTTPS;
-- service-level HTTP health check against `/health`;
-- one `shared-cpu-1x` Machine with 1 GB memory;
-- `auto_stop_machines = "off"`;
-- `auto_start_machines = true`;
+- a `[processes]` table defining `web` and `worker` commands (two entrypoints in the same
+  image — the Ktor server for `web`, the drainer `main()` for `worker`);
+- an `[http_service]` bound to `processes = ["web"]` only, with forced HTTPS and an HTTP
+  health check against `/health`;
+- **no** service and **no** public IP for `worker`;
+- `auto_stop_machines = "off"` and `auto_start_machines = true` for both processes (the
+  drainer must stay up; the web machine stays up because Fly Proxy cannot see background
+  work);
 - `kill_timeout = 90`;
-- an immediate deployment strategy for the single Machine.
+- an immediate deployment strategy for the single Machine per process.
 
-The `/health` route should remain a lightweight liveness check. Add a separate readiness check if database reachability must affect traffic routing; do not turn the current health route into an expensive query executed every few seconds.
+Keep `/health` a lightweight liveness check on `web`. The `worker` process exposes a liveness
+signal for its drain loop (a top-level Fly health check where practical, or a heartbeat
+row/metric), not an HTTP service.
 
-### 4.2 Fly AI worker configuration
+`/health` must remain cheap; add a separate readiness check if database reachability must
+affect routing.
 
-Add `services/ai-worker/fly.toml` containing:
+### 6.2 Consolidate the worker into Kotlin
 
-- the final Fly app name;
-- the same primary region as the backend;
-- Dockerfile build configuration;
-- one `shared-cpu-1x` Machine with 512 MB memory;
-- no public HTTP service;
-- no public IP allocation;
-- a top-level health/monitoring check where practical;
-- restart policy for unexpected process exits;
-- `kill_timeout = 90`;
-- an immediate deployment strategy for the single Machine.
+This is the prerequisite (Phase A). Port, then delete Python:
 
-Because there is no Fly Proxy service in front of the worker, proxy-based autostart and autostop do not apply. The worker should run continuously.
+- `openrouter.py` → a single Kotlin `OpenRouterClient` (a JSON POST; the gpipi
+  `OpenRouterClient` is a working reference for structured-JSON extraction and the image
+  `analyze_image` path in Kotlin). **`gemini.py`, `ai_client.py`, and the `AI_PROVIDER`
+  abstraction are dropped, not ported** — OpenRouter is the only provider (§1).
+- `prompts.py` → Kotlin string constants/objects.
+- pydantic models → Kotlin data classes / `kotlinx.serialization`.
+- worker queries in `db.py` → Ktorm against the existing `core/db/Tables.kt`.
+- `main.py` route handlers → inline service methods on `web` (discovery) and drainer job
+  handlers (`worker`).
+- `photo_job.py` / `callback.py` → the drainer's claim/execute/write-result loop; the
+  callback becomes a direct in-process service call.
+- Port the pytest suites (`test_openrouter.py`, `test_db.py`, `test_routes.py`,
+  `test_photo_job.py`) to Kotlin/Testcontainers integration tests alongside the existing
+  backend suite. `test_gemini.py` and `test_ai_client.py` are dropped with the Gemini path.
 
-### 4.3 Worker request authentication
+Centralize OpenRouter model configuration (`OPENROUTER_*`) in Kotlin config; there is no
+provider switch.
 
-Replace `getIdentityToken()` usage in:
+### 6.3 Runtime configuration
 
-- `PhotoService`
-- `KanjiService`
-
-with a small worker-client authentication abstraction that adds `X-Worker-Key` to outbound requests.
-
-Add FastAPI validation covering:
-
-- `/analyze-photo`
-- `/generate-quizzes`
-- `/cron/generate-quizzes`, if the HTTP form remains enabled
-- `/cron/check-regen`, if the HTTP form remains enabled
-
-`GET /health` may remain unauthenticated because it is only exposed on the private network and is needed for health checks.
-
-Do not include secret values in `fly.toml`, Docker images, logs, error messages, frontend environment variables, or committed `.env` files.
-
-### 4.4 Runtime configuration
-
-Add or formalize the following backend variables:
+Backend/app variables (both processes read the shared set they need):
 
 ```text
 PORT=8080
 DATABASE_URL=...
 SUPABASE_URL=...
-AI_WORKER_URL=http://<worker-fly-app>.internal:8080
-WORKER_API_KEY=...
-INTERNAL_API_KEY=...
-SELF_URL=http://<backend-fly-app>.internal:8080
-SCHEDULER_ENABLED=false
-CORS_ALLOWED_ORIGINS=shuukanhq.com
-RESEND_API_KEY=...
-ADMIN_USER_ID=...
-LOG_LEVEL=INFO
-```
-
-Add or formalize the following worker variables:
-
-```text
-PORT=8080
-DATABASE_URL=...
-WORKER_API_KEY=...
-AI_PROVIDER=gemini|openrouter
-GEMINI_API_KEY=...
 OPENROUTER_API_KEY=...
 OPENROUTER_MODEL=...
 OPENROUTER_REASONING_EFFORT=...
@@ -286,103 +534,87 @@ OPENROUTER_QUIZ_MODEL=...
 OPENROUTER_DISCOVERY_MODEL=...
 OPENROUTER_SITE_URL=https://shuukanhq.com
 OPENROUTER_APP_NAME=Kanji Masta
+SCHEDULER_ENABLED=false
+DRAINER_CONCURRENCY=4
+DRAINER_POLL_INTERVAL_SECONDS=...
+JOB_LEASE_SECONDS=...
+HIKARI_MAX_POOL_SIZE=...
+CORS_ALLOWED_ORIGINS=shuukanhq.com
+RESEND_API_KEY=...
+ADMIN_USER_ID=...
+LOG_LEVEL=INFO
 ```
 
-Fly secrets should hold all credentials, private connection strings, and the `SCHEDULER_ENABLED` production kill switch. Keep `SCHEDULER_ENABLED=false` through Phases B and C. Non-sensitive settings such as log level and internal service URLs may live in `[env]` sections of the Fly configuration.
+Note the secrets that are **gone**: `WORKER_API_KEY` and `INTERNAL_API_KEY` (no
+backend↔worker HTTP, no callbacks). Do not include secret values in `fly.toml`, images, logs,
+error messages, frontend env, or committed `.env` files. Non-sensitive settings (log level,
+concurrency, intervals) may live in `[env]`.
 
-### 4.5 Memory and connection-pool hardening
+### 6.4 Memory and connection-pool hardening
 
-Start the JVM backend at 1 GB. A 512 MB JVM limit leaves little margin for Netty direct buffers, metaspace, thread stacks, and non-heap allocations even when the Java heap appears healthy. Keep the Python worker at 512 MB initially and measure both services under representative work.
+Start the `web` JVM at 1 GB. Size the `worker` JVM for image base64 expansion plus AI
+response buffering; start at 512 MB–1 GB and measure under representative photo load.
 
-Backend changes:
+Both processes:
 
-- Set `-XX:MaxRAMPercentage=55` through `JAVA_TOOL_OPTIONS` and lower it if native-memory measurements leave insufficient headroom.
-- Set an explicit `-XX:MaxDirectMemorySize=128m` for Netty/direct buffers and verify it under load.
+- Set `-XX:MaxRAMPercentage=55` via `JAVA_TOOL_OPTIONS`; lower if native-memory headroom is
+  tight.
+- Set an explicit `-XX:MaxDirectMemorySize` for Netty/HTTP-client direct buffers and verify
+  under load.
 - Add `-XX:+ExitOnOutOfMemoryError` so an unhealthy process restarts cleanly.
-- Make Hikari `maximumPoolSize` configurable instead of hard-coding seven.
-- Start with a conservative pool size and increase only from observed demand.
-- Export or log enough information to distinguish JVM heap pressure from connection exhaustion.
+- Make Hikari `maximumPoolSize` configurable; start conservative and raise from observed
+  demand. The `worker` needs one additional dedicated connection for `LISTEN`.
 
-Worker changes:
+**Connection budget.** Account for `web` pool + `worker` pool + the `worker` `LISTEN`
+connection + scheduler claims + migrations/admin. During Phases B–D the old Cloud Run
+backend/worker pair and the new Fly `web`/`worker` pair run against the same Supabase
+database concurrently; compute the worst-case old-plus-new ceiling (Cloud Run autoscaling
+raises the real number) and confirm it sits comfortably under the Supabase plan limit before
+creating Fly Machines. Reduce pool sizes or Cloud Run max instances first if it does not.
 
-- Make the psycopg2 pool maximum configurable instead of hard-coding five.
-- Add explicit connect, read, and total timeouts for image downloads.
-- Reject unexpectedly large image responses before base64 expansion.
-- Stream or cap downloads rather than accepting an unlimited response body.
-- Record peak memory during representative photo-analysis and quiz-generation requests.
+Worker-side image safety (ported from the Python guardrails): explicit connect/read/total
+timeouts on image downloads; reject or cap unexpectedly large responses before base64
+expansion.
 
-Initial combined database connection limits should account for both services. Current defaults allow up to twelve application connections for one backend/worker pair before scheduler, administrative, or migration connections are counted.
+### 6.5 Graceful shutdown and in-flight work
 
-Phases B through D temporarily run the Cloud Run backend/worker pair and Fly backend/worker pair against the same Supabase database. With one instance of each service, the current pool maxima can therefore reach roughly 24 application connections; Cloud Run autoscaling can make the real ceiling higher. Before Phase B:
+On `web`: any remaining service-owned dispatch coroutines are replaced by enqueue-and-return,
+so there is little to drain; stop accepting new requests and let Ktor finish in-flight ones.
 
-- inventory Cloud Run maximum instances and actual pool settings;
-- calculate the worst-case old-plus-new connection ceiling;
-- reserve headroom for migrations, Supabase services, scheduler claims, and administrative access;
-- compare the total with the production Supabase plan's connection limit;
-- reduce pool sizes or Cloud Run maximum instances before deploying Fly if the limit is not comfortably met.
+On `worker`: on `SIGTERM`, stop claiming new rows, let in-flight jobs finish within the Fly
+`kill_timeout = 90` budget, and release leases; anything not finished within the window
+returns to `PENDING` on lease expiry and is re-claimed. Bind the drain-shutdown wait to under
+90 seconds. Terminal and status writes must be idempotent so a job interrupted after the AI
+call but before the terminal write is safely re-run.
 
-If the worker repeatedly exceeds roughly 80–85% of its 512 MB allocation under representative photo load, increase it to 1 GB rather than relying on repeated OOM restarts. Reduce the backend to 512 MB only after production measurements demonstrate safe heap and native-memory headroom.
+`kill_timeout` is a best-effort drain window, not a durability guarantee; the durable row plus
+the reaper is the guarantee.
 
-### 4.6 Graceful shutdown and in-flight work
+### 6.6 Makefile and deployment state
 
-Photo analysis and quiz generation can outlive the browser request that initiated them. Code inspection confirms that worker AI work is not detached from Uvicorn:
-
-- `/analyze-photo` awaits the image download, AI call, and callback in its request handler.
-- `/generate-quizzes` is a synchronous FastAPI handler and remains an active request while its thread-pool work runs.
-- the worker does not use FastAPI `BackgroundTask` or bare `asyncio.create_task` for these operations.
-
-Uvicorn can therefore drain these active requests during graceful shutdown. No outstanding-task registry is required for the current worker shape.
-
-The Ktor side is different: `PhotoService` and `KanjiService` launch outbound worker calls in service-owned `CoroutineScope(Dispatchers.IO)` instances after the browser request returns. Those coroutines are not automatically drained as active Ktor requests. Replace them with an application-managed scope, stop accepting new dispatch work during shutdown, await outstanding dispatch calls within the shutdown budget, and then cancel what remains. The durable database record remains the recovery mechanism if the drain cannot finish.
-
-Required protections:
-
-- Disable Fly autostop for the backend.
-- Keep the worker continuously running.
-- Set Fly `kill_timeout = 90` for both services.
-- Set Uvicorn `--timeout-graceful-shutdown=75`, leaving time for lifespan cleanup before Fly forces termination.
-- Bound the Ktor application-managed dispatch drain to less than 90 seconds.
-- Close the psycopg2 pool during FastAPI lifespan shutdown.
-- Ensure callback and job status writes are idempotent.
-- Verify what happens when backend deployment occurs after a worker job starts but before its callback.
-- Verify what happens when a worker deployment interrupts active AI generation.
-- Run stale-state recovery for sessions and jobs left in `PROCESSING`.
-- Verify the admin Jobs page can rerun recovered work successfully.
-- Preserve database state as the source of truth; no job may depend solely on process memory.
-
-`kill_timeout` is a best-effort drain window, not a durability guarantee. A single-Machine immediate deploy can make the API unavailable during this window, so the plan deliberately caps it at 90 seconds and relies on stale-state recovery for longer work. A later reliability iteration may replace long-lived HTTP-triggered work with an outbox or database-backed worker poller, but that redesign is explicitly out of scope until after migration soak.
-
-### 4.7 Makefile and deployment state
-
-Add targets such as:
+Provider-neutral targets:
 
 ```text
 make deploy-db
-make deploy-backend
-make deploy-ai-worker
-make deploy-frontend
+make deploy-app         # fly deploy (builds one image, deploys web + worker)
+make deploy-frontend    # Cloudflare Pages (Wrangler or Git integration)
 make deploy-all
 make deploy-status
 make smoke-production
 ```
 
-Expected behavior:
+- `deploy-app` runs backend tests/build and then `fly deploy`; there is no separate worker
+  deploy — the one image runs both process groups.
+- `deploy-all` order: database, app, frontend.
+- `scripts/check_deploy.py` maps paths to the new components; deploy-state recording stays
+  provider-neutral.
+- Old `gcloud`/GCS targets remain as `deploy-legacy-*` during the rollback window, removed
+  after soak.
 
-- `deploy-backend` runs backend tests/build and then `fly deploy backend`.
-- `deploy-ai-worker` runs worker tests and then `fly deploy services/ai-worker`.
-- `deploy-frontend` either performs a Wrangler Pages deployment or explains that Git integration deploys from the production branch.
-- `deploy-all` retains the dependency order: database, worker, backend, frontend.
-- deploy-state recording remains provider-neutral.
-- `scripts/check_deploy.py` maps relevant paths to the new components.
-
-During the rollback window, old Cloud Run/GCS commands may remain available as explicitly named `deploy-legacy-*` targets. Remove them after production has passed the soak period.
-
-### 4.8 Cloudflare Pages repository preparation
-
-Cloudflare Pages configuration:
+### 6.7 Cloudflare Pages repository preparation
 
 | Setting | Value |
-|---------|-------|
+|---|---|
 | Framework | React/Vite |
 | Root directory | `frontend` |
 | Build command | `npm run build` |
@@ -398,561 +630,580 @@ VITE_SUPABASE_URL=...
 VITE_SUPABASE_ANON_KEY=...
 ```
 
-Preview deployments need separate Supabase and API values only if authenticated preview testing is required. Avoid permitting arbitrary `*.pages.dev` origins in production CORS. Prefer a fixed staging hostname or an explicit preview-origin policy.
-
-Cloudflare Pages automatically applies SPA fallback behavior when no top-level `404.html` is deployed. A catch-all `_redirects` rule is therefore not required for the current React Router application. Verify direct navigation and refresh on every route during staging.
-
-Add a `frontend/public/_headers` file if browser security headers are not already applied elsewhere. At minimum, review:
-
-- `Content-Security-Policy`
-- `Referrer-Policy`
-- `X-Content-Type-Options`
-- `Permissions-Policy`
-- asset caching for fingerprinted Vite files
-
-Do not add aggressive caching rules for `index.html`; each Pages deployment already handles asset invalidation.
+Preview deployments need separate Supabase/API values only if authenticated preview testing
+is required; avoid permitting arbitrary `*.pages.dev` origins in production CORS. Cloudflare
+Pages applies SPA fallback automatically when no top-level `404.html` is deployed, so a
+`_redirects` catch-all is not required for the current React Router app — verify direct
+navigation and refresh on every route in staging. Add `frontend/public/_headers` if browser
+security headers are not applied elsewhere (`Content-Security-Policy`, `Referrer-Policy`,
+`X-Content-Type-Options`, `Permissions-Policy`, and asset caching for fingerprinted files).
+Do not aggressively cache `index.html`.
 
 ---
 
-## 5. External infrastructure configuration
+## 7. External infrastructure configuration
 
-### 5.1 Fly organization and applications
+### 7.1 Fly application
 
-- Create or select the Fly organization.
-- Enable billing.
-- Select globally unique backend and worker app names.
-- Select the primary region.
-- Create both Fly Apps in the same organization.
-- Confirm the worker has no public service and no allocated public IPs.
-- Confirm the backend receives public IPv6 and shared IPv4 through its HTTP service.
-- Set secrets independently on both applications.
-- Retain a secure record of secret names and rotation procedures.
+- Create or select the Fly organization; enable billing.
+- Select one globally unique app name and the primary region (match the Supabase AWS region
+  because most requests do database work; use `nrt` for `ap-northeast-1`, otherwise the
+  nearest Fly region — verify database latency before cutover).
+- Deploy the single image with `web` and `worker` process groups; scale one Machine each
+  initially (`fly scale count web=1 worker=1`).
+- Confirm `web` receives public IPv6 and shared IPv4 through its HTTP service, and `worker`
+  has no public service and no public IP.
+- Set secrets on the app; keep a secure record of secret names and rotation procedures.
 
-### 5.2 Supabase database connectivity
+### 7.2 Supabase database connectivity
 
-Preferred runtime connection:
+- Use the Supabase direct PostgreSQL hostname over IPv6 for both long-lived processes; require
+  TLS with `sslmode=require`.
+- Keep migration tooling on a connection mode suitable for DDL.
+- Do not use transaction-pooler-specific JDBC workarounds unless the runtime connection
+  actually uses the transaction pooler — note `LISTEN/NOTIFY` requires a session (not a
+  transaction-pooled) connection, so the drainer's `LISTEN` connection must be a direct/
+  session connection.
+- Validate before creating Fly Machines against production Supabase: complete the
+  old-plus-new connection-budget calculation; resolve the Supabase host from each Machine;
+  establish TLS; confirm queries, transactions, `LISTEN/NOTIFY`, and startup pool creation;
+  confirm total usage stays within the plan limit; confirm latency from the chosen region.
+- If Supabase network restrictions are enabled, allocate stable Fly egress IPs for every
+  Machine that connects to Postgres and add the IPv4/IPv6 CIDRs to the allowlist, accounting
+  for replacement Machines during deploys.
 
-- Use the Supabase direct PostgreSQL hostname over IPv6 for the persistent backend and worker.
-- Require TLS with `sslmode=require`.
-- Keep migration tooling on a connection mode suitable for DDL and administrative work.
-- Do not use transaction-pooler-specific JDBC workarounds unless the selected runtime connection actually uses transaction pooling.
+### 7.3 Fly secrets
 
-Validation:
-
-- Complete the old-plus-new connection-budget calculation before creating Fly Machines that point at production Supabase.
-- Resolve the Supabase database hostname from each Fly Machine.
-- Establish TLS connections from both services.
-- Confirm normal queries, transactions, and startup pool creation.
-- Confirm total connection usage stays within the Supabase plan limit.
-- Confirm database latency from the chosen Fly region.
-
-If Supabase network restrictions are enabled:
-
-- Allocate stable Fly egress IPs for every Machine that connects to PostgreSQL, or revise the restriction strategy.
-- Add both relevant IPv4 and IPv6 CIDRs to the Supabase allowlist.
-- Account for replacement Machines during deployments; machine-scoped egress addresses complicate rolling replacement.
-
-Static egress IPs are unnecessary when Supabase network restrictions are not enabled.
-
-### 5.3 Fly secrets
-
-Set backend secrets:
+App secrets:
 
 - `DATABASE_URL`
 - `SUPABASE_URL`
-- `WORKER_API_KEY`
-- `INTERNAL_API_KEY`
-- `SCHEDULER_ENABLED` (set to `false` through Phases B and C)
+- `SCHEDULER_ENABLED` (set `false` through Phases B and C)
+- `OPENROUTER_API_KEY`
 - `RESEND_API_KEY`
 - `ADMIN_USER_ID`
 
-Set worker secrets:
+`WORKER_API_KEY` and `INTERNAL_API_KEY` are not created. Rotate any previously exposed secret
+during migration.
 
-- `DATABASE_URL`
-- `WORKER_API_KEY`
-- selected AI provider API keys
+### 7.4 API domain and TLS
 
-Rotate the existing `INTERNAL_API_KEY` during migration if it has previously been exposed outside managed secret stores.
+Provision `api.shuukanhq.com` on the Fly app (`web` service):
 
-### 5.4 API domain and TLS
-
-Provision `api.shuukanhq.com` on the backend Fly App:
-
-1. Add the hostname to the Fly App.
-2. Obtain the exact DNS records from `fly certs setup api.shuukanhq.com`.
+1. Add the hostname to the Fly app.
+2. Obtain exact DNS records from `fly certs setup api.shuukanhq.com`.
 3. Add the required CNAME or A/AAAA records in Cloudflare DNS.
 4. Add the `_fly-ownership` TXT record when the Cloudflare proxy is enabled.
 5. Set Cloudflare SSL mode to `Full (strict)`.
 6. Verify certificate issuance before directing production traffic.
-7. Verify HTTP-to-HTTPS redirects and the `/health` endpoint.
+7. Verify HTTP→HTTPS redirects and `/health`.
 
-Use either a CNAME or A/AAAA records as instructed by Fly; do not leave conflicting record types for the same hostname.
+### 7.5 Cloudflare Pages project
 
-### 5.5 Cloudflare Pages project
+- Create a Git-integrated Pages project (preferred over Direct Upload for branch previews,
+  commit status, and automatic production deploys — the integration mode cannot be switched
+  later).
+- Configure the monorepo root, build command, and output directory; set production and
+  preview build variables; limit builds to frontend paths.
+- Deploy and test the `.pages.dev` hostname; attach `shuukanhq.com` only after preview
+  verification; keep the GCS origin recoverable during the rollback window.
 
-- Create a Git-integrated Pages project.
-- Authorize repository access.
-- Configure the monorepo root, build command, and output directory.
-- Configure production and preview build variables.
-- Limit automatic builds to frontend-relevant paths.
-- Deploy and test the generated `.pages.dev` hostname.
-- Attach `shuukanhq.com` only after preview verification succeeds.
-- Confirm that the old frontend origin remains recoverable during the rollback window.
+### 7.6 Supabase Auth URLs
 
-Git integration is preferred over a Direct Upload-only project because it provides branch previews, commit status, and automatic production deployments. The choice should be made before project creation because Pages restricts switching integration modes later.
-
-### 5.6 Supabase Auth URLs
-
-- Keep the production Site URL set to `https://shuukanhq.com`.
+- Keep the production Site URL `https://shuukanhq.com`.
 - Confirm signup, login, invite, password-reset, and callback URLs.
-- Add a fixed staging URL if authenticated staging is required.
-- Do not allow broad preview wildcards unless the security consequences are accepted.
+- Add a fixed staging URL if authenticated staging is required; avoid broad preview wildcards.
 
-### 5.7 Scheduled jobs
+### 7.7 Scheduled jobs
 
-- Configure the Ktor in-process scheduler and exact IANA time zone.
-- Configure each schedule in version control.
-- Verify the backend starts with no scheduled tasks when `SCHEDULER_ENABLED=false`.
-- Run each scheduled operation in local/integration tests before Fly deployment.
-- Do not manually execute Fly schedules against production Supabase while Google Cloud Scheduler remains enabled.
-- Verify the PostgreSQL advisory lock from two concurrent backend processes.
-- Confirm only one logical execution occurs per schedule.
-- Confirm results and failures appear in Fly Grafana log search.
-- Add a documented manual rerun procedure.
-- At cutover, disable the corresponding Google Cloud schedules first.
-- Then set `SCHEDULER_ENABLED=true` on Fly and wait for the resulting Machine restart to complete.
-- Confirm the Fly startup log reports the scheduler enabled before considering scheduler cutover complete.
+- Configure the in-process Ktor scheduler and exact IANA time zone in version control.
+- Verify `web` starts with no scheduled tasks when `SCHEDULER_ENABLED=false`.
+- Run each scheduled enqueue in local/integration tests before Fly deployment.
+- Verify the advisory-lock claim from two concurrent `web` processes enqueues exactly once.
+- At cutover, disable the matching Google Cloud schedules first, then set
+  `SCHEDULER_ENABLED=true` and wait for the resulting Machine restart; confirm the startup log
+  reports the scheduler enabled.
 
 ---
 
-## 6. Security requirements
+## 8. Security requirements
 
-- The AI worker must have no public Fly service.
-- Private networking is not a substitute for application authentication.
-- Worker request keys and callback keys must be different secrets.
-- All browser-to-backend traffic must use HTTPS.
-- Database traffic must use TLS outside Fly private networking.
-- CORS must allow only the production frontend and intentionally configured staging origins.
-- Callback endpoints must reject missing or invalid `INTERNAL_API_KEY` values.
-- Worker endpoints must reject missing or invalid `WORKER_API_KEY` values.
-- Health endpoints must not return secret or dependency configuration.
-- Logs must never contain API keys, database credentials, JWTs, or full signed storage URLs.
-- Cloudflare SSL mode must be `Full (strict)`, never `Flexible`.
-- Fly and Cloudflare access tokens used by CI must have the narrowest practical scopes.
-- Production secrets must not be supplied as Docker build arguments.
+- The `worker` process has no public Fly service and no public IP.
+- All browser-to-backend traffic uses HTTPS; Cloudflare SSL mode is `Full (strict)`, never
+  `Flexible`.
+- Database traffic uses TLS outside Fly private networking.
+- CORS allows only the production frontend and intentionally configured staging origins.
+- Health endpoints return no secret or dependency configuration.
+- Logs never contain API keys, database credentials, JWTs, or full signed storage URLs.
+- Fly and Cloudflare CI tokens have the narrowest practical scopes; production secrets are
+  never Docker build arguments.
+- Backend↔worker coordination is the shared database; there is no application-to-application
+  network secret to protect, which removes the `WORKER_API_KEY`/`INTERNAL_API_KEY` trust
+  surface entirely.
+- User authentication remains Supabase JWT (HS256), unchanged.
 
 ---
 
-## 7. Observability and operational checks
+## 9. Observability and operational checks
 
-Observability must be operating before application cutover. `fly logs` remains useful for live tailing; Fly's built-in Grafana log search currently retains searchable application logs for seven days, which covers the planned 48-hour soak.
+Observability must operate before cutover. `fly logs` tails live; Fly's managed Grafana log
+search retains ~7 days, covering the soak. Establish a Cloud Run/Cloud Monitoring baseline
+before cutover and compare.
 
-Use this stack:
+Stack: Fly managed Prometheus + Grafana for Machine/proxy/CPU/memory/restart/network metrics;
+application `/metrics` scraped via each process's Fly `[metrics]`; Fly Grafana log search;
+Better Stack uptime checks for `https://api.shuukanhq.com/health` and `https://shuukanhq.com`.
 
-- Fly.io managed Prometheus and managed Grafana for built-in Machine, proxy, CPU, memory, restart, and network metrics.
-- application `/metrics` endpoints scraped through each app's Fly `[metrics]` configuration for service-specific metrics.
-- Fly Grafana log search for backend and worker log retention and investigation during migration.
-- Better Stack uptime checks for `https://api.shuukanhq.com/health` and `https://shuukanhq.com`.
+### web
 
-Do not deploy Fly Log Shipper for the initial migration. Reconsider a shipper and external sink after soak only if seven-day retention, beta log search, or missing log-based alerting proves insufficient.
-
-Establish a Cloud Run/Cloud Monitoring baseline before cutover and compare it with Fly production behavior.
-
-### Backend
-
-- Machine restarts and OOM events
-- JVM heap and total resident memory
-- request count, latency, and error rate
-- database pool active, idle, and timeout counts
-- worker request latency and failures
-- callback authentication failures
+- Machine restarts and OOM; JVM heap and resident memory
+- request count, latency, error rate
+- database pool active/idle/timeout
+- inline AI (discovery) latency and failures
 - Supabase JWT/JWKS failures
 - Resend failures
-- scheduler executions, lock skips, durations, and failures
-- stale job recovery counts
+- scheduler executions, lock skips, durations, enqueued counts, failures
 
-### AI worker
+### worker (queue-shaped, not HTTP-shaped)
 
-- Machine restarts and OOM events
-- process resident memory during image analysis
-- database pool exhaustion
-- image download size and latency
-- Gemini/OpenRouter latency and error rate
-- callback attempts and failures
-- scheduled job duration and result counts
-- active worker requests during graceful shutdown
+- **queue depth and oldest-`PENDING` age per job type** (primary lag/health signal, with
+  alerts)
+- drain concurrency in use; jobs claimed/completed/failed; per-job duration
+- lease expiries and re-claims (interrupted-work indicator)
+- OpenRouter latency and error rate
+- image download size and latency; rejected oversized images
+- stale-reaper `FAILED` counts
+- drain-loop liveness / heartbeat; resident memory during image analysis
 
-### Cloudflare Pages
-
-- build failures
-- production deployment status
-- missing assets and route-refresh failures
-- browser console errors
-- API CORS failures
-
-Add Better Stack uptime alerts for both public endpoints. Build a Fly Grafana migration dashboard covering resident memory, CPU, response latency, response status, restarts, and custom database-pool/worker metrics. During the 48-hour soak, review Grafana metrics and logs at defined checkpoints for Machine restarts/OOM events, sustained 5xx responses, failed scheduler executions, callback failures, and stale-state recovery.
+Add Better Stack uptime alerts for both public endpoints and a Fly Grafana dashboard covering
+resident memory, CPU, latency, status, restarts, and the custom queue-lag/drain metrics.
+During the soak, review at defined checkpoints for restarts/OOM, sustained 5xx, failed
+scheduler enqueues, growing queue lag, and stale-state recovery.
 
 ---
 
-## 8. Testing plan
+## 10. Testing plan
 
-### 8.1 Automated tests
+### 10.1 Automated tests
 
-- Backend tests pass after removing Cloud Run identity-token code.
-- Worker tests pass with request authentication enabled.
-- Backend worker-client tests verify the correct header without logging its value.
-- Worker authentication tests cover missing, invalid, and valid keys.
-- Callback authentication tests continue to pass.
+- Backend tests pass after removing Cloud Run identity-token code and the Jobs-API dispatch.
+- Ported worker logic (the OpenRouter client, prompts, queries) has Kotlin/Testcontainers
+  coverage equivalent to the retired pytest suites.
+- Drainer tests: claim with `FOR UPDATE SKIP LOCKED` does not double-process; lease expiry
+  re-queues; idempotent terminal write ignores duplicates and charges once; reaper marks
+  stale rows `FAILED`.
+- Scheduler tests: two `web` instances enqueue a schedule exactly once via the advisory lock.
+- Enqueue endpoints return promptly while drain work continues.
 - Frontend unit and browser tests pass against the existing fake API.
-- Docker images build from their respective subdirectories.
-- `fly config validate --strict` passes for both Fly configurations.
+- The single Docker image builds and runs both process commands.
+- `fly config validate --strict` passes.
 
-### 8.2 Private-network smoke tests
+### 10.2 End-to-end staging tests
 
-From the backend Machine:
+Run queue-mutating tests against local Supabase or an isolated staging project. While Fly and
+Cloud Run share production Supabase in Phases B–C, limit production checks to health, auth,
+and read-only behavior; **do not let both stacks drain the same production job queue.**
 
-- resolve `<worker-fly-app>.internal` as AAAA;
-- call the worker health endpoint;
-- verify an unauthenticated worker operation is rejected;
-- verify an authenticated worker operation succeeds.
+- Open every frontend route directly and refresh; sign in and refresh the session.
+- Upload a photo; start analysis; verify the drainer completes it and the result appears
+  (no callback path).
+- Generate quizzes; verify the drainer completes all jobs.
+- Admin Jobs page shows pending/processing/stale/failed work; retry a failed quiz job to
+  `DONE`; exercise the failed-photo recovery/rescan flow.
+- Complete and resume a quiz session; run the invite/Resend flow.
+- Run every scheduled enqueue manually; verify CORS rejection from an unapproved origin;
+  verify the public internet cannot reach the `worker` process.
 
-From the worker Machine:
+### 10.3 Failure tests
 
-- resolve the backend private hostname;
-- call the backend health endpoint;
-- verify a callback with an invalid key is rejected;
-- verify a valid callback succeeds.
+Prove recovery first on Cloud Run in Phase 0; during Fly migration repeat only the
+platform-specific cases with dedicated records.
 
-### 8.3 End-to-end staging tests
-
-Run queue-mutating end-to-end tests against local Supabase or an isolated Supabase staging project. While Fly and Cloud Run share production Supabase in Phases B and C, limit production checks to health, authentication, private networking, callbacks with dedicated records, and read-only behavior; do not let both AI workers compete for the shared pending-job queue.
-
-- Open every frontend route directly and refresh it.
-- Sign up or sign in through Supabase.
-- Refresh an authenticated session.
-- Load kanji, word, quiz, settings, and admin data as applicable.
-- Upload a photo to Supabase Storage.
-- Start photo analysis and receive the callback result.
-- Generate quizzes and receive all callbacks.
-- Open the admin Jobs page and verify pending, processing, stale, and failed work is visible.
-- Retry a failed quiz job from the admin Jobs page and verify it reaches `DONE`.
-- Exercise the documented failed-photo recovery or rescan flow.
-- Complete and resume a quiz session.
-- Send or validate an invite flow and Resend link.
-- Run every scheduled command manually.
-- Verify CORS rejection from an unapproved origin.
-- Verify public requests cannot reach the AI worker.
-
-### 8.4 Failure tests
-
-Run the recovery-path tests first on Cloud Run in Phase 0. During Fly migration, repeat only the platform-specific shutdown and restart cases with dedicated test records; Phase D must not be the first proof that admin recovery works.
-
-- Restart the backend during an active worker job; recover the stale job, rerun it from the admin Jobs page, and verify it reaches `DONE`.
-- Restart the worker during an active AI request; recover the stale job/session, rerun it through the documented admin recovery path, and verify it succeeds.
-- Deploy the worker during an active request and verify Uvicorn drains the request when it finishes within the configured grace period.
-- Run a job longer than the graceful-shutdown limit and verify durable stale-state recovery rather than silent loss.
-- Temporarily supply an invalid worker key.
-- Temporarily supply an invalid callback key.
-- Simulate an unavailable database at startup.
-- Simulate a failed AI provider call.
-- Submit an oversized image response.
-- Confirm the complete operator flow: stale work becomes visible and actionable, an admin reruns it, and the rerun succeeds without direct database edits.
+- Restart `worker` during an active job; verify lease expiry re-queues and it completes.
+- Kill a job after the AI call but before the terminal write; verify idempotent re-run does
+  not double-charge.
+- Run a job longer than the shutdown window; verify durable recovery, not silent loss.
+- Deploy the app during active drain work; verify in-flight jobs drain or re-queue.
+- Simulate an unavailable database at startup, a failed AI provider call, and an oversized
+  image response.
+- Confirm the full operator flow: stale work becomes visible and actionable, an admin reruns
+  it, and the rerun succeeds without direct database edits.
 
 ---
 
-## 9. Migration sequence
+## 11. Milestones and sequence
+
+The two milestones are independent. Milestone 1 ships and stands on its own; Milestone 2 is a
+later, optional platform move. Do not start Milestone 2 work until Milestone 1 has soaked in
+production and you have actually decided to move off Google Cloud.
+
+## Milestone 1 — Kotlin consolidation on Cloud Run
+
+The destination: Python deleted, one Kotlin image running as a Cloud Run service plus Kotlin
+Cloud Run Jobs, durable results written directly to Postgres. This is a durable resting state
+that hosts feature work indefinitely.
 
 ### Phase 0 — ship recovery on Cloud Run
 
-- Add stale quiz-job detection and recovery.
-- Complete the admin rerun flow for interrupted quiz jobs.
-- Add the documented failed-photo recovery or rescan path.
-- Deploy these changes to the existing Cloud Run infrastructure.
-- Force an interrupted job on Cloud Run, recover it through the admin page, rerun it, and verify it reaches `DONE`.
-- Observe the release with the existing Cloud Logging/Monitoring stack before beginning Fly work.
+- Add stale quiz-job detection and the quiz-job reaper; complete the admin rerun flow for
+  interrupted quiz jobs; add the failed-photo recovery/rescan path.
+- Deploy to the current (Python) Cloud Run stack; force an interrupted job, recover and rerun
+  it to `DONE`; observe with the existing Cloud Logging/Monitoring.
 
-This separates new recovery behavior from the infrastructure migration. Phase A does not begin until the recovery path is proven on the known-good platform.
+This is mostly backend Kotlin and survives everything after it. It makes the durable work
+recoverable before the language port touches it. Phase A does not begin until recovery is
+proven.
 
-### Phase A — prepare the repository
+### Phase A — consolidate the worker into Kotlin
 
-- Add Fly configurations.
-- Replace Cloud Run identity-token authentication.
-- Add worker authentication.
-- Add IPv6 listener configuration.
-- Add memory and connection-pool settings.
-- Add the locked in-process Ktor scheduler.
-- Add and test the `SCHEDULER_ENABLED` startup kill switch, defaulting to disabled.
-- Add application metrics endpoints.
-- Add Fly managed Prometheus/Grafana configuration.
-- Add Better Stack uptime checks.
-- Update deployment commands.
-- Add automated tests.
-- Update deployment documentation.
+Delete Python; converge on one Kotlin image with the execution model below. Scope is
+deliberately tight so this milestone is a clean, defensible end state.
 
-No production DNS or existing deployment is changed in this phase.
+**Target topology (the resting state):**
 
-Do not build an outbox or replace the HTTP worker protocol in this phase. Use the existing durable `photo_session` and `quiz_generation_job` records, then reconsider the worker architecture after migration soak.
+- One Cloud Run **service** (Ktor): the API plus **inline word discovery**.
+- One Cloud Run **Job** `photo-analysis` (Kotlin entrypoint in the same image), dispatched by
+  the service via the Jobs API — the durable-execution mechanism, unchanged in shape from
+  today, only the language differs.
+- One Cloud Run **Job** `quiz-generation` (Kotlin entrypoint in the same image), dispatched by
+  the service and by cron. This retires the separate worker service's synchronous
+  `/generate-quizzes` endpoint and makes quiz generation durable the same way photo analysis
+  already is. _(This is the one modest execution change beyond a pure language port; it is
+  what lets the standalone Python worker service be deleted entirely.)_
+- Cron stays on **Google Cloud Scheduler**, now dispatching the Kotlin Jobs (directly, or via
+  authenticated service endpoints that dispatch them).
 
-### Phase B — provision Fly staging endpoints
+**Work:**
 
-- Confirm the production Supabase connection budget can support Cloud Run and Fly concurrently.
-- Create the backend and worker Fly Apps.
-- Set all required secrets, including `SCHEDULER_ENABLED=false` on the backend.
-- Deploy the private worker.
-- Verify that the worker has no public service or public IPs.
-- Deploy the backend at its `.fly.dev` hostname.
-- Verify Supabase connectivity from both Machines.
-- Verify private backend-to-worker communication.
-- Verify callback routing.
-- Verify the backend startup log confirms the scheduler is disabled and no scheduled tasks are registered.
-- Verify searchable logs and metrics arrive in Fly Grafana.
-- Verify Better Stack uptime checks and alerts.
-- Confirm the Phase 0 admin recovery release is present; do not force a new production failure during staging.
-- Record baseline memory and latency.
+- Port `openrouter.py`, `prompts.py`, and the worker `db.py` queries into Kotlin (§6.2). Drop
+  `gemini.py` and the `AI_PROVIDER` abstraction — OpenRouter is the only provider.
+- **Both Jobs write terminal results directly to Postgres** through the shared Ktorm
+  service/repository code. Remove the worker→backend callback, `INTERNAL_API_KEY`, and
+  `WORKER_API_KEY`. Keep the writes idempotent (relocate the existing callback idempotency).
+- Word discovery becomes an inline service call.
+- Remove the Python worker source, its Dockerfile, and its build/deploy target from the repo,
+  so it is no longer built or deployed.
+- Port the pytest suites to Kotlin/Testcontainers.
+- Deploy to Cloud Run and verify parity against the pre-consolidation behavior.
 
-Cloud Run remains production during this phase.
+**Retain the old service for rollback (do not delete it yet).** Removing the Python source
+does not delete the *running* Cloud Run service. Leave the last-deployed Python worker service
+in place at **zero traffic** — it costs nothing while idle (Cloud Run scales it to zero) and
+becomes the rollback target. Because Cloud Run also retains the backend's previous revision, a
+Milestone 1 rollback is then a **traffic/revision change, not a redeploy from git** (§12).
+Delete the retained Python worker service only after the Milestone 1 Definition of Done is
+signed off.
 
-### Phase C — provision the new public endpoints
+**Soak, then decommission.** After deploying the consolidated stack, soak it in production
+(24–48 hours) with the retained Python worker service standing by. When the Definition of Done
+is signed off, delete the retained Python worker Cloud Run service, its Artifact Registry
+image, and its deploy artifacts.
 
-- Add `api.shuukanhq.com` to the Fly backend.
-- Configure Cloudflare DNS and Fly certificate ownership.
-- Validate TLS using `Full (strict)` mode.
-- Create the Cloudflare Pages project.
-- Configure the Pages build to use `https://api.shuukanhq.com`.
-- Deploy a Pages preview.
-- Complete the end-to-end staging checklist against isolated test data; keep production queue-mutating worker tests disabled.
-- Reconfirm `SCHEDULER_ENABLED=false` and verify Cloud Scheduler remains the only active scheduler.
+**Milestone 1 is done when** (see §15) the Python source is gone and no longer deployed, the
+one Kotlin image serves the API and runs both Jobs, results are written directly to Postgres
+with no callback or app-to-app secret, admin recovery works for both job types, and the stack
+has soaked in production with the retained rollback target still available. At that point
+feature development proceeds here with no dependency on Milestone 2.
+
+**What carries forward to Milestone 2 unchanged:** the AI clients, prompts, Ktorm queries, the
+direct-write result handling, and the durable records + reapers. The only throwaway is the
+Cloud Run Job wrapper and its Jobs-API dispatch, replaced by the drainer's claim loop.
+
+## Milestone 2 — Fly.io + Cloudflare Pages (optional, later)
+
+Undertake only after Milestone 1 has soaked and you have decided to leave Google Cloud. This
+milestone changes the runtime platform and swaps Cloud Run Jobs for the always-on queue
+drainer; the Kotlin code is largely reused.
+
+### Phase B — Fly app + drainer + queue (staging)
+
+- Confirm the Supabase connection budget supports Cloud Run and Fly concurrently.
+- Add `fly.toml` with `web` + `worker` process groups; add the drainer loop (claim/execute/
+  write-result), the `LISTEN`/poll backstop, the lease, and the quiz + photo reapers.
+- Convert the Kotlin Jobs' Jobs-API dispatch to enqueue-and-drain, and convert the scheduler
+  from a Job dispatcher to an enqueuer. (The direct-to-Postgres result write already exists
+  from Milestone 1 and is reused as-is.)
+- Set secrets, including `SCHEDULER_ENABLED=false`.
+- Deploy to the `.fly.dev` hostname; verify Supabase connectivity and `LISTEN/NOTIFY` from
+  both processes; verify `worker` has no public service or IP; verify the startup log confirms
+  the scheduler disabled; verify logs/metrics and the queue-lag dashboard; record baseline
+  memory and latency.
+
+Cloud Run remains production during this phase; do not let the Fly `worker` drain the
+production queue yet.
+
+### Phase C — provision public endpoints
+
+- Add `api.shuukanhq.com` to the Fly `web` service; configure Cloudflare DNS + Fly cert
+  ownership; validate TLS with `Full (strict)`.
+- Create the Cloudflare Pages project pointing at `https://api.shuukanhq.com`; deploy a
+  preview; complete the end-to-end staging checklist against isolated data.
+- Reconfirm `SCHEDULER_ENABLED=false` and that Google Cloud Scheduler remains the only active
+  scheduler and Cloud Run the only active drainer.
 
 ### Phase D — backend cutover
 
-- Lower relevant DNS TTLs in advance where possible.
-- Disable the matching Google Cloud Scheduler jobs and confirm no executions remain active.
-- Direct `api.shuukanhq.com` to Fly.
-- Wait for old Cloud Run API requests and worker triggers to drain.
-- Manually invoke each Fly scheduled operation once and verify its result while Google Cloud Scheduler is disabled and the in-process scheduler is still off.
-- Set `SCHEDULER_ENABLED=true` on the Fly backend. This secret update restarts the single Machine.
-- Wait for the Fly Machine to become healthy and confirm its startup log reports the scheduler enabled.
-- Confirm frontend API traffic reaches Fly.
-- Monitor errors, latency, memory, callbacks, and database connections.
-- Keep the Cloud Run backend and worker deployable but stop sending new traffic to them.
-- Verify the first Fly scheduler claim and execution, including its transaction-scoped lock and unique execution record.
+- Lower DNS TTLs in advance; disable the matching Google Cloud Scheduler jobs and confirm no
+  executions remain.
+- Point `api.shuukanhq.com` at Fly; wait for old Cloud Run traffic and any in-flight Cloud Run
+  Job to drain.
+- Manually invoke each Fly scheduled enqueue once and verify the drainer executes it while
+  Google Cloud Scheduler is off and the in-process scheduler is still disabled.
+- Set `SCHEDULER_ENABLED=true` (this restarts the `web` Machine); confirm the startup log
+  reports the scheduler enabled and verify the first advisory-lock claim.
+- Confirm frontend API traffic reaches Fly; monitor errors, latency, memory, queue lag, and
+  database connections. Keep Cloud Run deployable but stop sending it traffic.
 
 ### Phase E — frontend cutover
 
-- Attach `shuukanhq.com` to Cloudflare Pages.
-- Verify DNS and TLS.
-- Repeat login, upload, photo, quiz, invite, and route-refresh smoke tests.
-- Confirm the Pages build points only to `api.shuukanhq.com`.
-- Keep the existing GCS frontend available for rollback.
+- Attach `shuukanhq.com` to Cloudflare Pages; verify DNS and TLS.
+- Repeat login, upload, photo, quiz, invite, and route-refresh smoke tests; confirm the build
+  points only to `api.shuukanhq.com`; keep the GCS frontend available for rollback.
 
 ### Phase F — soak and decommission
 
-Soak the new infrastructure for at least 24–48 hours under normal usage.
+Soak 24–48 hours under normal usage. Review Grafana metrics and 7-day logs at checkpoints;
+review uptime; review all Machine restarts; confirm no OOM; inspect drain failures and queue
+lag; verify no rows stuck; verify connection counts; compare latency with the previous
+deployment; confirm Pages health.
 
-During the soak:
-
-- review Fly Grafana metrics and seven-day searchable logs at defined checkpoints;
-- review Better Stack uptime results;
-- review all Machine restarts;
-- confirm there are no OOM events;
-- inspect callback and scheduled-job failures;
-- verify no sessions or jobs remain stuck;
-- verify database connection counts;
-- compare response latency with the previous deployment;
-- confirm Cloudflare Pages builds and routing remain healthy.
-
-After the soak:
-
-- remove Cloud Run services;
-- remove obsolete Artifact Registry images or repositories according to retention policy;
-- remove GCS frontend deployment automation;
-- remove Google Cloud scheduler jobs;
-- remove temporary DNS records;
-- remove legacy Make targets;
-- rotate migration-time credentials if necessary;
-- update `deploy-state.json` and final architecture documentation.
-
-Do not delete Supabase resources, migrations, storage buckets, or production data as part of this infrastructure migration.
+After soak: remove Cloud Run services and the Cloud Run Job; remove obsolete Artifact Registry
+images; remove GCS frontend automation; remove Google Cloud Scheduler jobs; remove temporary
+DNS records and `deploy-legacy-*` targets; rotate migration-time credentials; update
+`deploy-state.json` and architecture docs. Do not delete Supabase resources, migrations,
+storage buckets, or production data.
 
 ---
 
-## 10. Rollback plan
+## 12. Rollback
 
-Rollback remains available until the soak period is complete and legacy services are removed.
+Rollback remains available until each milestone's soak completes and its retained legacy
+services are removed.
 
-### Backend rollback
+### Milestone 1 rollback (within Cloud Run)
 
-1. Restore `api.shuukanhq.com` DNS to the Cloud Run endpoint or its previous proxy origin.
-2. Set the Fly backend secret `SCHEDULER_ENABLED=false`.
-3. Wait for the resulting Fly Machine restart and verify its startup log reports the scheduler disabled.
-4. Re-enable the old Google Cloud Scheduler jobs only after Fly scheduling is confirmed off.
-5. Confirm the frontend can call the restored API.
-6. Investigate Fly without changing the database.
+Because the Python worker service is retained at zero traffic (Phase A) and Cloud Run keeps the
+backend's previous revision, a Milestone 1 rollback is a **traffic/revision change, not a
+redeploy from git**:
 
-API rollback is fast because it is a Cloudflare origin/DNS change. Scheduler rollback is slower because changing `SCHEDULER_ENABLED` updates and restarts the Fly Machine; budget up to the configured shutdown window plus boot and health-check time. Never re-enable Cloud Scheduler before the Fly scheduler-disable restart has completed.
+1. Roll the backend Cloud Run service back to its pre-consolidation revision (the one that
+   still speaks the worker-HTTP + callback protocol).
+2. Confirm the retained Python worker service accepts traffic again; it now handles quiz
+   generation and the local photo path as before.
+3. Re-point any cron that targeted the Kotlin Jobs back to the pre-consolidation targets.
 
-### Frontend rollback
+No git revert or image rebuild is required. Keep both the retained Python worker service and
+the prior backend revision until the Milestone 1 Definition of Done is signed off; only then
+delete them. Do not run the Kotlin Jobs and the Python worker against the same pending queue
+at once — roll fully forward or fully back.
 
-1. Restore `shuukanhq.com` to the existing GCS/Cloudflare origin configuration.
-2. Verify that the restored frontend uses `https://api.shuukanhq.com` or the restored API URL.
-3. Purge or wait for Cloudflare DNS/cache propagation as appropriate.
+### Milestone 2 — backend rollback (Fly → Cloud Run)
 
-A frontend-only rollback does not change scheduler ownership. A full platform rollback must also complete the backend scheduler-disable sequence above before Google Cloud Scheduler is re-enabled.
+1. Restore `api.shuukanhq.com` DNS to the Cloud Run endpoint.
+2. Set the Fly secret `SCHEDULER_ENABLED=false` and wait for the Machine restart; verify the
+   startup log reports the scheduler disabled.
+3. Re-enable Google Cloud Scheduler only after Fly scheduling is confirmed off.
+4. Confirm the frontend reaches the restored API.
+
+API rollback is a fast Cloudflare origin/DNS change. Scheduler rollback is slower because
+`SCHEDULER_ENABLED` restarts the Machine. Never re-enable Cloud Scheduler before the Fly
+scheduler-disable restart completes, and never let both the Cloud Run and Fly drainers process
+the production queue at once.
+
+### Milestone 2 — frontend rollback (Pages → GCS)
+
+1. Restore `shuukanhq.com` to the GCS/Cloudflare origin.
+2. Verify the restored frontend uses `https://api.shuukanhq.com` or the restored API URL.
+3. Purge or wait for Cloudflare cache propagation.
 
 ### Data considerations
 
-- Both old and new runtimes use the same Supabase database.
-- No database restore is expected during infrastructure rollback.
-- Never allow both scheduler stacks to process the same jobs concurrently.
-- Avoid rolling back application code across incompatible schema migrations. Schema deployments remain a separate compatibility decision.
+- Both runtimes use the same Supabase database; no restore is expected on rollback.
+- Never allow both drainer stacks (or both scheduler stacks) to process the same jobs
+  concurrently.
+- Avoid rolling back application code across incompatible schema migrations.
 
 ---
 
-## 11. Implementation estimate
+## 13. Implementation estimate
+
+### Milestone 1 — Kotlin consolidation on Cloud Run
 
 | Workstream | Estimated active effort |
-|------------|-------------------------|
-| Fly configuration and deployment commands | 0.5 day |
-| Private networking and authentication replacement | 0.5–1 day |
-| Memory, connection pool, health, and failure hardening | 0.5–1 day |
-| Pre-migration Cloud Run recovery release | 0.5–1 day |
-| Locked in-process scheduler | 0.5 day |
-| Metrics, Grafana logs/dashboard, and uptime alerts | 0.25–0.5 day |
+|---|---|
+| Phase 0 Cloud Run recovery release (quiz reaper + admin rerun) | 0.5–1 day |
+| Port the OpenRouter client, prompts, and queries to Kotlin (drop Gemini) | 1–1.5 days |
+| Photo + quiz as Kotlin Cloud Run Jobs with direct-to-Postgres writes; delete callbacks/keys | 0.5–1 day |
+| Inline word discovery; remove Python source; retain the deployed service for rollback | 0.25–0.5 day |
+| Production soak with retained rollback target; decommission after DoD sign-off | 24–48 hours elapsed |
+| Port pytest suites to Kotlin/Testcontainers | 0.5–1 day |
+| Cloud Run deploy commands and parity verification | 0.5 day |
+
+**Milestone 1 total: roughly three to five active engineering days**, after which this is a
+durable, feature-ready state with one language and one image. It can sit here indefinitely.
+
+### Milestone 2 — Fly.io + Cloudflare Pages (only if undertaken)
+
+| Workstream | Estimated active effort |
+|---|---|
+| Queue drainer (claim/lease/reaper, `LISTEN`/poll, concurrency) | 1–1.5 days |
+| Scheduler-as-enqueuer with advisory-lock claim | 0.5 day |
+| Fly configuration (one app, two processes) and deploy commands | 0.5 day |
+| Memory, connection-pool, health, and failure hardening | 0.5–1 day |
+| Metrics, Grafana queue-lag dashboard, uptime alerts | 0.25–0.5 day |
 | Cloudflare Pages preparation and documentation | 0.5 day |
-| Infrastructure provisioning, DNS, and secrets | 2–4 hours |
+| Infrastructure provisioning, DNS, secrets | 2–4 hours |
 | Staging verification and production cutover | 2–4 hours |
 | Production soak | 24–48 hours elapsed |
 
-Expected total: approximately three to five active engineering days plus the production soak period.
+**Milestone 2 total: roughly three to four active engineering days** plus the soak. Because it
+reuses the Milestone 1 Kotlin code and adds no second language or worker-authentication
+surface, it is smaller than the original two-app Fly plan.
 
 ---
 
-## 12. Decisions required before implementation
+## 14. Decisions required before implementation
 
-- [ ] Final Fly organization
-- [ ] Backend Fly app name
-- [ ] AI worker Fly app name
-- [ ] Confirm Supabase AWS region and select the matching Fly region (`nrt` for `ap-northeast-1`)
-- [ ] Confirm backend starts at 1 GB and worker starts at 512 MB
-- [ ] Confirm backend remains always-on initially
-- [ ] Confirm worker remains always-on and private-only
-- [ ] Confirm Ktor binds to `::` and callbacks use the private backend hostname
-- [ ] Confirm `SCHEDULER_ENABLED=false` for Phases B and C, and approve the Phase D scheduler handoff sequence
-- [ ] Exact schedules and time zone for all three scheduled operations
-- [ ] Git-integrated Cloudflare Pages project or Direct Upload workflow
-- [ ] Production branch name
-- [ ] Whether authenticated preview deployments are required
-- [ ] Supabase direct IPv6 connection or pooler connection
+- [ ] Final Fly organization and app name
+- [ ] Confirm Supabase AWS region and matching Fly region (`nrt` for `ap-northeast-1`)
+- [ ] Confirm `web` starts at 1 GB; choose the `worker` starting size (512 MB vs 1 GB)
+- [ ] Confirm both process groups run always-on (autostop off)
+- [ ] Initial `DRAINER_CONCURRENCY`, `JOB_LEASE_SECONDS`, and poll interval
+- [ ] `NOTIFY`-plus-poll versus poll-only for the first release
+- [ ] Exact schedules and time zone for the three scheduled operations
+- [ ] Git-integrated Cloudflare Pages project or Direct Upload
+- [ ] Production branch name; whether authenticated preview deployments are required
+- [ ] Supabase direct IPv6 (session) connection for the drainer's `LISTEN`
 - [ ] Whether Supabase database network restrictions are enabled
 - [ ] Better Stack uptime-check account and alert recipients
 - [ ] Length of production soak before legacy decommissioning
 
 Recommended defaults:
 
-- Git-integrated Cloudflare Pages
-- `api.shuukanhq.com` as the stable backend hostname
-- Cloudflare proxy enabled with `_fly-ownership` verification and `Full (strict)` TLS
+- one Fly app, two process groups, one always-on `web` (1 GB) and one always-on `worker`
+- `DRAINER_CONCURRENCY=4`, `NOTIFY` + short poll backstop, database-lease claims via
+  `FOR UPDATE SKIP LOCKED`
+- Git-integrated Cloudflare Pages; `api.shuukanhq.com` as the stable hostname; Cloudflare
+  proxy with `_fly-ownership` and `Full (strict)` TLS
 - direct Supabase IPv6 connection with `sslmode=require`
-- private callback routing over a dual-stack Ktor listener
-- one in-process Ktor scheduler protected by transaction-scoped PostgreSQL advisory locks and durable execution claims
-- `SCHEDULER_ENABLED=false` until Google Cloud Scheduler is disabled during Phase D
-- Fly managed Prometheus/Grafana with seven-day log search plus Better Stack uptime checks
-- one always-running 1 GB backend Machine and one always-running 512 MB worker Machine
-- 48-hour soak before decommissioning Google Cloud resources
+- one in-process Ktor scheduler (enqueuer) protected by transaction-scoped advisory locks and
+  durable execution claims; `SCHEDULER_ENABLED=false` until Google Cloud Scheduler is disabled
+  in Phase D
+- Fly managed Prometheus/Grafana plus Better Stack; 48-hour soak
 
 ---
 
-## 13. Definition of Done
+## 15. Definition of Done
 
-### Repository
+### Milestone 1 — Kotlin consolidation on Cloud Run
 
-- [ ] Backend Fly configuration is committed and passes strict validation
-- [ ] AI worker Fly configuration is committed and passes strict validation
-- [ ] Both single-Machine apps use immediate deployment strategy and a 90-second Fly shutdown window
-- [ ] Worker has no public Fly service
-- [ ] Cloud Run metadata-server authentication is removed
-- [ ] Backend sends `WORKER_API_KEY` on worker requests
-- [ ] Worker rejects unauthenticated operation requests
-- [ ] Worker listens on private IPv6
-- [ ] Backend listens on IPv6 and accepts private worker callbacks
-- [ ] Callback authentication continues to use `INTERNAL_API_KEY`
-- [ ] Backend worker-dispatch coroutines use an application-managed scope with bounded shutdown draining
-- [ ] Connection pool sizes are configurable
-- [ ] Backend starts at 1 GB with explicit heap and direct-memory limits
-- [ ] Worker has explicit 512 MB guardrails
-- [ ] Image downloads have time and size limits
-- [ ] Stale `PROCESSING` photo sessions and quiz jobs transition to an actionable failed state
-- [ ] Admin Jobs page shows stale/failed work and can rerun it successfully
-- [ ] Recovery and admin rerun flow was deployed and proven on Cloud Run before Fly migration
-- [ ] Scheduler defaults disabled and creates no tasks when `SCHEDULER_ENABLED=false`
-- [ ] Scheduled operations use transaction-scoped PostgreSQL advisory locks and durable unique execution claims
-- [ ] Fly custom metrics are exposed and scraped
-- [ ] Backend JVM uses the reviewed `MaxRAMPercentage` and direct-memory limit
-- [ ] Makefile and deploy-state tooling are provider-neutral
-- [ ] README and architecture documentation describe the new deployment
-- [ ] Automated tests pass
+- [ ] Python worker source and Dockerfile are removed from the repo and no longer built or
+  deployed; all AI logic (the OpenRouter client, prompts, queries) lives in Kotlin with
+  Testcontainers coverage equivalent to the retired pytest suites; `gemini.py` and the
+  `AI_PROVIDER` path are gone
+- [ ] The previously deployed Python worker Cloud Run service is retained at zero traffic as a
+  rollback target and is deleted only after this Definition of Done is signed off
+- [ ] One Kotlin image runs the Cloud Run service plus the `photo-analysis` and
+  `quiz-generation` Jobs via distinct entrypoints
+- [ ] Word discovery is an inline service call
+- [ ] Both Jobs write terminal results directly to Postgres through shared Ktorm code; writes
+  are idempotent
+- [ ] The worker→backend callback is removed; `WORKER_API_KEY` and `INTERNAL_API_KEY` are no
+  longer used; Cloud Run metadata-server identity-token auth is removed
+- [ ] Photo and quiz reapers mark stale rows actionable; the admin Jobs page shows stale/failed
+  photo and quiz work and can rerun it without direct database edits
+- [ ] Deploy commands build the one image and deploy the service and both Jobs; parity with
+  pre-consolidation behavior is verified and the stack has soaked in production
+- [ ] README and architecture docs describe the single-Kotlin-image Cloud Run topology
 
-### Fly.io
+This is the durable resting state. Feature work may proceed here indefinitely.
 
-- [ ] Backend and worker run in the same organization and region
-- [ ] Backend is available at `api.shuukanhq.com`
-- [ ] Worker is reachable from the backend over `.internal` IPv6
-- [ ] Worker is unreachable from the public internet
-- [ ] Both services connect to Supabase with TLS
-- [ ] Backend-to-worker authentication succeeds
-- [ ] Worker-to-backend callbacks succeed
-- [ ] Backend is stable at 1 GB and worker is stable at 512 MB
-- [ ] Health checks pass
-- [ ] Scheduled jobs run exactly once per intended schedule
-- [ ] Controlled worker shutdown drains attached requests within the grace period
-- [ ] Fly staging remained scheduler-disabled through Phases B and C
+### Milestone 2 — Fly.io + Cloudflare Pages
+
+**Repository**
+
+- [ ] Single Fly app defines `web` and `worker` process groups from one image; strict config
+  validation passes; one `deploy-app` deploys both
+- [ ] `worker` has no public Fly service or IP; `web` serves `api.shuukanhq.com`
+- [ ] Jobs-API dispatch is replaced by the drainer: claims via `FOR UPDATE SKIP LOCKED` with a
+  lease; lease expiry re-queues; terminal writes remain idempotent
+- [ ] Drain concurrency, lease, and poll interval are configurable
+- [ ] Scheduler defaults disabled, enqueues via transaction-scoped advisory locks + durable
+  execution claims, and creates no tasks when `SCHEDULER_ENABLED=false`
+- [ ] Both JVM processes have reviewed `MaxRAMPercentage` and direct-memory limits; pools are
+  configurable; image downloads have time and size limits
+- [ ] Fly custom queue-lag/drain metrics are exposed and scraped; Makefile/deploy-state are
+  provider-neutral
+
+**Fly.io**
+
+- [ ] `web` and `worker` run in the same app and region; `worker` is unreachable from the
+  public internet
+- [ ] Both processes connect to Supabase with TLS; `LISTEN/NOTIFY` works from `worker`
 - [ ] Combined Cloud Run and Fly database connections stayed within the Supabase limit
+- [ ] Scheduled enqueues run exactly once per intended schedule
+- [ ] Controlled shutdown drains or re-queues in-flight jobs within the grace period
+- [ ] Fly staging remained scheduler-disabled and did not drain the production queue through
+  Phases B–C
 
-### Cloudflare Pages
+**Cloudflare Pages**
 
-- [ ] Frontend builds from `frontend/`
-- [ ] Production bundle uses `https://api.shuukanhq.com`
-- [ ] `shuukanhq.com` serves the Pages deployment
-- [ ] Direct navigation and refresh work on every React route
-- [ ] Supabase login and redirect flows work
-- [ ] Production CORS allows the Pages origin and rejects unrelated origins
-- [ ] Security headers have been reviewed
+- [ ] Frontend builds from `frontend/`; production bundle uses `https://api.shuukanhq.com`
+- [ ] `shuukanhq.com` serves the Pages deployment; direct navigation and refresh work on
+  every route; Supabase login/redirect flows work
+- [ ] Production CORS allows the Pages origin and rejects unrelated origins; security headers
+  reviewed
 
-### Cutover
+**Cutover**
 
-- [ ] Full photo-analysis flow succeeds
-- [ ] Full quiz-generation flow succeeds
-- [ ] Quiz session resume and completion succeed
-- [ ] Invite/email flow succeeds
-- [ ] All scheduled operations have completed successfully
-- [ ] Interrupted work has been recovered and rerun successfully through the admin page
-- [ ] Fly Grafana metrics/log search and Better Stack uptime checks operated throughout the soak
-- [ ] Google Cloud schedules are disabled
-- [ ] Production has completed the selected soak period
-- [ ] Rollback procedure has been verified before legacy removal
-- [ ] Cloud Run, GCS deployment automation, and obsolete Google Cloud resources are decommissioned
+- [ ] Full photo-analysis and quiz-generation flows succeed via the drainer
+- [ ] Quiz session resume/completion and the invite/email flow succeed
+- [ ] All scheduled operations complete; interrupted work is recovered and rerun through the
+  admin page
+- [ ] Grafana metrics/log search and Better Stack uptime operated throughout the soak
+- [ ] Google Cloud schedules are disabled; production has completed the soak; rollback was
+  verified before legacy removal
+- [ ] Cloud Run, both Cloud Run Jobs, GCS deployment automation, and obsolete Google Cloud
+  resources are decommissioned
+
+---
+
+## 16. Admin control plane mockups
+
+- [Admin control-plane implementation contract](admin-control-plane.md) — security boundary,
+  job recovery semantics, versioned model configuration, blast radius, rollout, and test plan.
+- [Jobs control panel](mockups/admin-jobs-control-panel.svg) — all durable job types and
+  statuses, stale/failed recovery, rerun-as-a-new-attempt, and versioned model configuration.
+- [Mobile Admin shell](mockups/admin-mobile-shell.svg) — mobile-first Cost and Invites views,
+  bottom-sheet actions, and the same narrow application column at desktop widths.
+
+The status in the Admin header is intentionally binary: **Operational** or **System down**.
+Job-level facts and recovery controls live in Jobs; the global header does not expose internal
+error details. Stale reconciliation remains automatic, while Mark failed and Rerun provide a
+manual control path. Model identifiers are editable, validated, and versioned in Admin; API
+keys and other secrets remain infrastructure-managed and never enter the browser. Every
+transient interaction on mobile—including confirmations and model selection—uses a bottom
+drawer rather than a centered modal.
 
 ---
 
 ## References
 
-- [Fly.io private networking](https://fly.io/docs/networking/private-networking/)
+- [Fly.io app configuration reference](https://fly.io/docs/reference/configuration/)
+- [Fly.io processes / multiple process groups](https://fly.io/docs/apps/processes/)
 - [Fly.io app services](https://fly.io/docs/networking/app-services/)
-- [Fly.io monorepo deployments](https://fly.io/docs/launch/monorepo/)
-- [Fly.io configuration reference](https://fly.io/docs/reference/configuration/)
 - [Fly.io secrets and Machine restarts](https://fly.io/docs/apps/secrets/)
 - [Fly.io health checks](https://fly.io/docs/reference/health-checks/)
+- [Fly.io scaling process groups](https://fly.io/docs/apps/scale-count/)
 - [Fly.io managed Prometheus and Grafana](https://fly.io/docs/monitoring/metrics/)
 - [Fly.io searchable logs and retention](https://fly.io/docs/monitoring/search-logs/)
-- [Fly.io logging and export options](https://fly.io/docs/monitoring/logs-api-options/)
-- [Fly.io Log Shipper](https://fly.io/docs/monitoring/exporting-logs/)
 - [Fly.io long-running task lifecycle](https://fly.io/docs/blueprints/long-running-tasks/)
-- [Fly.io task scheduling](https://fly.io/docs/blueprints/task-scheduling/)
 - [Fly.io custom domains](https://fly.io/docs/networking/custom-domain/)
 - [Fly.io with Cloudflare](https://fly.io/docs/networking/understanding-cloudflare/)
 - [Cloudflare Pages build configuration](https://developers.cloudflare.com/pages/configuration/build-configuration/)
 - [Cloudflare Pages Git integration](https://developers.cloudflare.com/pages/configuration/git-integration/)
-- [Cloudflare Pages monorepos](https://developers.cloudflare.com/pages/configuration/monorepos/)
 - [Cloudflare Pages SPA serving](https://developers.cloudflare.com/pages/configuration/serving-pages/)
 - [Supabase PostgreSQL connection methods](https://supabase.com/docs/guides/database/connecting-to-postgres)
 - [Supabase network restrictions](https://supabase.com/docs/guides/platform/network-restrictions)
+- [PostgreSQL SELECT … FOR UPDATE SKIP LOCKED](https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE)
+- [PostgreSQL LISTEN / NOTIFY](https://www.postgresql.org/docs/current/sql-notify.html)

@@ -68,9 +68,20 @@ async def analyze_photo(body: AnalyzePhotoRequest, request: Request):
     return StatusResponse()
 
 
-async def process_photo(body: AnalyzePhotoRequest, ctx: TraceContext) -> tuple[bool, str | None]:
+async def process_photo(
+    body: AnalyzePhotoRequest,
+    ctx: TraceContext,
+    model_config: dict | None = None,
+) -> tuple[bool, str | None]:
     """Analyze one durable photo session and publish its terminal result."""
     start = time.time()
+
+    try:
+        client = get_ai_client(model_config or db.get_active_model_config())
+    except Exception:
+        ctx.log_error("analyze_photo: session=%s model configuration unavailable", body.sessionId)
+        await _report_photo_failure(body, "provider_failed")
+        return False, "AI configuration unavailable"
 
     ctx.log_info("analyze_photo: session=%s downloading image", body.sessionId)
 
@@ -96,7 +107,6 @@ async def process_photo(body: AnalyzePhotoRequest, ctx: TraceContext) -> tuple[b
         known_kanji_section = "The learner is a beginner with no kanji knowledge yet."
 
     prompt = KANJI_PROMPT.format(known_kanji_section=known_kanji_section)
-    client = get_ai_client()
     ctx.log_info(
         "analyze_photo: session=%s calling %s (known kanji: %d)",
         body.sessionId,
@@ -163,7 +173,6 @@ async def process_photo(body: AnalyzePhotoRequest, ctx: TraceContext) -> tuple[b
 def _run_quiz_generation(ctx: TraceContext, callback_url: str = "", callback_status_url: str = "", callback_key: str = ""):
     from .callback import send_quiz_result, send_job_status as send_job_status_callback
 
-    client = get_ai_client()
     jobs = db.get_pending_jobs(limit=10)
     if not jobs:
         ctx.log_info("generate_quizzes: no pending jobs")
@@ -180,6 +189,17 @@ def _run_quiz_generation(ctx: TraceContext, callback_url: str = "", callback_sta
 
         user_id = job.get("userId", "")
         op_type = "QUIZ_REGEN" if job_type == "REGEN" else "QUIZ_GENERATION"
+
+        model_config = db.get_active_model_config()
+        if job.get("modelId"):
+            model_config = dict(model_config or {})
+            model_config["quizGenerationModel"] = job["modelId"]
+        try:
+            client = get_ai_client(model_config)
+        except Exception as e:
+            ctx.log_error("generate_quizzes: job=%s configuration failed — %s", job_id[:8], e)
+            db.update_job_status(job_id, "FAILED", increment_attempts=True)
+            continue
 
         ctx.log_info("generate_quizzes: job=%s type=%s kanji=%s word=%s", job_id[:8], job_type, character, word_text)
 
@@ -351,7 +371,7 @@ def discover_words(body: DiscoverWordsRequest):
         known_words="、".join(body.knownWords) if body.knownWords else "(none)",
     )
 
-    client = get_ai_client()
+    client = get_ai_client(db.get_active_model_config())
     try:
         new_words = client.discover_words(prompt).data
     except (json.JSONDecodeError, AIClientError):

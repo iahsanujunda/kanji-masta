@@ -16,6 +16,7 @@ def test_photo_job_loads_session_and_processes_it():
     with (
         patch("app.photo_job.db.init_pool"),
         patch("app.photo_job.db.claim_photo_session_for_analysis", return_value=session) as claim,
+        patch("app.photo_job.db.get_active_model_config", return_value=None),
         patch("app.photo_job.process_photo", new_callable=AsyncMock, return_value=(True, None)) as process,
         patch.dict(
             "os.environ",
@@ -41,6 +42,7 @@ def test_photo_job_skips_session_not_claimed_by_this_execution():
     with (
         patch("app.photo_job.db.init_pool"),
         patch("app.photo_job.db.claim_photo_session_for_analysis", return_value=None) as claim,
+        patch("app.photo_job.db.get_active_model_config", return_value=None),
         patch("app.photo_job.process_photo", new_callable=AsyncMock) as process,
         patch.dict("os.environ", {"CLOUD_RUN_TASK_ATTEMPT": "1"}, clear=False),
     ):
@@ -60,6 +62,7 @@ def test_photo_job_fails_when_callback_is_not_configured():
     with (
         patch("app.photo_job.db.init_pool"),
         patch("app.photo_job.db.claim_photo_session_for_analysis", return_value=session),
+        patch("app.photo_job.db.get_active_model_config", return_value=None),
         patch("app.photo_job.process_photo", new_callable=AsyncMock) as process,
         patch.dict("os.environ", {}, clear=True),
     ):

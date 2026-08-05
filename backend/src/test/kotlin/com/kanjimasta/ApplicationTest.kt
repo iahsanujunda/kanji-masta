@@ -1,6 +1,9 @@
 package com.kanjimasta
 
 import com.kanjimasta.core.auth.AuthUser
+import com.kanjimasta.core.ai.ModelCatalogGateway
+import com.kanjimasta.core.ai.BootstrapModelConfig
+import com.kanjimasta.core.ai.UnavailableModelCatalogGateway
 import com.kanjimasta.core.plugins.configureRouting
 import com.kanjimasta.core.plugins.configureSerialization
 import com.kanjimasta.support.TestPostgres
@@ -42,6 +45,13 @@ private val testLogger = LoggerFactory.getLogger("TestModule")
 fun Application.testModule(
     db: Database,
     authUser: AuthUser = AuthUser(uid = TEST_USER_ID, email = TEST_USER_EMAIL),
+    adminJobDispatcher: suspend (String, java.util.UUID, String) -> Boolean = { _, _, _ -> true },
+    modelCatalogGateway: ModelCatalogGateway = UnavailableModelCatalogGateway,
+    bootstrapModelConfig: BootstrapModelConfig = BootstrapModelConfig(
+        photoAnalysisModel = "bootstrap/photo",
+        quizGenerationModel = "bootstrap/quiz",
+        wordDiscoveryModel = "bootstrap/discovery",
+    ),
 ) {
     configureSerialization()
     install(StatusPages) {
@@ -80,7 +90,12 @@ fun Application.testModule(
     val inviteRepository = com.kanjimasta.modules.invite.InviteRepository(db)
     val inviteService = com.kanjimasta.modules.invite.InviteService(inviteRepository, resendClient)
     val adminRepository = com.kanjimasta.modules.admin.AdminRepository(db)
-    val adminService = com.kanjimasta.modules.admin.AdminService(adminRepository)
+    val adminService = com.kanjimasta.modules.admin.AdminService(
+        adminRepository,
+        adminJobDispatcher,
+        modelCatalogGateway,
+        bootstrapModelConfig,
+    )
     val internalService = com.kanjimasta.modules.internal.InternalService(db)
 
     // Seed settings for test user so tests that depend on settings work

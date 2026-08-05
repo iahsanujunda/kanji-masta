@@ -54,6 +54,14 @@ def test_photo_job_claim_allows_platform_retry_but_rejects_duplicate_execution(c
     with db_conn.cursor() as cur:
         cur.execute("SELECT attempts FROM photo_session WHERE id = %s", (session_id,))
         assert cur.fetchone()[0] == 2
+        cur.execute(
+            "SELECT attempt_number, status, trigger FROM job_attempt WHERE job_id = %s ORDER BY attempt_number",
+            (session_id,),
+        )
+        assert cur.fetchall() == [
+            (1, "failed", "initial"),
+            (2, "processing", "platform_retry"),
+        ]
 
 
 def test_get_user_known_kanji_returns_characters(client, db_conn, seed_kanji):
@@ -130,6 +138,25 @@ def test_get_pending_jobs_empty(client):
     assert jobs == []
 
 
+def test_active_model_configuration_is_loaded(client, db_conn):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO ai_model_config (
+                status, photo_analysis_model, quiz_generation_model,
+                word_discovery_model, validation_status, created_by
+            ) VALUES ('active', 'active/photo', 'active/quiz', 'active/discovery', 'passed', 'admin')
+            """
+        )
+
+    config = db.get_active_model_config()
+
+    assert config["photoAnalysisModel"] == "active/photo"
+    assert config["quizGenerationModel"] == "active/quiz"
+    assert config["wordDiscoveryModel"] == "active/discovery"
+    assert config["version"] == 1
+
+
 def test_get_pending_jobs_returns_jobs(client, db_conn, seed_kanji):
     with db_conn.cursor() as cur:
         cur.execute("SELECT id FROM kanji_master WHERE character = '電'")
@@ -141,6 +168,35 @@ def test_get_pending_jobs_returns_jobs(client, db_conn, seed_kanji):
     jobs = db.get_pending_jobs()
     assert len(jobs) == 1
     assert jobs[0]["kanji"]["character"] == "電"
+
+
+def test_quiz_claim_snapshots_active_model_configuration(client, db_conn, seed_kanji):
+    with db_conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO ai_model_config (
+                status, photo_analysis_model, quiz_generation_model,
+                word_discovery_model, validation_status, created_by
+            ) VALUES ('active', 'active/photo', 'active/quiz', 'active/discovery', 'passed', 'admin')
+            RETURNING version
+            """
+        )
+        version = cur.fetchone()[0]
+        cur.execute("SELECT id FROM kanji_master WHERE character = '電'")
+        kanji_id = cur.fetchone()[0]
+        cur.execute(
+            "INSERT INTO quiz_generation_job (user_id, kanji_id, status) VALUES ('test-user', %s, 'PENDING') RETURNING id",
+            (kanji_id,),
+        )
+        job_id = cur.fetchone()[0]
+
+    jobs = db.get_pending_jobs()
+
+    assert jobs[0]["modelId"] == "active/quiz"
+    assert jobs[0]["modelConfigVersion"] == version
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT status, model_id FROM job_attempt WHERE job_id = %s", (job_id,))
+        assert cur.fetchone() == ("processing", "active/quiz")
 
 
 def test_insert_quiz_and_distractor(client, db_conn, seed_kanji):

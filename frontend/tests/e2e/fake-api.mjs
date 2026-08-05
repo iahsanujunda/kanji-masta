@@ -49,6 +49,19 @@ let captureDeliveryOnline = false;
 let scanStatus = "processing";
 let analyzeCalls = 0;
 const sessionsByCapture = new Map();
+const adminJob = {
+  id: "a60e1b9a-cc7d-4eff-ab6e-3025e688d449",
+  type: "photo_analysis",
+  status: "processing",
+  stale: false,
+  attempts: 1,
+  maxAttempts: 3,
+  userId: "e2e00000-0000-4000-8000-000000000001",
+  summary: "Photo analysis",
+  costMicrodollars: null,
+  createdAt: "2026-08-05T00:00:00.000Z",
+  updatedAt: "2026-08-05T00:01:00.000Z",
+};
 
 function resetCaptureState() {
   captureDeliveryOnline = false;
@@ -116,6 +129,47 @@ createServer(async (request, response) => {
       slotEndsAt: "2099-08-04T18:00:00+09:00",
       onboardingComplete: true,
     });
+    return;
+  }
+
+  if (path === "/api/admin/status") {
+    sendJson(response, 200, { status: "operational", checkedAt: new Date().toISOString() });
+    return;
+  }
+
+  if (path === "/api/admin/jobs") {
+    sendJson(response, 200, { jobs: [adminJob], counts: { pending: 0, processing: 1, done: 0, failed: 0 } });
+    return;
+  }
+
+  if (path === `/api/admin/jobs/${adminJob.type}/${adminJob.id}` && request.method === "GET") {
+    sendJson(response, 200, { job: adminJob, attempts: [{ id: "attempt-1", attemptNumber: 1, status: "processing", trigger: "initial", createdBy: "system", createdAt: adminJob.createdAt }] });
+    return;
+  }
+
+  if (path === `/api/admin/jobs/${adminJob.type}/${adminJob.id}/fail` && request.method === "POST") {
+    adminJob.status = "failed";
+    sendJson(response, 200, adminJob);
+    return;
+  }
+
+  if (path === "/api/admin/model-config") {
+    sendJson(response, 200, { configs: [{ version: 1, status: "active", validationStatus: "passed", photoAnalysisModel: "vision/current", quizGenerationModel: "text/current", wordDiscoveryModel: "text/current", createdAt: adminJob.createdAt }] });
+    return;
+  }
+
+  if (path === "/api/admin/models") {
+    sendJson(response, 200, { models: [{ id: "qwen/qwen-vision", canonicalSlug: "qwen/qwen-vision", name: "Qwen Vision", inputModalities: ["text", "image"], outputModalities: ["text"], supportedParameters: ["structured_outputs"] }] });
+    return;
+  }
+
+  if (path === "/api/admin/invites") {
+    sendJson(response, 200, { invites: [] });
+    return;
+  }
+
+  if (path === "/api/admin/cost") {
+    sendJson(response, 200, { totalMicrodollars: 0, totalDollars: "0.00", byUser: [], byDay: [] });
     return;
   }
 

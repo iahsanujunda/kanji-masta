@@ -3,12 +3,106 @@ package com.kanjimasta.modules.admin
 import com.kanjimasta.core.db.*
 import org.ktorm.database.Database
 import org.ktorm.dsl.*
+import org.ktorm.support.postgresql.insertReturning
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 class AdminRepository(private val db: Database) {
+
+    fun createModelConfig(
+        request: ModelConfigRequest,
+        adminUserId: String,
+        validationPassed: Boolean,
+        failureCode: String?,
+    ): ModelConfigItem = db.useTransaction {
+        val now = Instant.now()
+        val version = db.insertReturning(AiModelConfigTable, AiModelConfigTable.version) {
+            set(it.status, if (validationPassed) "draft" else "rejected")
+            set(it.photoAnalysisModel, request.photoAnalysisModel)
+            set(it.quizGenerationModel, request.quizGenerationModel)
+            set(it.wordDiscoveryModel, request.wordDiscoveryModel)
+            set(it.validationStatus, if (validationPassed) "passed" else "failed")
+            set(it.failureCode, failureCode)
+            set(it.createdBy, adminUserId)
+            set(it.validatedAt, now)
+        } ?: error("Model configuration version was not generated")
+        getModelConfig(version) ?: error("Created model configuration is missing")
+    }
+
+    fun activateModelConfig(version: Long): ModelConfigItem? = db.useTransaction {
+        val target = getModelConfig(version) ?: return@useTransaction null
+        if (target.status !in setOf("draft", "superseded") || target.validationStatus != "passed") {
+            return@useTransaction null
+        }
+        if (target.status == "draft") {
+            val latestDraft = db.from(AiModelConfigTable)
+                .select(AiModelConfigTable.version)
+                .where {
+                    (AiModelConfigTable.status eq "draft") and
+                        (AiModelConfigTable.validationStatus eq "passed")
+                }
+                .orderBy(AiModelConfigTable.version.desc())
+                .limit(1)
+                .map { it[AiModelConfigTable.version] }
+                .firstOrNull()
+            if (latestDraft != version) return@useTransaction null
+        }
+
+        db.update(AiModelConfigTable) {
+            set(it.status, "superseded")
+            where { it.status eq "active" }
+        }
+        val activated = db.update(AiModelConfigTable) {
+            set(it.status, "active")
+            set(it.activatedAt, Instant.now())
+            where {
+                (it.version eq version) and
+                    (it.status inList listOf("draft", "superseded")) and
+                    (it.validationStatus eq "passed")
+            }
+        }
+        if (activated != 1) error("Model configuration changed during activation")
+        getModelConfig(version)
+    }
+
+    fun getModelConfigs(): List<ModelConfigItem> = db.from(AiModelConfigTable)
+        .select()
+        .orderBy(AiModelConfigTable.version.desc())
+        .limit(20)
+        .map(::mapModelConfig)
+
+    fun getActiveModelConfig(): ModelConfigItem? = db.from(AiModelConfigTable)
+        .select()
+        .where { AiModelConfigTable.status eq "active" }
+        .limit(1)
+        .map(::mapModelConfig)
+        .firstOrNull()
+
+    private fun getModelConfig(version: Long): ModelConfigItem? = db.from(AiModelConfigTable)
+        .select()
+        .where { AiModelConfigTable.version eq version }
+        .limit(1)
+        .map(::mapModelConfig)
+        .firstOrNull()
+
+    private fun mapModelConfig(row: QueryRowSet): ModelConfigItem = ModelConfigItem(
+        version = row[AiModelConfigTable.version] ?: 0,
+        status = row[AiModelConfigTable.status] ?: "rejected",
+        photoAnalysisModel = row[AiModelConfigTable.photoAnalysisModel] ?: "",
+        quizGenerationModel = row[AiModelConfigTable.quizGenerationModel] ?: "",
+        wordDiscoveryModel = row[AiModelConfigTable.wordDiscoveryModel] ?: "",
+        validationStatus = row[AiModelConfigTable.validationStatus] ?: "failed",
+        failureCode = row[AiModelConfigTable.failureCode],
+        createdBy = row[AiModelConfigTable.createdBy] ?: "system",
+        createdAt = row[AiModelConfigTable.createdAt]?.toString() ?: "",
+        validatedAt = row[AiModelConfigTable.validatedAt]?.toString(),
+        activatedAt = row[AiModelConfigTable.activatedAt]?.toString(),
+    )
+
+    private val staleCutoff: Instant
+        get() = Instant.now().minus(25, ChronoUnit.HOURS)
 
     fun getCostByUser(): List<CostByUser> {
         val photoCosts = mutableMapOf<String, Long>()
@@ -54,6 +148,16 @@ class AdminRepository(private val db: Database) {
 
     fun getJobCounts(): JobCounts {
         var pending = 0; var processing = 0; var done = 0; var failed = 0
+        db.from(PhotoSessionTable)
+            .select(PhotoSessionTable.status)
+            .map { row ->
+                when (normalizePhotoStatus(row[PhotoSessionTable.status])) {
+                    "pending" -> pending++
+                    "processing" -> processing++
+                    "done" -> done++
+                    "failed" -> failed++
+                }
+            }
         db.from(QuizGenerationJobTable)
             .select(QuizGenerationJobTable.status)
             .map { row ->
@@ -68,45 +172,298 @@ class AdminRepository(private val db: Database) {
         return JobCounts(pending, processing, done, failed)
     }
 
-    fun getJobs(status: String?, limit: Int = 100): List<JobItem> {
+    fun getJobs(status: String?, type: String? = null, limit: Int = 100): List<JobItem> {
+        val normalizedStatus = status?.lowercase()
+        val photoJobs = if (type == null || type == "photo_analysis") getPhotoJobs() else emptyList()
+        val quizJobs = if (type == null || type == "quiz_generation") getQuizJobs() else emptyList()
+        return attachLatestAttempts(photoJobs + quizJobs)
+            .asSequence()
+            .filter {
+                normalizedStatus == null ||
+                    (normalizedStatus == "needs-action" && (it.status == "failed" || it.stale)) ||
+                    it.status == normalizedStatus
+            }
+            .sortedByDescending { it.createdAt }
+            .take(limit)
+            .toList()
+    }
+
+    private fun getPhotoJobs(): List<JobItem> = db.from(PhotoSessionTable)
+        .select()
+        .orderBy(PhotoSessionTable.createdAt.desc())
+        .limit(100)
+        .map { row ->
+            val status = normalizePhotoStatus(row[PhotoSessionTable.status])
+            val updatedAt = row[PhotoSessionTable.updatedAt]
+            JobItem(
+                id = row[PhotoSessionTable.id].toString(),
+                type = "photo_analysis",
+                status = status,
+                stale = status in setOf("pending", "processing") && updatedAt?.isBefore(staleCutoff) == true,
+                attempts = row[PhotoSessionTable.attempts] ?: 0,
+                maxAttempts = 3,
+                userId = row[PhotoSessionTable.userId] ?: "",
+                summary = "Photo analysis",
+                costMicrodollars = row[PhotoSessionTable.costMicrodollars],
+                createdAt = row[PhotoSessionTable.createdAt]?.toString() ?: "",
+                updatedAt = updatedAt?.toString() ?: "",
+                failureCode = row[PhotoSessionTable.failureCode],
+            )
+        }
+
+    private fun getQuizJobs(): List<JobItem> {
         return db.from(QuizGenerationJobTable)
             .innerJoin(KanjiMasterTable, on = QuizGenerationJobTable.kanjiId eq KanjiMasterTable.id)
             .leftJoin(WordMasterTable, on = QuizGenerationJobTable.wordMasterId eq WordMasterTable.id)
             .select()
-            .let { query ->
-                if (status != null) {
-                    query.where { QuizGenerationJobTable.status eq JobStatus.valueOf(status) }
-                } else query
-            }
             .orderBy(QuizGenerationJobTable.createdAt.desc())
-            .limit(limit)
+            .limit(100)
             .map { row ->
+                val status = row[QuizGenerationJobTable.status]?.name?.lowercase() ?: "failed"
+                val updatedAt = row[QuizGenerationJobTable.updatedAt]
+                val character = row[KanjiMasterTable.character] ?: ""
                 JobItem(
                     id = row[QuizGenerationJobTable.id].toString(),
-                    status = row[QuizGenerationJobTable.status]?.name ?: "UNKNOWN",
+                    type = "quiz_generation",
+                    status = status,
+                    stale = status in setOf("pending", "processing") && updatedAt?.isBefore(staleCutoff) == true,
                     attempts = row[QuizGenerationJobTable.attempts] ?: 0,
-                    kanji = row[KanjiMasterTable.character] ?: "",
+                    maxAttempts = 3,
+                    kanji = character,
                     word = row[WordMasterTable.word],
                     userId = row[QuizGenerationJobTable.userId] ?: "",
+                    summary = "Quiz generation · $character",
                     costMicrodollars = row[QuizGenerationJobTable.costMicrodollars],
                     createdAt = row[QuizGenerationJobTable.createdAt]?.toString() ?: "",
+                    updatedAt = updatedAt?.toString() ?: "",
                 )
             }
     }
 
-    fun retryJob(id: UUID) {
-        db.update(QuizGenerationJobTable) {
-            set(it.status, JobStatus.PENDING)
-            set(it.attempts, 0)
-            where { it.id eq id }
+    private data class AttemptSnapshot(
+        val startedAt: String?,
+        val finishedAt: String?,
+        val modelId: String?,
+        val modelConfigVersion: Long?,
+    )
+
+    private fun attachLatestAttempts(jobs: List<JobItem>): List<JobItem> {
+        if (jobs.isEmpty()) return jobs
+        val snapshots = mutableMapOf<Pair<String, UUID>, AttemptSnapshot>()
+        db.from(JobAttemptTable)
+            .select()
+            .orderBy(JobAttemptTable.attemptNumber.desc())
+            .forEach { row ->
+                val type = row[JobAttemptTable.jobType] ?: return@forEach
+                val id = row[JobAttemptTable.jobId] ?: return@forEach
+                snapshots.putIfAbsent(
+                    type to id,
+                    AttemptSnapshot(
+                        startedAt = row[JobAttemptTable.startedAt]?.toString(),
+                        finishedAt = row[JobAttemptTable.finishedAt]?.toString(),
+                        modelId = row[JobAttemptTable.modelId],
+                        modelConfigVersion = row[JobAttemptTable.modelConfigVersion],
+                    ),
+                )
+            }
+        return jobs.map { job ->
+            val attempt = snapshots[job.type to UUID.fromString(job.id)] ?: return@map job
+            job.copy(
+                startedAt = attempt.startedAt,
+                finishedAt = attempt.finishedAt,
+                modelId = attempt.modelId,
+                modelConfigVersion = attempt.modelConfigVersion,
+            )
         }
     }
 
-    fun retryAllFailed(): Int {
-        return db.update(QuizGenerationJobTable) {
-            set(it.status, JobStatus.PENDING)
-            set(it.attempts, 0)
-            where { it.status eq JobStatus.FAILED }
+    fun hasHardStaleJobs(): Boolean = getJobs(null, null, 100)
+        .any { it.status in setOf("pending", "processing") && it.stale }
+
+    private fun normalizePhotoStatus(status: String?): String = when (status?.uppercase()) {
+        "DONE", "INGESTED" -> "done"
+        "FAILED", "ERROR" -> "failed"
+        else -> "processing"
+    }
+
+    fun markFailed(type: String, id: UUID, adminUserId: String): JobCommandResult = db.useTransaction {
+        val updated = when (type) {
+            "photo_analysis" -> db.update(PhotoSessionTable) {
+                set(it.status, "FAILED")
+                set(it.failureCode, "admin_stopped")
+                where {
+                    (it.id eq id) and
+                        (it.status inList listOf("PROCESSING"))
+                }
+            }
+            "quiz_generation" -> db.update(QuizGenerationJobTable) {
+                set(it.status, JobStatus.FAILED)
+                where {
+                    (it.id eq id) and
+                        (it.status inList listOf(JobStatus.PENDING, JobStatus.PROCESSING))
+                }
+            }
+            else -> return@useTransaction JobCommandResult.NotFound
+        }
+        if (updated == 0) {
+            return@useTransaction if (jobExists(type, id)) JobCommandResult.Conflict else JobCommandResult.NotFound
+        }
+
+        terminalizeOrCreateAttempt(type, id, adminUserId, "admin_stopped")
+        JobCommandResult.Applied(getJob(type, id) ?: return@useTransaction JobCommandResult.NotFound)
+    }
+
+    fun getJobDetail(type: String, id: UUID): JobDetailResponse? {
+        val job = getJob(type, id) ?: return null
+        return JobDetailResponse(job, getAttempts(type, id))
+    }
+
+    fun rerun(type: String, id: UUID, adminUserId: String): JobCommandResult = db.useTransaction {
+        val before = getJob(type, id) ?: return@useTransaction JobCommandResult.NotFound
+        if (before.status != "failed" && !before.stale) return@useTransaction JobCommandResult.Conflict
+
+        val existingAttempts = getAttempts(type, id)
+        if (existingAttempts.isEmpty()) {
+            db.insert(JobAttemptTable) {
+                set(it.id, UUID.randomUUID())
+                set(it.jobType, type)
+                set(it.jobId, id)
+                set(it.attemptNumber, before.attempts.coerceAtLeast(1))
+                set(it.status, "failed")
+                set(it.trigger, "initial")
+                set(it.failureCode, before.failureCode ?: "unknown")
+                set(it.finishedAt, Instant.now())
+                set(it.createdBy, "system")
+            }
+        } else if (existingAttempts.last().status in setOf("pending", "processing")) {
+            terminalizeOrCreateAttempt(type, id, adminUserId, "admin_stopped")
+        }
+
+        val nextNumber = (getAttempts(type, id).maxOfOrNull { it.attemptNumber } ?: 0) + 1
+        val sourceUpdated = when (type) {
+            "photo_analysis" -> db.update(PhotoSessionTable) {
+                set(it.status, "PROCESSING")
+                set(it.failureCode, null)
+                set(it.attempts, nextNumber)
+                where {
+                    (it.id eq id) and (
+                        (it.status inList listOf("FAILED", "ERROR")) or
+                            ((it.status eq "PROCESSING") and (it.updatedAt less staleCutoff))
+                        )
+                }
+            }
+            "quiz_generation" -> db.update(QuizGenerationJobTable) {
+                set(it.status, JobStatus.PENDING)
+                set(it.attempts, nextNumber)
+                where {
+                    (it.id eq id) and (
+                        (it.status eq JobStatus.FAILED) or
+                            ((it.status eq JobStatus.PROCESSING) and (it.updatedAt less staleCutoff))
+                        )
+                }
+            }
+            else -> 0
+        }
+        if (sourceUpdated == 0) return@useTransaction JobCommandResult.Conflict
+
+        val activeConfig = getActiveModelConfig()
+        val modelId = when (type) {
+            "photo_analysis" -> activeConfig?.photoAnalysisModel
+            "quiz_generation" -> activeConfig?.quizGenerationModel
+            else -> null
+        }
+        db.insert(JobAttemptTable) {
+            set(it.id, UUID.randomUUID())
+            set(it.jobType, type)
+            set(it.jobId, id)
+            set(it.attemptNumber, nextNumber)
+            set(it.status, "pending")
+            set(it.trigger, "admin_rerun")
+            set(it.modelConfigVersion, activeConfig?.version)
+            set(it.modelId, modelId)
+            set(it.createdBy, adminUserId)
+        }
+        JobCommandResult.Applied(getJob(type, id) ?: return@useTransaction JobCommandResult.NotFound)
+    }
+
+    private fun getAttempts(type: String, id: UUID): List<JobAttemptItem> =
+        db.from(JobAttemptTable)
+            .select()
+            .where { (JobAttemptTable.jobType eq type) and (JobAttemptTable.jobId eq id) }
+            .orderBy(JobAttemptTable.attemptNumber.asc())
+            .map { row ->
+                JobAttemptItem(
+                    id = row[JobAttemptTable.id].toString(),
+                    attemptNumber = row[JobAttemptTable.attemptNumber] ?: 0,
+                    status = row[JobAttemptTable.status] ?: "failed",
+                    trigger = row[JobAttemptTable.trigger] ?: "initial",
+                    modelConfigVersion = row[JobAttemptTable.modelConfigVersion],
+                    modelId = row[JobAttemptTable.modelId],
+                    failureCode = row[JobAttemptTable.failureCode],
+                    startedAt = row[JobAttemptTable.startedAt]?.toString(),
+                    finishedAt = row[JobAttemptTable.finishedAt]?.toString(),
+                    createdBy = row[JobAttemptTable.createdBy] ?: "system",
+                    createdAt = row[JobAttemptTable.createdAt]?.toString() ?: "",
+                )
+            }
+
+    private fun jobExists(type: String, id: UUID): Boolean = when (type) {
+        "photo_analysis" -> db.from(PhotoSessionTable).select(PhotoSessionTable.id)
+            .where { PhotoSessionTable.id eq id }.limit(1).map { true }.firstOrNull() == true
+        "quiz_generation" -> db.from(QuizGenerationJobTable).select(QuizGenerationJobTable.id)
+            .where { QuizGenerationJobTable.id eq id }.limit(1).map { true }.firstOrNull() == true
+        else -> false
+    }
+
+    private fun getJob(type: String, id: UUID): JobItem? = when (type) {
+        "photo_analysis" -> attachLatestAttempts(getPhotoJobs().filter { it.id == id.toString() }).firstOrNull()
+        "quiz_generation" -> attachLatestAttempts(getQuizJobs().filter { it.id == id.toString() }).firstOrNull()
+        else -> null
+    }
+
+    private fun terminalizeOrCreateAttempt(
+        type: String,
+        id: UUID,
+        adminUserId: String,
+        failureCode: String,
+    ) {
+        val activeAttempt = db.from(JobAttemptTable)
+            .select(JobAttemptTable.id)
+            .where {
+                (JobAttemptTable.jobType eq type) and
+                    (JobAttemptTable.jobId eq id) and
+                    (JobAttemptTable.status inList listOf("pending", "processing"))
+            }
+            .orderBy(JobAttemptTable.attemptNumber.desc())
+            .limit(1)
+            .map { it[JobAttemptTable.id] }
+            .firstOrNull()
+        if (activeAttempt != null) {
+            db.update(JobAttemptTable) {
+                set(it.status, "failed")
+                set(it.failureCode, failureCode)
+                set(it.finishedAt, Instant.now())
+                where { it.id eq activeAttempt }
+            }
+            return
+        }
+        val latestNumber = db.from(JobAttemptTable)
+            .select(JobAttemptTable.attemptNumber)
+            .where { (JobAttemptTable.jobType eq type) and (JobAttemptTable.jobId eq id) }
+            .orderBy(JobAttemptTable.attemptNumber.desc())
+            .limit(1)
+            .map { it[JobAttemptTable.attemptNumber] ?: 0 }
+            .firstOrNull() ?: 0
+        db.insert(JobAttemptTable) {
+            set(it.id, UUID.randomUUID())
+            set(it.jobType, type)
+            set(it.jobId, id)
+            set(it.attemptNumber, latestNumber + 1)
+            set(it.status, "failed")
+            set(it.trigger, "initial")
+            set(it.failureCode, failureCode)
+            set(it.finishedAt, Instant.now())
+            set(it.createdBy, adminUserId)
         }
     }
 

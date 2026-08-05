@@ -84,6 +84,29 @@ def test_analyze_photo_provider_failure_marks_session_failed(client, db_conn, mo
     assert row["failure_code"] == "invalid_response"
 
 
+def test_analyze_photo_configuration_failure_is_terminal(client, db_conn):
+    session_id = str(uuid.uuid4())
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO photo_session (id, user_id, image_url) VALUES (%s, 'test-user', 'https://example.com/img.jpg')",
+            (session_id,),
+        )
+
+    with patch("app.main.get_ai_client", side_effect=RuntimeError("incomplete config")):
+        response = client.post("/analyze-photo", json={
+            "imageUrl": "https://example.com/img.jpg",
+            "userId": "test-user",
+            "sessionId": session_id,
+        })
+
+    assert response.status_code == 500
+    with db_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("SELECT status, failure_code FROM photo_session WHERE id = %s", (session_id,))
+        row = cur.fetchone()
+    assert row["status"] == "FAILED"
+    assert row["failure_code"] == "provider_failed"
+
+
 def test_analyze_photo_failure_callback_carries_failed_status(client, mock_ai_client):
     mock_ai_client.analyze_image.side_effect = AIClientError("provider failed")
     image_response = MagicMock(status_code=200, content=b"fake-image", headers={"content-type": "image/jpeg"})

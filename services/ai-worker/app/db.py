@@ -42,6 +42,30 @@ def get_conn():
         pool.putconn(conn)
 
 
+def get_active_model_config() -> dict | None:
+    """Return the only active safe model configuration, if one exists."""
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT version, photo_analysis_model, quiz_generation_model,
+                       word_discovery_model
+                FROM ai_model_config
+                WHERE status = 'active' AND validation_status = 'passed'
+                LIMIT 1
+                """
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            return {
+                "version": row["version"],
+                "photoAnalysisModel": row["photo_analysis_model"],
+                "quizGenerationModel": row["quiz_generation_model"],
+                "wordDiscoveryModel": row["word_discovery_model"],
+            }
+
+
 # ---------------------------------------------------------------------------
 # analyze_photo queries
 # ---------------------------------------------------------------------------
@@ -60,27 +84,101 @@ def claim_photo_session_for_analysis(session_id: str, task_attempt: int) -> dict
                 (session_id,),
             )
             row = cur.fetchone()
-            if not row or row["status"] == "DONE":
+            if not row or row["status"] in ("DONE", "INGESTED", "FAILED", "ERROR"):
                 return None
 
-            # A separate duplicate execution starts at attempt 0 and must not race the
-            # accepted execution. A platform retry advances CLOUD_RUN_TASK_ATTEMPT and
-            # is allowed to reclaim work left by its previous failed attempt.
-            if row["attempts"] != task_attempt:
+            cur.execute(
+                """
+                SELECT id, attempt_number, status, model_config_version, model_id
+                FROM job_attempt
+                WHERE job_type = 'photo_analysis' AND job_id = %s
+                ORDER BY attempt_number DESC
+                LIMIT 1
+                FOR UPDATE
+                """,
+                (session_id,),
+            )
+            attempt = cur.fetchone()
+            if attempt and attempt["status"] == "processing":
+                if task_attempt == 0:
+                    return None
+                cur.execute(
+                    """
+                    UPDATE job_attempt
+                    SET status = 'failed', failure_code = 'provider_failed', finished_at = now()
+                    WHERE id = %s AND status = 'processing'
+                    """,
+                    (attempt["id"],),
+                )
+                next_number = attempt["attempt_number"] + 1
+                cur.execute(
+                    """
+                    INSERT INTO job_attempt (
+                        job_type, job_id, attempt_number, status, trigger,
+                        model_config_version, model_id, created_by
+                    ) VALUES ('photo_analysis', %s, %s, 'pending', 'platform_retry', %s, %s, 'system')
+                    RETURNING id, attempt_number, status, model_config_version, model_id
+                    """,
+                    (session_id, next_number, attempt["model_config_version"], attempt["model_id"]),
+                )
+                attempt = cur.fetchone()
+            elif attempt and attempt["status"] != "pending":
+                return None
+            elif not attempt:
+                cur.execute(
+                    """
+                    SELECT version, photo_analysis_model
+                    FROM ai_model_config
+                    WHERE status = 'active' AND validation_status = 'passed'
+                    LIMIT 1
+                    """
+                )
+                config = cur.fetchone()
+                next_number = max(row["attempts"] or 0, 0) + 1
+                cur.execute(
+                    """
+                    INSERT INTO job_attempt (
+                        job_type, job_id, attempt_number, status, trigger,
+                        model_config_version, model_id, created_by
+                    ) VALUES ('photo_analysis', %s, %s, 'pending', 'initial', %s, %s, 'system')
+                    RETURNING id, attempt_number, status, model_config_version, model_id
+                    """,
+                    (
+                        session_id,
+                        next_number,
+                        config["version"] if config else None,
+                        config["photo_analysis_model"] if config else None,
+                    ),
+                )
+                attempt = cur.fetchone()
+
+            cur.execute(
+                """
+                UPDATE job_attempt
+                SET status = 'processing', started_at = COALESCE(started_at, now())
+                WHERE id = %s AND status = 'pending'
+                """,
+                (attempt["id"],),
+            )
+            if cur.rowcount != 1:
                 return None
             cur.execute(
                 """
                 UPDATE photo_session
-                SET attempts = attempts + 1, status = 'PROCESSING', failure_code = NULL
+                SET attempts = %s, status = 'PROCESSING', failure_code = NULL
                 WHERE id = %s
                 """,
-                (session_id,),
+                (attempt["attempt_number"], session_id),
             )
-            return {
+            result = {
                 "id": str(row["id"]),
                 "userId": row["user_id"],
                 "imageUrl": row["image_url"],
             }
+            if attempt["model_id"]:
+                result["modelId"] = attempt["model_id"]
+                result["modelConfigVersion"] = attempt["model_config_version"]
+            return result
 
 def get_user_known_kanji(user_id: str) -> list[str]:
     """Fetch all kanji characters the user already knows."""
@@ -140,6 +238,19 @@ def update_photo_session(
                 """,
                 (raw_response, status, cost_microdollars, failure_code, session_id),
             )
+            cur.execute(
+                """
+                UPDATE job_attempt
+                SET status = %s, failure_code = %s, finished_at = now()
+                WHERE id = (
+                    SELECT id FROM job_attempt
+                    WHERE job_type = 'photo_analysis' AND job_id = %s
+                      AND status IN ('pending', 'processing')
+                    ORDER BY attempt_number DESC LIMIT 1
+                )
+                """,
+                ("done" if status == "DONE" else "failed", failure_code, session_id),
+            )
             record_user_cost(cur, user_id, "PHOTO_ANALYSIS", session_id, cost_microdollars)
 
 
@@ -161,18 +272,88 @@ def get_pending_jobs(limit: int = 10) -> list[dict]:
                     km.meanings AS kanji_meanings,
                     wm.word AS word_text,
                     wm.reading AS word_reading,
-                    wm.meanings AS word_meanings
+                    wm.meanings AS word_meanings,
+                    ja.id AS attempt_id,
+                    ja.attempt_number,
+                    ja.status AS attempt_status,
+                    ja.model_config_version,
+                    ja.model_id
                 FROM quiz_generation_job qgj
                 JOIN kanji_master km ON qgj.kanji_id = km.id
                 LEFT JOIN word_master wm ON qgj.word_master_id = wm.id
+                LEFT JOIN LATERAL (
+                    SELECT id, attempt_number, status, model_config_version, model_id
+                    FROM job_attempt
+                    WHERE job_type = 'quiz_generation' AND job_id = qgj.id
+                    ORDER BY attempt_number DESC
+                    LIMIT 1
+                ) ja ON true
                 WHERE qgj.status = 'PENDING'
                 ORDER BY qgj.created_at ASC
                 LIMIT %s
+                FOR UPDATE OF qgj SKIP LOCKED
                 """,
                 (limit,),
             )
             rows = cur.fetchall()
-            return [_map_job_row(row) for row in rows]
+            claimed = []
+            for row in rows:
+                attempt_id = row.get("attempt_id")
+                if not attempt_id or row.get("attempt_status") not in ("pending", "processing"):
+                    cur.execute(
+                        """
+                        SELECT version, quiz_generation_model
+                        FROM ai_model_config
+                        WHERE status = 'active' AND validation_status = 'passed'
+                        LIMIT 1
+                        """
+                    )
+                    config = cur.fetchone()
+                    next_number = max(row.get("attempt_number") or 0, row.get("attempts") or 0) + 1
+                    cur.execute(
+                        """
+                        INSERT INTO job_attempt (
+                            job_type, job_id, attempt_number, status, trigger,
+                            model_config_version, model_id, created_by
+                        ) VALUES ('quiz_generation', %s, %s, 'pending', 'initial', %s, %s, 'system')
+                        RETURNING id, attempt_number, model_config_version, model_id
+                        """,
+                        (
+                            row["id"],
+                            next_number,
+                            config["version"] if config else None,
+                            config["quiz_generation_model"] if config else None,
+                        ),
+                    )
+                    created = cur.fetchone()
+                    attempt_id = created["id"]
+                    row["attempt_number"] = created["attempt_number"]
+                    row["model_config_version"] = created["model_config_version"]
+                    row["model_id"] = created["model_id"]
+                elif row.get("attempt_status") == "processing":
+                    continue
+
+                cur.execute(
+                    """
+                    UPDATE job_attempt
+                    SET status = 'processing', started_at = COALESCE(started_at, now())
+                    WHERE id = %s AND status = 'pending'
+                    """,
+                    (attempt_id,),
+                )
+                if cur.rowcount != 1:
+                    continue
+                cur.execute(
+                    """
+                    UPDATE quiz_generation_job
+                    SET status = 'PROCESSING', attempts = %s
+                    WHERE id = %s AND status = 'PENDING'
+                    """,
+                    (row["attempt_number"], row["id"]),
+                )
+                if cur.rowcount == 1:
+                    claimed.append(_map_job_row(row))
+            return claimed
 
 
 def _map_job_row(row: dict) -> dict:
@@ -186,6 +367,9 @@ def _map_job_row(row: dict) -> dict:
         "trigger": row["trigger"],
         "quizId": str(row["quiz_id"]) if row.get("quiz_id") else None,
         "attempts": row.get("attempts", 0),
+        "attemptNumber": row.get("attempt_number"),
+        "modelConfigVersion": row.get("model_config_version"),
+        "modelId": row.get("model_id"),
         "kanji": {
             "character": row["kanji_character"],
             "onyomi": row["kanji_onyomi"] or [],
@@ -223,6 +407,20 @@ def update_job_status(job_id: str, status: str, cost: int = 0, increment_attempt
                     (status, cost if cost > 0 else None, job_id),
                 )
             record_user_cost(cur, user_id, operation_type, job_id, cost)
+            if status in ("DONE", "FAILED"):
+                cur.execute(
+                    """
+                    UPDATE job_attempt
+                    SET status = %s, failure_code = %s, finished_at = now()
+                    WHERE id = (
+                        SELECT id FROM job_attempt
+                        WHERE job_type = 'quiz_generation' AND job_id = %s
+                          AND status IN ('pending', 'processing')
+                        ORDER BY attempt_number DESC LIMIT 1
+                    )
+                    """,
+                    (status.lower(), "provider_failed" if status == "FAILED" else None, job_id),
+                )
 
 
 def insert_quiz_and_distractor(kanji_id: str, word_master_id: str, quiz: dict) -> bool:

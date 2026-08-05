@@ -87,8 +87,17 @@ class PhotoRepository(private val db: Database) {
         }
     }
 
+    fun updateImageUrl(sessionId: UUID, userId: String, imageUrl: String) {
+        db.update(PhotoSessionTable) {
+            set(it.imageUrl, imageUrl)
+            where { (it.id eq sessionId) and (it.userId eq userId) }
+        }
+    }
+
     private fun toPhotoSessionRow(row: QueryRowSet) = PhotoSessionRow(
         id = row[PhotoSessionTable.id].toString(),
+        userId = row[PhotoSessionTable.userId] ?: "",
+        imageUrl = row[PhotoSessionTable.imageUrl] ?: "",
         rawAiResponse = row[PhotoSessionTable.rawAiResponse],
         status = PhotoSessionStatus.fromDatabase(row[PhotoSessionTable.status] ?: "PROCESSING"),
         costMicrodollars = row[PhotoSessionTable.costMicrodollars],
@@ -106,6 +115,8 @@ data class PhotoSessionCreation(
 
 data class PhotoSessionRow(
     val id: String,
+    val userId: String,
+    val imageUrl: String,
     val rawAiResponse: String?,
     val status: PhotoSessionStatus,
     val costMicrodollars: Long?,

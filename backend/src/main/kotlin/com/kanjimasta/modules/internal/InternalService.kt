@@ -37,6 +37,12 @@ class InternalService(private val db: Database) {
                 set(it.costMicrodollars, request.costMicrodollars)
                 where { it.id eq sessionId }
             }
+            terminalizeAttempt(
+                jobType = "photo_analysis",
+                jobId = sessionId,
+                status = if (hasResult) "done" else "failed",
+                failureCode = if (hasResult) null else request.failureCode ?: PhotoFailureCode.INVALID_RESPONSE,
+            )
 
             // 2. Record cost
             if (request.costMicrodollars > 0 && request.userId.isNotBlank()) {
@@ -89,6 +95,12 @@ class InternalService(private val db: Database) {
                 }
                 where { it.id eq jobId }
             }
+            terminalizeAttempt(
+                jobType = "quiz_generation",
+                jobId = jobId,
+                status = request.status.lowercase(),
+                failureCode = if (request.status == "FAILED") "provider_failed" else null,
+            )
 
             // 3. Record cost
             if (request.costMicrodollars > 0 && request.userId.isNotBlank()) {
@@ -108,10 +120,40 @@ class InternalService(private val db: Database) {
     fun cleanupStalePhotoSessions(): Int {
         // Photo analysis runs as a Cloud Run Job with a 24-hour task timeout.
         val cutoff = Instant.now().minus(25, ChronoUnit.HOURS)
-        return db.update(PhotoSessionTable) {
-            set(it.status, PhotoSessionStatus.FAILED.name)
-            set(it.failureCode, PhotoFailureCode.TIMED_OUT)
-            where { (it.status eq "PROCESSING") and (it.updatedAt less cutoff) }
+        return db.useTransaction {
+            val staleIds = db.from(PhotoSessionTable)
+                .select(PhotoSessionTable.id)
+                .where { (PhotoSessionTable.status eq "PROCESSING") and (PhotoSessionTable.updatedAt less cutoff) }
+                .mapNotNull { it[PhotoSessionTable.id] }
+            val staleQuizIds = db.from(QuizGenerationJobTable)
+                .select(QuizGenerationJobTable.id)
+                .where {
+                    (QuizGenerationJobTable.status inList listOf(JobStatus.PENDING, JobStatus.PROCESSING)) and
+                        (QuizGenerationJobTable.updatedAt less cutoff)
+                }
+                .mapNotNull { it[QuizGenerationJobTable.id] }
+            val photoUpdated = if (staleIds.isEmpty()) 0 else db.update(PhotoSessionTable) {
+                set(it.status, PhotoSessionStatus.FAILED.name)
+                set(it.failureCode, PhotoFailureCode.TIMED_OUT)
+                where {
+                    (it.id inList staleIds) and (it.status eq "PROCESSING") and (it.updatedAt less cutoff)
+                }
+            }
+            val quizUpdated = if (staleQuizIds.isEmpty()) 0 else db.update(QuizGenerationJobTable) {
+                set(it.status, JobStatus.FAILED)
+                where {
+                    (it.id inList staleQuizIds) and
+                        (it.status inList listOf(JobStatus.PENDING, JobStatus.PROCESSING)) and
+                        (it.updatedAt less cutoff)
+                }
+            }
+            staleIds.forEach { id ->
+                terminalizeAttempt("photo_analysis", id, "failed", PhotoFailureCode.TIMED_OUT)
+            }
+            staleQuizIds.forEach { id ->
+                terminalizeAttempt("quiz_generation", id, "failed", PhotoFailureCode.TIMED_OUT)
+            }
+            photoUpdated + quizUpdated
         }
     }
 
@@ -129,6 +171,46 @@ class InternalService(private val db: Database) {
                 where { it.id eq jobId }
             }
         }
+        if (request.status in setOf("DONE", "FAILED")) {
+            terminalizeAttempt(
+                "quiz_generation",
+                jobId,
+                request.status.lowercase(),
+                if (request.status == "FAILED") "provider_failed" else null,
+            )
+        } else if (request.status == "PROCESSING") {
+            val activeId = latestActiveAttemptId("quiz_generation", jobId)
+            if (activeId != null) {
+                db.update(JobAttemptTable) {
+                    set(it.status, "processing")
+                    set(it.startedAt, Instant.now())
+                    where { (it.id eq activeId) and (it.status eq "pending") }
+                }
+            }
+        }
         logger.info("Job status updated: job={} status={}", request.jobId, request.status)
     }
+
+    private fun terminalizeAttempt(jobType: String, jobId: UUID, status: String, failureCode: String?) {
+        val activeId = latestActiveAttemptId(jobType, jobId) ?: return
+        db.update(JobAttemptTable) {
+            set(it.status, status)
+            set(it.failureCode, failureCode)
+            set(it.finishedAt, Instant.now())
+            where { (it.id eq activeId) and (it.status inList listOf("pending", "processing")) }
+        }
+    }
+
+    private fun latestActiveAttemptId(jobType: String, jobId: UUID): UUID? =
+        db.from(JobAttemptTable)
+            .select(JobAttemptTable.id)
+            .where {
+                (JobAttemptTable.jobType eq jobType) and
+                    (JobAttemptTable.jobId eq jobId) and
+                    (JobAttemptTable.status inList listOf("pending", "processing"))
+            }
+            .orderBy(JobAttemptTable.attemptNumber.desc())
+            .limit(1)
+            .map { it[JobAttemptTable.id] }
+            .firstOrNull()
 }

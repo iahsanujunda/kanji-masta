@@ -20,4 +20,5 @@ object PhotoFailureCode {
     const val DISPATCH_FAILED = "dispatch_failed"
     const val INVALID_RESPONSE = "invalid_response"
     const val TIMED_OUT = "timed_out"
+    const val SOURCE_MISSING = "source_missing"
 }

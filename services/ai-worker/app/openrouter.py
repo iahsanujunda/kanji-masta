@@ -57,24 +57,28 @@ class OpenRouterAIClient:
         self._requester = requester or httpx.post
 
     @classmethod
-    def from_env(cls) -> "OpenRouterAIClient":
+    def from_env(cls, model_config: dict[str, Any] | None = None) -> "OpenRouterAIClient":
         api_key = os.environ.get("OPENROUTER_API_KEY")
         if not api_key:
             raise RuntimeError("OPENROUTER_API_KEY not configured")
 
         default_model = os.environ.get("OPENROUTER_MODEL", "").strip()
-        analyze_model = (
+        bootstrap_analyze_model = (
             os.environ.get("OPENROUTER_ANALYZE_MODEL", "").strip()
             or default_model
         )
-        quiz_model = (
+        bootstrap_quiz_model = (
             os.environ.get("OPENROUTER_QUIZ_MODEL", "").strip()
             or default_model
         )
-        discovery_model = (
+        bootstrap_discovery_model = (
             os.environ.get("OPENROUTER_DISCOVERY_MODEL", "").strip()
             or default_model
         )
+        config = model_config or {}
+        analyze_model = config.get("photoAnalysisModel") or bootstrap_analyze_model
+        quiz_model = config.get("quizGenerationModel") or bootstrap_quiz_model
+        discovery_model = config.get("wordDiscoveryModel") or bootstrap_discovery_model
         if not all((analyze_model, quiz_model, discovery_model)):
             raise RuntimeError(
                 "Configure OPENROUTER_MODEL or all of OPENROUTER_ANALYZE_MODEL, "

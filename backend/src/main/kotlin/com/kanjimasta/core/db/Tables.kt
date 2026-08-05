@@ -179,6 +179,36 @@ object QuizGenerationJobTable : Table<Nothing>("quiz_generation_job") {
     val updatedAt = timestamp("updated_at")
 }
 
+object JobAttemptTable : Table<Nothing>("job_attempt") {
+    val id = uuid("id").primaryKey()
+    val jobType = text("job_type")
+    val jobId = uuid("job_id")
+    val attemptNumber = int("attempt_number")
+    val status = text("status")
+    val trigger = text("trigger")
+    val modelConfigVersion = long("model_config_version")
+    val modelId = text("model_id")
+    val failureCode = text("failure_code")
+    val startedAt = timestamp("started_at")
+    val finishedAt = timestamp("finished_at")
+    val createdBy = text("created_by")
+    val createdAt = timestamp("created_at")
+}
+
+object AiModelConfigTable : Table<Nothing>("ai_model_config") {
+    val version = long("version").primaryKey()
+    val status = text("status")
+    val photoAnalysisModel = text("photo_analysis_model")
+    val quizGenerationModel = text("quiz_generation_model")
+    val wordDiscoveryModel = text("word_discovery_model")
+    val validationStatus = text("validation_status")
+    val failureCode = text("failure_code")
+    val createdBy = text("created_by")
+    val createdAt = timestamp("created_at")
+    val validatedAt = timestamp("validated_at")
+    val activatedAt = timestamp("activated_at")
+}
+
 object UserWordsTable : Table<Nothing>("user_words") {
     val id = uuid("id").primaryKey()
     val userId = text("user_id")

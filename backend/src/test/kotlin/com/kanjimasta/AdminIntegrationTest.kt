@@ -1,6 +1,13 @@
 package com.kanjimasta
 
+import com.kanjimasta.core.db.KanjiMasterTable
+import com.kanjimasta.core.db.PhotoSessionTable
+import com.kanjimasta.core.db.QuizGenerationJobTable
 import com.kanjimasta.core.db.UserCostTable
+import com.kanjimasta.core.ai.CatalogModel
+import com.kanjimasta.core.ai.BootstrapModelConfig
+import com.kanjimasta.core.ai.ModelCatalogGateway
+import com.kanjimasta.core.ai.ModelValidationResult
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
@@ -14,6 +21,288 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class AdminIntegrationTest : com.kanjimasta.support.PersistenceTest() {
+
+    @Test
+    fun `validated model configuration activates atomically and drives status`() = testApplication {
+        val catalog = object : ModelCatalogGateway {
+            override suspend fun search(workload: String, query: String?) = emptyList<CatalogModel>()
+            override suspend fun validate(models: Map<String, String>) = ModelValidationResult(true)
+        }
+        application {
+            testModule(
+                TestDatabase.db,
+                modelCatalogGateway = catalog,
+                bootstrapModelConfig = BootstrapModelConfig.EMPTY,
+            )
+        }
+        val client = jsonClient()
+
+        val down = client.get("/api/admin/status") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+        assertEquals("down", Json.parseToJsonElement(down.bodyAsText()).jsonObject["status"]!!.jsonPrimitive.content)
+
+        val validated = client.post("/api/admin/model-config/validate") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+            contentType(ContentType.Application.Json)
+            setBody(
+                """{
+                  "photoAnalysisModel":"vision/model",
+                  "quizGenerationModel":"text/model",
+                  "wordDiscoveryModel":"text/model"
+                }""".trimIndent(),
+            )
+        }
+        assertEquals(HttpStatusCode.OK, validated.status)
+        val version = Json.parseToJsonElement(validated.bodyAsText()).jsonObject["version"]!!.jsonPrimitive.long
+
+        val activated = client.post("/api/admin/model-config/$version/activate") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+        assertEquals(HttpStatusCode.OK, activated.status)
+        assertEquals("active", Json.parseToJsonElement(activated.bodyAsText()).jsonObject["status"]!!.jsonPrimitive.content)
+
+        val status = client.get("/api/admin/status") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+        assertEquals("operational", Json.parseToJsonElement(status.bodyAsText()).jsonObject["status"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `photo rerun snapshots the active configuration model`() = testApplication {
+        val catalog = object : ModelCatalogGateway {
+            override suspend fun search(workload: String, query: String?) = emptyList<CatalogModel>()
+            override suspend fun validate(models: Map<String, String>) = ModelValidationResult(true)
+        }
+        application { testModule(TestDatabase.db, modelCatalogGateway = catalog) }
+        val client = jsonClient()
+        val validated = client.post("/api/admin/model-config/validate") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+            contentType(ContentType.Application.Json)
+            setBody(
+                """{"photoAnalysisModel":"vision/v2","quizGenerationModel":"text/v2","wordDiscoveryModel":"text/v2"}""",
+            )
+        }
+        val version = Json.parseToJsonElement(validated.bodyAsText()).jsonObject["version"]!!.jsonPrimitive.long
+        client.post("/api/admin/model-config/$version/activate") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+        val photoId = UUID.randomUUID()
+        TestDatabase.db.insert(PhotoSessionTable) {
+            set(it.id, photoId)
+            set(it.userId, TEST_USER_ID)
+            set(it.imageUrl, "https://example.test/expired.jpg")
+            set(it.storagePath, "$TEST_USER_ID/photo.jpg")
+            set(it.status, "FAILED")
+            set(it.failureCode, "provider_failed")
+            set(it.attempts, 1)
+        }
+
+        val rerun = client.post("/api/admin/jobs/photo_analysis/$photoId/rerun") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+        assertEquals(HttpStatusCode.OK, rerun.status)
+        val detail = client.get("/api/admin/jobs/photo_analysis/$photoId") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+        val attempt = Json.parseToJsonElement(detail.bodyAsText()).jsonObject["attempts"]!!
+            .jsonArray.last().jsonObject
+        assertEquals(version, attempt["modelConfigVersion"]!!.jsonPrimitive.long)
+        assertEquals("vision/v2", attempt["modelId"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `failed validation preserves active config and a superseded version can roll back`() = testApplication {
+        var validationPasses = true
+        val catalog = object : ModelCatalogGateway {
+            override suspend fun search(workload: String, query: String?) = emptyList<CatalogModel>()
+            override suspend fun validate(models: Map<String, String>) =
+                ModelValidationResult(validationPasses, if (validationPasses) null else "unsupported_model")
+        }
+        application { testModule(TestDatabase.db, modelCatalogGateway = catalog) }
+        val client = jsonClient()
+        suspend fun validate(photo: String): Long {
+            val response = client.post("/api/admin/model-config/validate") {
+                header(HttpHeaders.Authorization, "Bearer test-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"photoAnalysisModel":"$photo","quizGenerationModel":"text/model","wordDiscoveryModel":"text/model"}""")
+            }
+            return Json.parseToJsonElement(response.bodyAsText()).jsonObject["version"]!!.jsonPrimitive.long
+        }
+        suspend fun activate(version: Long) = client.post("/api/admin/model-config/$version/activate") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+
+        val first = validate("vision/one")
+        assertEquals(HttpStatusCode.OK, activate(first).status)
+        val second = validate("vision/two")
+        assertEquals(HttpStatusCode.OK, activate(second).status)
+        validationPasses = false
+        validate("vision/broken")
+
+        val rollback = activate(first)
+        assertEquals(HttpStatusCode.OK, rollback.status)
+        val configs = client.get("/api/admin/model-config") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+        val active = Json.parseToJsonElement(configs.bodyAsText()).jsonObject["configs"]!!.jsonArray
+            .single { it.jsonObject["status"]!!.jsonPrimitive.content == "active" }.jsonObject
+        assertEquals(first, active["version"]!!.jsonPrimitive.long)
+        assertEquals("vision/one", active["photoAnalysisModel"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `admin model search returns safe backend catalog data`() = testApplication {
+        val catalog = object : ModelCatalogGateway {
+            override suspend fun search(workload: String, query: String?): List<CatalogModel> = listOf(
+                CatalogModel(
+                    id = "qwen/qwen-vision",
+                    canonicalSlug = "qwen/qwen-vision",
+                    name = "Qwen Vision",
+                    inputModalities = listOf("text", "image"),
+                    outputModalities = listOf("text"),
+                    contextLength = 131072,
+                    supportedParameters = listOf("structured_outputs"),
+                    promptPrice = "0.000001",
+                    completionPrice = "0.000002",
+                ),
+            )
+            override suspend fun validate(models: Map<String, String>) = ModelValidationResult(true)
+        }
+        application { testModule(TestDatabase.db, modelCatalogGateway = catalog) }
+
+        val response = jsonClient().get("/api/admin/models?workload=photo_analysis&q=qwen") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+        assertEquals("qwen/qwen-vision", body["models"]!!.jsonArray.single().jsonObject["id"]!!.jsonPrimitive.content)
+        assertTrue("apiKey" !in response.bodyAsText())
+    }
+
+    @Test
+    fun `GET admin jobs returns photo and quiz durable work`() = testApplication {
+        val photoId = UUID.randomUUID()
+        val kanjiId = UUID.randomUUID()
+        val quizJobId = UUID.randomUUID()
+        TestDatabase.db.insert(PhotoSessionTable) {
+            set(it.id, photoId)
+            set(it.userId, TEST_USER_ID)
+            set(it.imageUrl, "https://example.test/photo.jpg")
+            set(it.storagePath, "$TEST_USER_ID/photo.jpg")
+            set(it.status, "PROCESSING")
+        }
+        TestDatabase.db.insert(KanjiMasterTable) {
+            set(it.id, kanjiId)
+            set(it.character, "駅")
+            set(it.onyomi, listOf("エキ"))
+            set(it.kunyomi, emptyList())
+            set(it.meanings, listOf("station"))
+        }
+        TestDatabase.db.insert(QuizGenerationJobTable) {
+            set(it.id, quizJobId)
+            set(it.userId, TEST_USER_ID)
+            set(it.kanjiId, kanjiId)
+        }
+
+        application { testModule(TestDatabase.db) }
+        val response = jsonClient().get("/api/admin/jobs") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        val jobs = Json.parseToJsonElement(response.bodyAsText()).jsonObject["jobs"]!!.jsonArray
+        assertEquals(setOf("photo_analysis", "quiz_generation"), jobs.map {
+            it.jsonObject["type"]!!.jsonPrimitive.content
+        }.toSet())
+    }
+
+    @Test
+    fun `admin can mark a processing photo failed`() = testApplication {
+        val photoId = UUID.randomUUID()
+        TestDatabase.db.insert(PhotoSessionTable) {
+            set(it.id, photoId)
+            set(it.userId, TEST_USER_ID)
+            set(it.imageUrl, "https://example.test/photo.jpg")
+            set(it.storagePath, "$TEST_USER_ID/photo.jpg")
+            set(it.status, "PROCESSING")
+        }
+        application { testModule(TestDatabase.db) }
+        val client = jsonClient()
+
+        val failResponse = client.post("/api/admin/jobs/photo_analysis/$photoId/fail") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+
+        assertEquals(HttpStatusCode.OK, failResponse.status)
+        val sessionResponse = client.get("/api/photo/session/$photoId") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+        assertEquals("failed", Json.parseToJsonElement(sessionResponse.bodyAsText())
+            .jsonObject["status"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `rerun preserves failed photo attempt and appends a pending attempt`() = testApplication {
+        val photoId = UUID.randomUUID()
+        TestDatabase.db.insert(PhotoSessionTable) {
+            set(it.id, photoId)
+            set(it.userId, TEST_USER_ID)
+            set(it.imageUrl, "https://example.test/expired-photo.jpg")
+            set(it.storagePath, "$TEST_USER_ID/photo.jpg")
+            set(it.status, "FAILED")
+            set(it.failureCode, "provider_failed")
+            set(it.attempts, 1)
+        }
+        application { testModule(TestDatabase.db) }
+        val client = jsonClient()
+
+        val rerunResponse = client.post("/api/admin/jobs/photo_analysis/$photoId/rerun") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+        assertEquals(HttpStatusCode.OK, rerunResponse.status)
+
+        val detailResponse = client.get("/api/admin/jobs/photo_analysis/$photoId") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+        assertEquals(HttpStatusCode.OK, detailResponse.status)
+        val detail = Json.parseToJsonElement(detailResponse.bodyAsText()).jsonObject
+        assertEquals("processing", detail["job"]!!.jsonObject["status"]!!.jsonPrimitive.content)
+        assertEquals(listOf("failed", "pending"), detail["attempts"]!!.jsonArray.map {
+            it.jsonObject["status"]!!.jsonPrimitive.content
+        })
+    }
+
+    @Test
+    fun `photo rerun dispatches durable execution`() = testApplication {
+        val photoId = UUID.randomUUID()
+        var dispatched = false
+        TestDatabase.db.insert(PhotoSessionTable) {
+            set(it.id, photoId)
+            set(it.userId, TEST_USER_ID)
+            set(it.imageUrl, "https://example.test/expired-photo.jpg")
+            set(it.storagePath, "$TEST_USER_ID/photo.jpg")
+            set(it.status, "FAILED")
+            set(it.failureCode, "provider_failed")
+        }
+        application {
+            testModule(
+                TestDatabase.db,
+                adminJobDispatcher = { type, id, userId ->
+                    dispatched = type == "photo_analysis" && id == photoId && userId == TEST_USER_ID
+                    true
+                },
+            )
+        }
+
+        val response = jsonClient().post("/api/admin/jobs/photo_analysis/$photoId/rerun") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertTrue(dispatched)
+    }
 
     private fun seedCostData(db: org.ktorm.database.Database) {
         // Clean first
@@ -96,9 +385,9 @@ class AdminIntegrationTest : com.kanjimasta.support.PersistenceTest() {
         assertEquals(HttpStatusCode.OK, response.status)
         val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
         val jobs = body["jobs"]!!.jsonArray
-        // All returned jobs should be FAILED (or empty)
+        // All returned jobs use the normalized lowercase status union.
         for (job in jobs) {
-            assertEquals("FAILED", job.jsonObject["status"]?.jsonPrimitive?.content)
+            assertEquals("failed", job.jsonObject["status"]?.jsonPrimitive?.content)
         }
     }
 
@@ -126,15 +415,13 @@ class AdminIntegrationTest : com.kanjimasta.support.PersistenceTest() {
     }
 
     @Test
-    fun `POST admin jobs retry-all returns count`() = testApplication {
+    fun `legacy destructive retry-all endpoint is removed`() = testApplication {
         application { testModule(TestDatabase.db) }
         val client = jsonClient()
         val response = client.post("/api/admin/jobs/retry-all") {
             header(HttpHeaders.Authorization, "Bearer test-token")
         }
-        assertEquals(HttpStatusCode.OK, response.status)
-        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-        assertTrue(body.containsKey("retried"))
+        assertEquals(HttpStatusCode.NotFound, response.status)
     }
 
     // --- Cost data accuracy tests ---

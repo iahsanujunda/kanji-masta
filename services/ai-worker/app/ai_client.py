@@ -45,7 +45,7 @@ def parse_json_array(text: str) -> list[Any]:
     return parsed
 
 
-def get_ai_client() -> AIClient:
+def get_ai_client(model_config: dict[str, Any] | None = None) -> AIClient:
     """Build the configured provider adapter.
 
     Gemini remains the default for backward compatibility. Set
@@ -60,7 +60,7 @@ def get_ai_client() -> AIClient:
     if provider == "openrouter":
         from .openrouter import OpenRouterAIClient
 
-        return OpenRouterAIClient.from_env()
+        return OpenRouterAIClient.from_env(model_config)
 
     raise RuntimeError(
         f"Unsupported AI_PROVIDER={provider!r}; expected 'gemini' or 'openrouter'"

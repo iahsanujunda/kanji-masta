@@ -27,6 +27,22 @@ def test_factory_selects_openrouter(monkeypatch):
     assert client._discovery_model == "provider/model"
 
 
+def test_active_configuration_overrides_bootstrap_models(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "openrouter")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_MODEL", "bootstrap/model")
+
+    client = get_ai_client({
+        "photoAnalysisModel": "active/photo",
+        "quizGenerationModel": "active/quiz",
+        "wordDiscoveryModel": "active/discovery",
+    })
+
+    assert client._analyze_model == "active/photo"
+    assert client._quiz_model == "active/quiz"
+    assert client._discovery_model == "active/discovery"
+
+
 def test_factory_rejects_unknown_provider(monkeypatch):
     monkeypatch.setenv("AI_PROVIDER", "unknown")
 

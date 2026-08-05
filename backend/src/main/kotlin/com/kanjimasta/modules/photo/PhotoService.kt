@@ -4,6 +4,7 @@ import com.kanjimasta.core.auth.getGoogleAccessToken
 import com.kanjimasta.core.auth.getIdentityToken
 import com.kanjimasta.core.db.PhotoFailureCode
 import com.kanjimasta.core.db.PhotoSessionStatus
+import com.kanjimasta.core.storage.SupabaseStorageSigner
 import io.ktor.client.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
@@ -25,6 +26,7 @@ class PhotoService(
     private val selfUrl: String = "",
     private val internalKey: String = "",
     private val photoAnalysisJobName: String = "",
+    private val storageSigner: SupabaseStorageSigner? = null,
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
 
@@ -55,7 +57,26 @@ class PhotoService(
         return AnalyzePhotoResponse(sessionId = sessionId, status = PhotoSessionStatus.PROCESSING.apiValue)
     }
 
-    private suspend fun dispatchCloudRunJob(sessionId: String, userId: String) {
+    suspend fun rerunAnalysis(sessionId: UUID, userId: String): Boolean {
+        val session = photoRepository.getSession(sessionId, userId) ?: return false
+        val imageUrl = if (!session.storagePath.isNullOrBlank() && storageSigner != null) {
+            storageSigner.signPhoto(session.storagePath) ?: run {
+                photoRepository.markFailed(sessionId.toString(), userId, PhotoFailureCode.SOURCE_MISSING)
+                return false
+            }
+        } else {
+            session.imageUrl
+        }
+        photoRepository.updateImageUrl(sessionId, userId, imageUrl)
+        return if (photoAnalysisJobName.isNotBlank()) {
+            dispatchCloudRunJob(sessionId.toString(), userId)
+        } else {
+            dispatchLocalWorker(sessionId.toString(), userId, imageUrl)
+            true
+        }
+    }
+
+    private suspend fun dispatchCloudRunJob(sessionId: String, userId: String): Boolean {
         try {
             val accessToken = getGoogleAccessToken(httpClient)
                 ?: error("Google Cloud access token is unavailable")
@@ -85,12 +106,14 @@ class PhotoService(
                     response.bodyAsText(),
                 )
                 photoRepository.markFailed(sessionId, userId, PhotoFailureCode.DISPATCH_FAILED)
-                return
+                return false
             }
             logger.info("Cloud Run photo job accepted for session={}", sessionId)
+            return true
         } catch (e: Exception) {
             logger.error("Cloud Run photo job dispatch failed for session={}: {}", sessionId, e.message, e)
             photoRepository.markFailed(sessionId, userId, PhotoFailureCode.DISPATCH_FAILED)
+            return false
         }
     }
 

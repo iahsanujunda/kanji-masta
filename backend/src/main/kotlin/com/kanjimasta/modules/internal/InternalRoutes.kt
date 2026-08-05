@@ -47,7 +47,7 @@ fun Route.internalRoutes(internalService: InternalService, internalKey: String) 
         post("/cron/cleanup-photo-sessions") {
             if (!requireInternalKey(internalKey)) return@post
             val count = internalService.cleanupStalePhotoSessions()
-            logger.info("Cleanup: marked {} stale photo sessions as FAILED", count)
+            logger.info("Cleanup: marked {} stale durable jobs as FAILED", count)
             call.respond(buildJsonObject {
                 put("status", "ok")
                 put("failed", count)

@@ -25,7 +25,7 @@ class PhotoRepository(private val db: Database) {
                 set(it.imageUrl, imageUrl)
                 if (storagePath != null) set(it.storagePath, storagePath)
             }
-            return PhotoSessionCreation(insertedId.toString(), created = true)
+            return PhotoSessionCreation(insertedId.toString(), created = true, shouldDispatch = true)
         }
 
         val returnedId = db.insertOrUpdateReturning(PhotoSessionTable, PhotoSessionTable.id) {
@@ -40,8 +40,17 @@ class PhotoRepository(private val db: Database) {
                     set(PhotoSessionTable.storagePath, excluded(PhotoSessionTable.storagePath))
                 }
             }
-        }
-        return PhotoSessionCreation(returnedId.toString(), created = returnedId == id)
+        } ?: error("Photo session upsert did not return an id")
+        val created = returnedId == id
+        val shouldDispatch = created || db.from(PhotoSessionTable)
+            .select(PhotoSessionTable.status, PhotoSessionTable.attempts)
+            .where { PhotoSessionTable.id eq returnedId }
+            .map { row ->
+                row[PhotoSessionTable.status] == PhotoSessionStatus.PROCESSING.name &&
+                    row[PhotoSessionTable.attempts] == 0
+            }
+            .firstOrNull() == true
+        return PhotoSessionCreation(returnedId.toString(), created, shouldDispatch)
     }
 
     fun getSession(sessionId: UUID, userId: String): PhotoSessionRow? =
@@ -89,7 +98,11 @@ class PhotoRepository(private val db: Database) {
     )
 }
 
-data class PhotoSessionCreation(val id: String, val created: Boolean)
+data class PhotoSessionCreation(
+    val id: String,
+    val created: Boolean,
+    val shouldDispatch: Boolean,
+)
 
 data class PhotoSessionRow(
     val id: String,

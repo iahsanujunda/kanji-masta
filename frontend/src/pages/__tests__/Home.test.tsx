@@ -151,6 +151,39 @@ describe("Home", () => {
     const lesson = screen.getByText("Today's Lesson");
     expect(quiz.compareDocumentPosition(scan) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(scan.compareDocumentPosition(lesson) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText("Recent Scans")).not.toBeInTheDocument();
+  });
+
+  it("shows the active server scan once while retaining older recent scans", async () => {
+    const now = Date.now();
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === "/api/photo/recent") {
+        return Promise.resolve({ sessions: [
+          {
+            sessionId: "active-processing",
+            storagePath: null,
+            status: "processing",
+            createdAt: new Date(now).toISOString(),
+            kanjiCount: null,
+          },
+          {
+            sessionId: "older-done",
+            storagePath: null,
+            status: "done",
+            createdAt: new Date(now - 60_000).toISOString(),
+            kanjiCount: 3,
+          },
+        ] });
+      }
+      return Promise.resolve(activeSummary);
+    });
+
+    renderWithProviders(<Home />);
+
+    expect(await screen.findByRole("button", { name: /Analysing your photo/ })).toBeInTheDocument();
+    expect(screen.getAllByText(/Analysing/)).toHaveLength(1);
+    expect(screen.getByText("Recent Scans")).toBeInTheDocument();
+    expect(screen.getByText("3 kanji found")).toBeInTheDocument();
   });
 
   it("keeps the quiz first and links to queue management when multiple photos are saved", async () => {

@@ -37,6 +37,7 @@ fun Application.module() {
 
     // AI Worker (Cloud Run service replacing Firebase Functions)
     val aiWorkerUrl = environment.config.property("aiWorker.baseUrl").getString()
+    val photoAnalysisJobName = environment.config.propertyOrNull("photoAnalysis.jobName")?.getString() ?: ""
 
     val httpClient = HttpClient(CIO) {
         install(HttpTimeout) {
@@ -49,7 +50,14 @@ fun Application.module() {
     val selfUrl = environment.config.propertyOrNull("self.url")?.getString() ?: ""
 
     val photoRepository = PhotoRepository(database)
-    val photoService = PhotoService(photoRepository, httpClient, aiWorkerUrl, selfUrl, internalKey)
+    val photoService = PhotoService(
+        photoRepository,
+        httpClient,
+        aiWorkerUrl,
+        selfUrl,
+        internalKey,
+        photoAnalysisJobName,
+    )
 
     val kanjiRepository = KanjiRepository(database)
     val kanjiService = KanjiService(kanjiRepository, photoRepository, httpClient, aiWorkerUrl, selfUrl, internalKey)

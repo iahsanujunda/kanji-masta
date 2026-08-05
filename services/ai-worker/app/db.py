@@ -46,6 +46,42 @@ def get_conn():
 # analyze_photo queries
 # ---------------------------------------------------------------------------
 
+def claim_photo_session_for_analysis(session_id: str, task_attempt: int) -> dict | None:
+    """Atomically claim one Cloud Run task attempt and return its durable input."""
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT id, user_id, image_url, status, attempts
+                FROM photo_session
+                WHERE id = %s
+                FOR UPDATE
+                """,
+                (session_id,),
+            )
+            row = cur.fetchone()
+            if not row or row["status"] == "DONE":
+                return None
+
+            # A separate duplicate execution starts at attempt 0 and must not race the
+            # accepted execution. A platform retry advances CLOUD_RUN_TASK_ATTEMPT and
+            # is allowed to reclaim work left by its previous failed attempt.
+            if row["attempts"] != task_attempt:
+                return None
+            cur.execute(
+                """
+                UPDATE photo_session
+                SET attempts = attempts + 1, status = 'PROCESSING', failure_code = NULL
+                WHERE id = %s
+                """,
+                (session_id,),
+            )
+            return {
+                "id": str(row["id"]),
+                "userId": row["user_id"],
+                "imageUrl": row["image_url"],
+            }
+
 def get_user_known_kanji(user_id: str) -> list[str]:
     """Fetch all kanji characters the user already knows."""
     with get_conn() as conn:

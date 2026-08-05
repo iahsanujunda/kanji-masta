@@ -25,6 +25,8 @@ class InternalIntegrationTest : com.kanjimasta.support.PersistenceTest() {
             set(it.id, UUID.fromString(sessionId))
             set(it.userId, "internal-test-user")
             set(it.imageUrl, "https://example.com/test.jpg")
+            set(it.status, "FAILED")
+            set(it.failureCode, PhotoFailureCode.DISPATCH_FAILED)
         }
 
         try {
@@ -35,14 +37,30 @@ class InternalIntegrationTest : com.kanjimasta.support.PersistenceTest() {
             }
             assertEquals(HttpStatusCode.OK, response.status)
 
-            // Verify photo_session was updated
+            val duplicate = client.post("/api/internal/photo-result") {
+                header("X-Internal-Key", "test-internal-key")
+                contentType(ContentType.Application.Json)
+                setBody("""{"sessionId":"$sessionId","userId":"internal-test-user","enrichedKanji":"[{\"character\":\"月\"}]","costMicrodollars":9000}""")
+            }
+            assertEquals(HttpStatusCode.OK, duplicate.status)
+
+            // The first terminal callback wins, so a retried job cannot duplicate cost.
             val session = TestDatabase.db.from(PhotoSessionTable)
                 .select()
                 .where { PhotoSessionTable.id eq UUID.fromString(sessionId) }
-                .map { it[PhotoSessionTable.rawAiResponse] to it[PhotoSessionTable.costMicrodollars] }
+                .map {
+                    listOf(
+                        it[PhotoSessionTable.rawAiResponse],
+                        it[PhotoSessionTable.costMicrodollars],
+                        it[PhotoSessionTable.status],
+                        it[PhotoSessionTable.failureCode],
+                    )
+                }
                 .first()
-            assertEquals("[{\"character\":\"日\"}]", session.first)
-            assertEquals(5000L, session.second)
+            assertEquals("[{\"character\":\"日\"}]", session[0])
+            assertEquals(5000L, session[1])
+            assertEquals("DONE", session[2])
+            assertEquals(null, session[3])
 
             // Verify user_cost was created
             val costCount = TestDatabase.db.from(UserCostTable)

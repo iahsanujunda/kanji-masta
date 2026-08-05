@@ -17,6 +17,9 @@ cors:
 aiWorker:
   baseUrl: "$AI_WORKER_URL:"
 
+photoAnalysis:
+  jobName: "$PHOTO_ANALYSIS_JOB:"
+
 resend:
   apiKey: "$RESEND_API_KEY:"
 

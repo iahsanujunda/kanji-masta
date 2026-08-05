@@ -115,6 +115,9 @@ export default function Home() {
   const needsOnboarding = !onboardingComplete && !hasCollectionContent;
   const activeScan = getNewestActionableScan(localCaptures, recentScans?.sessions);
   const savedCaptureCount = (localCaptures ?? []).filter((capture) => capture.blob && capture.status !== "server-owned").length;
+  const activeServerSessionId = activeScan?.source === "server" ? activeScan.scan.sessionId : undefined;
+  const remainingRecentScans = (recentScans?.sessions ?? [])
+    .filter((scan) => scan.sessionId !== activeServerSessionId);
 
   return (
     <Box
@@ -418,13 +421,13 @@ export default function Home() {
           <ChevronRightIcon sx={{ color: "text.disabled" }} />
         </Paper>
         {/* Recent scans */}
-        {recentScans?.sessions && recentScans.sessions.length > 0 && (
+        {remainingRecentScans.length > 0 && (
           <Box>
             <Typography variant="body2" fontWeight="bold" sx={{ color: "text.secondary", mb: 1.5, px: 0.5 }}>
               Recent Scans
             </Typography>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-              {recentScans.sessions.map((scan) => (
+              {remainingRecentScans.map((scan) => (
                 <RecentScanCard key={scan.sessionId} scan={scan} />
               ))}
             </Box>

@@ -1,5 +1,6 @@
 package com.kanjimasta.modules.photo
 
+import com.kanjimasta.core.auth.getGoogleAccessToken
 import com.kanjimasta.core.auth.getIdentityToken
 import com.kanjimasta.core.db.PhotoFailureCode
 import com.kanjimasta.core.db.PhotoSessionStatus
@@ -23,6 +24,7 @@ class PhotoService(
     private val aiWorkerUrl: String,
     private val selfUrl: String = "",
     private val internalKey: String = "",
+    private val photoAnalysisJobName: String = "",
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
 
@@ -37,13 +39,65 @@ class PhotoService(
         val sessionId = creation.id
         if (!creation.created) {
             logger.info("Reusing photo session={} for clientCaptureId={}", sessionId, clientCaptureId)
+            if (creation.shouldDispatch && photoAnalysisJobName.isNotBlank()) {
+                dispatchCloudRunJob(sessionId, userId)
+            }
             return AnalyzePhotoResponse(sessionId = sessionId, status = PhotoSessionStatus.PROCESSING.apiValue)
         }
-        logger.info("Created photo session={}, calling ai-worker", sessionId)
+        logger.info("Created photo session={}, dispatching photo analysis", sessionId)
 
+        if (photoAnalysisJobName.isNotBlank()) {
+            dispatchCloudRunJob(sessionId, userId)
+        } else {
+            dispatchLocalWorker(sessionId, userId, imageUrl)
+        }
+
+        return AnalyzePhotoResponse(sessionId = sessionId, status = PhotoSessionStatus.PROCESSING.apiValue)
+    }
+
+    private suspend fun dispatchCloudRunJob(sessionId: String, userId: String) {
+        try {
+            val accessToken = getGoogleAccessToken(httpClient)
+                ?: error("Google Cloud access token is unavailable")
+            val response = httpClient.post("https://run.googleapis.com/v2/$photoAnalysisJobName:run") {
+                contentType(ContentType.Application.Json)
+                bearerAuth(accessToken)
+                setBody(buildJsonObject {
+                    putJsonObject("overrides") {
+                        putJsonArray("containerOverrides") {
+                            addJsonObject {
+                                putJsonArray("env") {
+                                    addJsonObject {
+                                        put("name", "PHOTO_SESSION_ID")
+                                        put("value", sessionId)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }.toString())
+            }
+            if (!response.status.isSuccess()) {
+                logger.error(
+                    "Cloud Run photo job dispatch failed for session={}, status={}: {}",
+                    sessionId,
+                    response.status,
+                    response.bodyAsText(),
+                )
+                photoRepository.markFailed(sessionId, userId, PhotoFailureCode.DISPATCH_FAILED)
+                return
+            }
+            logger.info("Cloud Run photo job accepted for session={}", sessionId)
+        } catch (e: Exception) {
+            logger.error("Cloud Run photo job dispatch failed for session={}: {}", sessionId, e.message, e)
+            photoRepository.markFailed(sessionId, userId, PhotoFailureCode.DISPATCH_FAILED)
+        }
+    }
+
+    private fun dispatchLocalWorker(sessionId: String, userId: String, imageUrl: String) {
         val url = "$aiWorkerUrl/analyze-photo"
 
-        // Fire-and-forget: call AI worker async
+        // Local development keeps the HTTP worker path so Docker Compose remains self-contained.
         scope.launch {
             try {
                 val idToken = getIdentityToken(httpClient, aiWorkerUrl)
@@ -72,8 +126,6 @@ class PhotoService(
                 photoRepository.markFailed(sessionId, userId, PhotoFailureCode.DISPATCH_FAILED)
             }
         }
-
-        return AnalyzePhotoResponse(sessionId = sessionId, status = "processing")
     }
 
     suspend fun getSessionResult(userId: String, sessionId: UUID): PhotoSessionResult? {

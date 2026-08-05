@@ -106,7 +106,10 @@ COMMIT = $(shell git rev-parse --short HEAD)
 TIMESTAMP = $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 GCS_BUCKET = gs://shuukanhq.com
 CLOUD_RUN_REGION = asia-east1
+GCP_PROJECT_ID = kanji-masta
 ARTIFACT_REGISTRY = asia-east1-docker.pkg.dev/kanji-masta
+PHOTO_ANALYSIS_JOB = kanji-masta-photo-analysis
+PHOTO_ANALYSIS_JOB_RESOURCE = projects/$(GCP_PROJECT_ID)/locations/$(CLOUD_RUN_REGION)/jobs/$(PHOTO_ANALYSIS_JOB)
 
 _mark-deploy = python3 -c "import json; f=open('$(DEPLOY_STATE)'); d=json.load(f); f.close(); d['$(1)']={'commit':'$(COMMIT)','deployedAt':'$(TIMESTAMP)'}; f=open('$(DEPLOY_STATE)','w'); json.dump(d,f,indent=2); f.close(); print('  Marked $(1) deployed at $(COMMIT)')"
 
@@ -128,18 +131,34 @@ deploy-backend: ## Build + deploy backend to Cloud Run
 	gcloud run deploy kanji-masta-backend \
 		--image $(ARTIFACT_REGISTRY)/kanji-masta-backend/backend \
 		--region $(CLOUD_RUN_REGION) \
-		--set-env-vars "DATABASE_URL=$(PROD_SUPABASE_DB_URI),SUPABASE_URL=$(PROD_SUPABASE_URL),AI_WORKER_URL=$(AI_WORKER_SVC_URL),CORS_ALLOWED_ORIGINS=shuukanhq.com,LOG_LEVEL=INFO,RESEND_API_KEY=$(RESEND_API_KEY),ADMIN_USER_ID=$(ADMIN_USER_ID),INTERNAL_API_KEY=$(INTERNAL_API_KEY),SELF_URL=$(BACKEND_SVC_URL)" \
+		--set-env-vars "DATABASE_URL=$(PROD_SUPABASE_DB_URI),SUPABASE_URL=$(PROD_SUPABASE_URL),AI_WORKER_URL=$(AI_WORKER_SVC_URL),PHOTO_ANALYSIS_JOB=$(PHOTO_ANALYSIS_JOB_RESOURCE),CORS_ALLOWED_ORIGINS=shuukanhq.com,LOG_LEVEL=INFO,RESEND_API_KEY=$(RESEND_API_KEY),ADMIN_USER_ID=$(ADMIN_USER_ID),INTERNAL_API_KEY=$(INTERNAL_API_KEY),SELF_URL=$(BACKEND_SVC_URL)" \
 		--allow-unauthenticated
 	@$(call _mark-deploy,backend)
 
 deploy-ai-worker: ## Build + deploy AI worker to Cloud Run
 	docker build -t $(ARTIFACT_REGISTRY)/kanji-masta-ai-worker/ai-worker ./services/ai-worker
 	docker push $(ARTIFACT_REGISTRY)/kanji-masta-ai-worker/ai-worker
+	$(eval BACKEND_SVC_URL := $(shell gcloud run services describe kanji-masta-backend --region $(CLOUD_RUN_REGION) --format='value(status.url)'))
+	$(eval BACKEND_SERVICE_ACCOUNT := $(shell gcloud run services describe kanji-masta-backend --region $(CLOUD_RUN_REGION) --format='value(spec.template.spec.serviceAccountName)'))
 	gcloud run deploy kanji-masta-ai-worker \
 		--image $(ARTIFACT_REGISTRY)/kanji-masta-ai-worker/ai-worker \
 		--region $(CLOUD_RUN_REGION) \
 		--set-env-vars "DATABASE_URL=$(shell echo '$(PROD_SUPABASE_DB_URI)' | sed 's|^jdbc:||'),AI_PROVIDER=$(AI_PROVIDER),GEMINI_API_KEY=$(GEMINI_API_KEY),OPENROUTER_API_KEY=$(OPENROUTER_API_KEY),OPENROUTER_MODEL=$(OPENROUTER_MODEL),OPENROUTER_REASONING_EFFORT=$(OPENROUTER_REASONING_EFFORT),OPENROUTER_ANALYZE_MODEL=$(OPENROUTER_ANALYZE_MODEL),OPENROUTER_QUIZ_MODEL=$(OPENROUTER_QUIZ_MODEL),OPENROUTER_DISCOVERY_MODEL=$(OPENROUTER_DISCOVERY_MODEL),OPENROUTER_SITE_URL=$(OPENROUTER_SITE_URL),OPENROUTER_APP_NAME=$(OPENROUTER_APP_NAME)" \
 		--no-allow-unauthenticated
+	test -n "$(BACKEND_SVC_URL)"
+	test -n "$(BACKEND_SERVICE_ACCOUNT)"
+	gcloud run jobs deploy $(PHOTO_ANALYSIS_JOB) \
+		--image $(ARTIFACT_REGISTRY)/kanji-masta-ai-worker/ai-worker \
+		--region $(CLOUD_RUN_REGION) \
+		--command python \
+		--args=-m,app.photo_job \
+		--task-timeout=24h \
+		--max-retries=1 \
+		--set-env-vars "DATABASE_URL=$(shell echo '$(PROD_SUPABASE_DB_URI)' | sed 's|^jdbc:||'),BACKEND_CALLBACK_URL=$(BACKEND_SVC_URL)/api/internal/photo-result,INTERNAL_API_KEY=$(INTERNAL_API_KEY),AI_PROVIDER=$(AI_PROVIDER),GEMINI_API_KEY=$(GEMINI_API_KEY),OPENROUTER_API_KEY=$(OPENROUTER_API_KEY),OPENROUTER_MODEL=$(OPENROUTER_MODEL),OPENROUTER_REASONING_EFFORT=$(OPENROUTER_REASONING_EFFORT),OPENROUTER_ANALYZE_MODEL=$(OPENROUTER_ANALYZE_MODEL),OPENROUTER_SITE_URL=$(OPENROUTER_SITE_URL),OPENROUTER_APP_NAME=$(OPENROUTER_APP_NAME)"
+	gcloud run jobs add-iam-policy-binding $(PHOTO_ANALYSIS_JOB) \
+		--region $(CLOUD_RUN_REGION) \
+		--member serviceAccount:$(BACKEND_SERVICE_ACCOUNT) \
+		--role roles/run.developer
 	@$(call _mark-deploy,ai-worker)
 
 deploy-all: ## Deploy all services

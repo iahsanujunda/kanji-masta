@@ -540,7 +540,8 @@ Queue hardening is implemented with these concrete policies:
   is unsupported.
 - `/captures` lists all locally owned photos as Waiting, Uploading, Needs sign-in, or Needs
   attention. Removal requires confirmation. Home continues to show only the newest active
-  card directly below the quiz card, followed by a queue link when multiple photos are saved.
+  card directly below the quiz card, omits that same server session from Recent Scans, and
+  follows it with a queue link when multiple photos are saved.
 - HTTP 401/403 and expired-token failures move a capture to Needs sign-in without deleting
   its Blob. A forced drain after the same user signs in retries it; other users' queues remain
   isolated.
@@ -607,19 +608,36 @@ the production queue does not currently register capture uploads for Background 
 
 ### Milestone 3 — Interrupted server-work recovery
 
-This milestone complements the infrastructure migration plan. It does not introduce an
-outbox or replace the HTTP worker protocol before migration soak.
+Production photo analysis uses a dedicated Cloud Run Job rather than a long-lived
+backend-to-worker request. The backend creates the durable `photo_session`, invokes the Jobs
+API with only its session ID, and returns after Google accepts the execution. The job reads
+the image URL and owner from Postgres, performs the analysis, and publishes the terminal
+result through the existing authenticated callback. The AI-worker remains a Cloud Run service
+for quiz generation, word discovery, health checks, and the local-development photo path.
 
-- Replace service-owned `CoroutineScope(Dispatchers.IO)` instances with the documented
-  application-managed dispatch scope and graceful drain.
+The photo job has a 24-hour task timeout and one platform retry. A retry skips a session that
+is already `DONE`. Each task atomically claims the attempt recorded on `photo_session`, using
+`CLOUD_RUN_TASK_ATTEMPT`, so a duplicate execution exits without making a second AI call while
+the platform retry can reclaim a failed attempt. If the browser loses the analyze response
+before dispatch, its duplicate `clientCaptureId` request re-dispatches a still-unclaimed
+session. The callback ignores a duplicate terminal result so cost is recorded once, and a
+failed attempt may still be replaced by a later successful retry. Stale cleanup waits 25 hours,
+beyond the job timeout, before converting an abandoned `PROCESSING` session to `FAILED`. This
+removes the backend's AI-duration timeout from the completion path, but it is not a
+transactional outbox: failure to start the Cloud Run Job is recorded immediately as
+`dispatch_failed`.
+
+- Replace the remaining local-development HTTP fallback's service-owned
+  `CoroutineScope(Dispatchers.IO)` with an application-managed dispatch scope and graceful
+  drain.
 - Keep stale-session cleanup, but make `FAILED` visible to users and administrators.
 - Record a failure code that distinguishes dispatch failure, provider failure, callback
   failure, invalid AI response, and stale timeout without exposing sensitive internals.
 - Add admin visibility and the documented recovery/rescan path required by
   `docs/infra-migration.md`.
-- Prove callback/status writes are idempotent around backend and worker restarts.
-- After migration soak, separately evaluate a transactional outbox, database-polling
-  worker, or managed task queue. Do not silently change that architecture in this work.
+- Prove callback/status writes remain idempotent around backend and worker restarts.
+- After migration soak, separately evaluate a transactional outbox if dispatch acceptance
+  must survive a backend/database split-brain window.
 
 Retrying the same stored photo requires a server-owned way to read `storage_path` or mint
 a fresh signed URL. Until that exists, the user recovery action remains Capture another

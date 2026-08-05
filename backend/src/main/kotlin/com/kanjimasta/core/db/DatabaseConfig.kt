@@ -4,10 +4,38 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.server.application.*
 import org.ktorm.database.Database
+import org.ktorm.logging.Logger as KtormLogger
+import org.ktorm.logging.detectLoggerImplementation
 import org.slf4j.LoggerFactory
 import java.net.URI
 
 private val log = LoggerFactory.getLogger("com.kanjimasta.core.db.DatabaseConfig")
+private val postgresUserInfo = Regex("(?i)((?:jdbc:)?postgres(?:ql)?://)[^/@\\s]+@")
+private val databaseCredentialParameter =
+    Regex("(?i)(\\b(?:user(?:name)?|(?:ssl)?password|passwd|pass|pwd)\\s*=\\s*)[^&\\s]+")
+
+internal fun redactDatabaseSecrets(message: String): String = message
+    .replace(postgresUserInfo, "$1***@")
+    .replace(databaseCredentialParameter, "$1***")
+
+internal class RedactingKtormLogger(
+    private val delegate: KtormLogger,
+) : KtormLogger {
+    override fun isTraceEnabled() = delegate.isTraceEnabled()
+    override fun trace(msg: String, e: Throwable?) = delegate.trace(redactDatabaseSecrets(msg), e)
+
+    override fun isDebugEnabled() = delegate.isDebugEnabled()
+    override fun debug(msg: String, e: Throwable?) = delegate.debug(redactDatabaseSecrets(msg), e)
+
+    override fun isInfoEnabled() = delegate.isInfoEnabled()
+    override fun info(msg: String, e: Throwable?) = delegate.info(redactDatabaseSecrets(msg), e)
+
+    override fun isWarnEnabled() = delegate.isWarnEnabled()
+    override fun warn(msg: String, e: Throwable?) = delegate.warn(redactDatabaseSecrets(msg), e)
+
+    override fun isErrorEnabled() = delegate.isErrorEnabled()
+    override fun error(msg: String, e: Throwable?) = delegate.error(redactDatabaseSecrets(msg), e)
+}
 
 /**
  * Convert a standard PostgreSQL URI (postgresql://user:pass@host:port/db)
@@ -35,7 +63,7 @@ fun connectDatabase(environment: ApplicationEnvironment): Database {
     require(url.isNotBlank()) { "database.url must be set (DATABASE_URL env var)" }
 
     val jdbcUrl = toJdbcUrl(url)
-    log.info("Connecting to database: {}", jdbcUrl.substringBefore("?").replace(Regex("://[^@]+@"), "://***@"))
+    log.info("Connecting to database: {}", redactDatabaseSecrets(jdbcUrl))
 
     // Disable server-side prepared statements to avoid "prepared statement already exists"
     // errors with Supabase's connection pooler (PgBouncer)
@@ -53,5 +81,8 @@ fun connectDatabase(environment: ApplicationEnvironment): Database {
     }
 
     val dataSource = HikariDataSource(config)
-    return Database.connect(dataSource)
+    return Database.connect(
+        dataSource = dataSource,
+        logger = RedactingKtormLogger(detectLoggerImplementation()),
+    )
 }

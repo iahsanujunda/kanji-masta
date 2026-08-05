@@ -25,10 +25,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Kanji Masta AI Worker", lifespan=lifespan)
 
 
-async def _report_photo_failure(body: AnalyzePhotoRequest, failure_code: str) -> None:
+async def _report_photo_failure(body: AnalyzePhotoRequest, failure_code: str) -> bool:
     if body.callbackUrl:
         from .callback import send_photo_result
-        await send_photo_result(
+        return await send_photo_result(
             body.callbackUrl,
             body.callbackKey or "",
             body.sessionId,
@@ -45,6 +45,7 @@ async def _report_photo_failure(body: AnalyzePhotoRequest, failure_code: str) ->
             user_id=body.userId or "",
             failure_code=failure_code,
         )
+        return True
 
 
 @app.get("/health")
@@ -61,6 +62,14 @@ async def analyze_photo(body: AnalyzePhotoRequest, request: Request):
     ctx = TraceContext.from_request(request)
     if body.userId:
         ctx.user_id = body.userId
+    ok, error = await process_photo(body, ctx)
+    if not ok:
+        return JSONResponse({"error": error or "Photo analysis failed"}, status_code=500)
+    return StatusResponse()
+
+
+async def process_photo(body: AnalyzePhotoRequest, ctx: TraceContext) -> tuple[bool, str | None]:
+    """Analyze one durable photo session and publish its terminal result."""
     start = time.time()
 
     ctx.log_info("analyze_photo: session=%s downloading image", body.sessionId)
@@ -74,7 +83,7 @@ async def analyze_photo(body: AnalyzePhotoRequest, request: Request):
     if img_resp.status_code != 200:
         ctx.log_error("analyze_photo: failed to download image, status=%d", img_resp.status_code)
         await _report_photo_failure(body, "provider_failed")
-        return JSONResponse({"error": f"Failed to download image: {img_resp.status_code}"}, status_code=500)
+        return False, f"Failed to download image: {img_resp.status_code}"
 
     image_bytes = img_resp.content
     content_type = img_resp.headers.get("content-type", "image/jpeg")
@@ -101,7 +110,7 @@ async def analyze_photo(body: AnalyzePhotoRequest, request: Request):
     except (json.JSONDecodeError, AIClientError):
         ctx.log_error("analyze_photo: session=%s failed to parse JSON response", body.sessionId)
         await _report_photo_failure(body, "invalid_response")
-        return JSONResponse({"error": "Failed to parse AI response"}, status_code=500)
+        return False, "Failed to parse AI response"
 
     ctx.log_info(
         "analyze_photo: session=%s %s/%s done, cost=$%.4f",
@@ -138,13 +147,13 @@ async def analyze_photo(body: AnalyzePhotoRequest, request: Request):
         ok = await send_photo_result(body.callbackUrl, body.callbackKey or "", body.sessionId, body.userId or "", enriched_json, cost)
         if not ok:
             ctx.log_error("analyze_photo: callback failed for session=%s", body.sessionId)
-            return JSONResponse({"error": "Callback failed"}, status_code=500)
+            return False, "Callback failed"
     else:
         db.update_photo_session(body.sessionId, enriched_json, cost, user_id=body.userId or "")
 
     elapsed = time.time() - start
     ctx.log_info("analyze_photo: session=%s done, %d kanji enriched in %.1fs", body.sessionId, len(enriched), elapsed)
-    return StatusResponse()
+    return True, None
 
 
 # ---------------------------------------------------------------------------

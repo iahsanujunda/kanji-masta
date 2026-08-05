@@ -14,15 +14,28 @@ class InternalService(private val db: Database) {
 
     fun handlePhotoResult(request: PhotoResultRequest) {
         db.useTransaction {
+            val sessionId = UUID.fromString(request.sessionId)
+            val session = db.from(PhotoSessionTable)
+                .select(PhotoSessionTable.status, PhotoSessionTable.userId)
+                .where { PhotoSessionTable.id eq sessionId }
+                .map { row -> row[PhotoSessionTable.status] to row[PhotoSessionTable.userId] }
+                .firstOrNull()
+                ?: error("Photo session not found")
+            require(session.second == request.userId) { "Photo result user does not own session" }
+            if (session.first == PhotoSessionStatus.DONE.name) {
+                logger.info("Ignoring duplicate photo result for completed session={}", request.sessionId)
+                return@useTransaction
+            }
+
             // 1. Update photo_session
             val hasResult = request.enrichedKanji.isNotBlank() && request.enrichedKanji != "[]"
             val status = if (hasResult) PhotoSessionStatus.DONE else PhotoSessionStatus.FAILED
             db.update(PhotoSessionTable) {
                 set(it.rawAiResponse, request.enrichedKanji)
                 set(it.status, status.name)
-                if (!hasResult) set(it.failureCode, request.failureCode ?: PhotoFailureCode.INVALID_RESPONSE)
+                set(it.failureCode, if (hasResult) null else request.failureCode ?: PhotoFailureCode.INVALID_RESPONSE)
                 set(it.costMicrodollars, request.costMicrodollars)
-                where { it.id eq UUID.fromString(request.sessionId) }
+                where { it.id eq sessionId }
             }
 
             // 2. Record cost
@@ -30,7 +43,7 @@ class InternalService(private val db: Database) {
                 db.insert(UserCostTable) {
                     set(it.userId, request.userId)
                     set(it.operationType, "PHOTO_ANALYSIS")
-                    set(it.operationId, UUID.fromString(request.sessionId))
+                    set(it.operationId, sessionId)
                     set(it.costMicrodollars, request.costMicrodollars)
                 }
             }
@@ -93,7 +106,8 @@ class InternalService(private val db: Database) {
     }
 
     fun cleanupStalePhotoSessions(): Int {
-        val cutoff = Instant.now().minus(1, ChronoUnit.HOURS)
+        // Photo analysis runs as a Cloud Run Job with a 24-hour task timeout.
+        val cutoff = Instant.now().minus(25, ChronoUnit.HOURS)
         return db.update(PhotoSessionTable) {
             set(it.status, PhotoSessionStatus.FAILED.name)
             set(it.failureCode, PhotoFailureCode.TIMED_OUT)

@@ -31,6 +31,31 @@ def test_get_user_known_kanji_empty(client, db_conn):
     assert result == []
 
 
+def test_photo_job_claim_allows_platform_retry_but_rejects_duplicate_execution(client, db_conn):
+    session_id = str(uuid.uuid4())
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO photo_session (id, user_id, image_url) VALUES (%s, 'test-user', 'https://example.com/img.jpg')",
+            (session_id,),
+        )
+
+    first = db.claim_photo_session_for_analysis(session_id, task_attempt=0)
+    duplicate = db.claim_photo_session_for_analysis(session_id, task_attempt=0)
+    retry = db.claim_photo_session_for_analysis(session_id, task_attempt=1)
+
+    assert first == {
+        "id": session_id,
+        "userId": "test-user",
+        "imageUrl": "https://example.com/img.jpg",
+    }
+    assert duplicate is None
+    assert retry == first
+
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT attempts FROM photo_session WHERE id = %s", (session_id,))
+        assert cur.fetchone()[0] == 2
+
+
 def test_get_user_known_kanji_returns_characters(client, db_conn, seed_kanji):
     # Insert a user_kanji row
     with db_conn.cursor() as cur:

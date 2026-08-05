@@ -2,13 +2,16 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Home from "../Home";
-import { renderWithProviders } from "@/test/mocks";
+import { mockUser, renderWithProviders } from "@/test/mocks";
 import { deleteLocalCapturesForUser, saveLocalCapture } from "@/lib/captureQueue";
 
 const mockApiFetch = vi.fn();
 vi.mock("@/lib/api", () => ({
   apiFetch: (...args: unknown[]) => mockApiFetch(...args),
 }));
+
+const homeUser = { ...mockUser, id: "home-test-user" };
+const renderHome = () => renderWithProviders(<Home />, { authUser: homeUser });
 
 const emptySummary = {
   kanjiLearning: 0,
@@ -47,12 +50,12 @@ const populatedCollectionWithStaleOnboarding = {
 describe("Home", () => {
   beforeEach(async () => {
     mockApiFetch.mockReset();
-    await deleteLocalCapturesForUser("test-user");
+    await deleteLocalCapturesForUser(homeUser.id);
   });
 
   it("shows zero state when no words", async () => {
     mockApiFetch.mockResolvedValue(emptySummary);
-    renderWithProviders(<Home />);
+    renderHome();
 
     await waitFor(() => {
       expect(screen.getByText("Plant Your First Seeds")).toBeInTheDocument();
@@ -61,7 +64,7 @@ describe("Home", () => {
 
   it("shows active slot with remaining count", async () => {
     mockApiFetch.mockResolvedValue(activeSummary);
-    renderWithProviders(<Home />);
+    renderHome();
 
     await waitFor(() => {
       expect(screen.getByText("3")).toBeInTheDocument();
@@ -71,7 +74,7 @@ describe("Home", () => {
 
   it("shows streak count", async () => {
     mockApiFetch.mockResolvedValue(activeSummary);
-    renderWithProviders(<Home />);
+    renderHome();
 
     await waitFor(() => {
       expect(screen.getByText("7")).toBeInTheDocument();
@@ -80,7 +83,7 @@ describe("Home", () => {
 
   it("shows kanji counts", async () => {
     mockApiFetch.mockResolvedValue(activeSummary);
-    renderWithProviders(<Home />);
+    renderHome();
 
     await waitFor(() => {
       expect(screen.getByText(/10 learning/)).toBeInTheDocument();
@@ -90,7 +93,7 @@ describe("Home", () => {
 
   it("shows word count in dictionary card", async () => {
     mockApiFetch.mockResolvedValue(activeSummary);
-    renderWithProviders(<Home />);
+    renderHome();
 
     await waitFor(() => {
       expect(screen.getByText("25 saved words")).toBeInTheDocument();
@@ -99,7 +102,7 @@ describe("Home", () => {
 
   it("shows a ready session when the collection has content even if onboarding state is stale", async () => {
     mockApiFetch.mockResolvedValue(populatedCollectionWithStaleOnboarding);
-    renderWithProviders(<Home />);
+    renderHome();
 
     await waitFor(() => {
       expect(screen.getByText("28 learning")).toBeInTheDocument();
@@ -116,7 +119,7 @@ describe("Home", () => {
       if (path === "/api/user/summary") return Promise.reject(new Error("Internal Server Error"));
       return Promise.resolve({ sessions: [] });
     });
-    renderWithProviders(<Home />);
+    renderHome();
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent("Couldn't load your progress");
@@ -133,7 +136,7 @@ describe("Home", () => {
       if (path === "/api/photo/activity/unseen") return Promise.resolve({ hasUnseen: true, latestTerminalAt: "2026-08-05T05:10:00Z" });
       return Promise.resolve(activeSummary);
     });
-    renderWithProviders(<Home />);
+    renderHome();
 
     expect(await screen.findByRole("button", { name: "Activity, new updates" })).toBeInTheDocument();
     expect(screen.queryByText("Analysing your photo")).not.toBeInTheDocument();
@@ -149,10 +152,10 @@ describe("Home", () => {
       const blob = new Blob([`photo-${index}`], { type: "image/jpeg" });
       await saveLocalCapture({
         id,
-        userId: "test-user",
+        userId: homeUser.id,
         blob,
         byteSize: blob.size,
-        storagePath: `test-user/${id}.jpg`,
+        storagePath: `${homeUser.id}/${id}.jpg`,
         status: "pending",
         attempts: 0,
         createdAt: new Date(Date.now() + index).toISOString(),
@@ -164,10 +167,10 @@ describe("Home", () => {
       return Promise.resolve(activeSummary);
     });
 
-    renderWithProviders(<Home />);
+    renderHome();
 
     expect(await screen.findByText("Session Active")).toBeInTheDocument();
-    expect(screen.queryByText("Waiting to upload")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Waiting to upload")[0]).not.toBeVisible();
     expect(screen.queryByRole("button", { name: /View all 2 saved photos/ })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Activity" }));

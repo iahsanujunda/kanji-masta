@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Alert, Box, Button, TextField, Typography } from "@mui/material";
 import { supabase } from "@/lib/supabase";
@@ -9,7 +10,12 @@ export default function ChangePassword() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const updatePassword = useMutation({
+    mutationFn: async () => {
+      const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+      if (updateError) throw updateError;
+    },
+  });
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -25,16 +31,14 @@ export default function ChangePassword() {
       return;
     }
 
-    setLoading(true);
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) {
-      setError(error.message);
-    } else {
+    try {
+      await updatePassword.mutateAsync();
       setSuccess(true);
       setNewPassword("");
       setConfirmPassword("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not update password.");
     }
-    setLoading(false);
   };
 
   return (
@@ -89,10 +93,10 @@ export default function ChangePassword() {
           variant="contained"
           fullWidth
           size="large"
-          disabled={loading}
+          disabled={updatePassword.isPending}
           sx={{ mb: 1 }}
         >
-          {loading ? "Updating..." : "Update Password"}
+          {updatePassword.isPending ? "Updating..." : "Update Password"}
         </Button>
         <Button fullWidth onClick={() => navigate("/home")}>
           Back

@@ -17,9 +17,9 @@ export default function LocalCaptureDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { data: capture, isLoading, refetch } = useQuery({
-    queryKey: ["local-capture", clientCaptureId],
+    queryKey: ["local-capture", user?.id ?? "", clientCaptureId],
     queryFn: async () => (await getLocalCapture(clientCaptureId!)) ?? null,
-    enabled: Boolean(clientCaptureId),
+    enabled: Boolean(user && clientCaptureId),
   });
   const imageUrl = useMemo(
     () => capture?.blob ? URL.createObjectURL(capture.blob) : undefined,

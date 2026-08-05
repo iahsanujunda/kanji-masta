@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import CostTab from "@/pages/admin/CostTab";
 import JobsTab from "@/pages/admin/JobsTab";
 import InvitesTab from "@/pages/admin/InvitesTab";
+import { useAuth } from "@/hooks/useAuth";
 import { adminApi } from "@/pages/admin/api";
 
 type Tab = "cost" | "jobs" | "invites";
@@ -18,10 +19,12 @@ const tabs: Array<{ id: Tab; label: string; icon: React.ReactNode }> = [
 ];
 
 export default function Admin() {
+  const { user } = useAuth();
   const [tab, setTab] = useState<Tab>("jobs");
   const status = useQuery({
-    queryKey: ["admin-status"],
+    queryKey: ["admin-status", user?.id],
     queryFn: ({ signal }) => adminApi.status(signal),
+    enabled: Boolean(user),
     refetchInterval: 15_000,
     refetchOnWindowFocus: true,
   });

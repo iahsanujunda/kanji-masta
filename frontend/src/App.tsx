@@ -1,29 +1,31 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Box, CircularProgress } from "@mui/material";
 import { useAuth } from "@/hooks/useAuth";
 import { useCaptureQueue } from "@/hooks/useCaptureQueue";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import AppLaunchScreen from "@/components/AppLaunchScreen";
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
+import { preloadAuthenticatedRoutes, routeImports } from "@/lib/routePreloading";
 
 // Lazy load non-critical routes
-const Settings = lazy(() => import("@/pages/Settings"));
-const Collection = lazy(() => import("@/pages/Collection"));
-const Capture = lazy(() => import("@/pages/Capture"));
-const Quiz = lazy(() => import("@/pages/Quiz"));
-const KanjiList = lazy(() => import("@/pages/KanjiList"));
-const Dictionary = lazy(() => import("@/pages/Dictionary"));
-const WordDetail = lazy(() => import("@/pages/WordDetail"));
-const AddKanji = lazy(() => import("@/pages/AddKanji"));
-const Onboarding = lazy(() => import("@/pages/Onboarding"));
+const Settings = lazy(routeImports.settings);
+const Collection = lazy(routeImports.collection);
+const Capture = lazy(routeImports.capture);
+const Quiz = lazy(routeImports.quiz);
+const KanjiList = lazy(routeImports.kanjiList);
+const Dictionary = lazy(routeImports.dictionary);
+const WordDetail = lazy(routeImports.wordDetail);
+const AddKanji = lazy(routeImports.addKanji);
+const Onboarding = lazy(routeImports.onboarding);
 const Signup = lazy(() => import("@/pages/Signup"));
 const Landing = lazy(() => import("@/pages/Landing"));
-const Admin = lazy(() => import("@/pages/Admin"));
-const InsightDetail = lazy(() => import("@/pages/InsightDetail"));
-const LocalCaptureDetail = lazy(() => import("@/pages/LocalCaptureDetail"));
-const CaptureQueue = lazy(() => import("@/pages/CaptureQueue"));
-const ScanDetail = lazy(() => import("@/pages/ScanDetail"));
+const Admin = lazy(routeImports.admin);
+const InsightDetail = lazy(routeImports.insightDetail);
+const LocalCaptureDetail = lazy(routeImports.localCaptureDetail);
+const CaptureQueue = lazy(routeImports.captureQueue);
+const ScanDetail = lazy(routeImports.scanDetail);
 
 function Loading() {
   return (
@@ -34,8 +36,27 @@ function Loading() {
 }
 
 export default function App() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, status } = useAuth();
   useCaptureQueue(user?.id);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    const windowWithIdleCallback = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+    if (windowWithIdleCallback.requestIdleCallback) {
+      const handle = windowWithIdleCallback.requestIdleCallback(
+        () => { void preloadAuthenticatedRoutes(); },
+        { timeout: 1_500 },
+      );
+      return () => windowWithIdleCallback.cancelIdleCallback?.(handle);
+    }
+    const handle = window.setTimeout(() => { void preloadAuthenticatedRoutes(); }, 0);
+    return () => window.clearTimeout(handle);
+  }, [status]);
+
+  if (status === "initializing") return <AppLaunchScreen />;
 
   return (
     <Suspense fallback={<Loading />}>

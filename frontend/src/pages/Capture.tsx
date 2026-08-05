@@ -12,12 +12,13 @@ import {
   saveLocalCapture,
 } from "@/lib/captureQueue";
 import { captureFileExtension, validateCaptureFile } from "@/lib/captureImage";
-import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/hooks/useAuth";
 
 type CaptureView = "selecting" | "saving" | "save-failed";
 
 export default function Capture() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const openedPicker = useRef(false);
   const [view, setView] = useState<CaptureView>("selecting");
@@ -39,8 +40,6 @@ export default function Capture() {
     let localSaveStarted = false;
     try {
       validateCaptureFile(file);
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
       if (!user) throw new Error("Please sign in again before saving this photo.");
       userId = user.id;
 
@@ -70,7 +69,7 @@ export default function Capture() {
       setView("save-failed");
       if (userId && localSaveStarted) void recordCaptureStorageFailure(userId).catch(() => undefined);
     }
-  }, [navigate]);
+  }, [navigate, user]);
 
   const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

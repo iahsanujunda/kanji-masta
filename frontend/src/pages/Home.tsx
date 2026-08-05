@@ -27,6 +27,7 @@ import { formatTimeLeft } from "@/lib/format";
 import { getCurrentLesson, isLessonCompleted } from "@/lib/insights";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import { useAuth } from "@/hooks/useAuth";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface UserSummary {
   kanjiLearning: number;
@@ -55,10 +56,10 @@ export default function Home() {
     isFetching: isSummaryFetching,
     refetch: refetchSummary,
   } = useQuery({
-    queryKey: ["user-summary"],
+    queryKey: queryKeys.userSummary(user?.id ?? ""),
     queryFn: () => apiFetch<UserSummary>("/api/user/summary"),
+    enabled: Boolean(user),
     staleTime: 30_000,
-    gcTime: 5 * 60_000, // keep in cache 5 min after unmount
     retry: 1,
   });
   const loading = isLoading && !summary;

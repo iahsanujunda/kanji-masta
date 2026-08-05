@@ -3,6 +3,7 @@ import { Alert, Box, Button, CircularProgress, TextField, Typography } from "@mu
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import AdminBottomDrawer from "@/pages/admin/AdminBottomDrawer";
 import { adminApi } from "@/pages/admin/api";
+import { useAuth } from "@/hooks/useAuth";
 import type { CatalogModel } from "@/pages/admin/types";
 
 type Workload = "photo_analysis" | "quiz_generation" | "word_discovery";
@@ -15,8 +16,10 @@ const workloadCopy: Record<Workload, { label: string; key: keyof Draft }> = {
 };
 
 export default function ModelSettings() {
+  const { user } = useAuth();
+  const userId = user?.id ?? "";
   const queryClient = useQueryClient();
-  const configs = useQuery({ queryKey: ["admin-model-config"], queryFn: ({ signal }) => adminApi.modelConfigs(signal) });
+  const configs = useQuery({ queryKey: ["admin-model-config", userId], queryFn: ({ signal }) => adminApi.modelConfigs(signal), enabled: Boolean(user) });
   const source = configs.data?.configs.find((item) => item.status === "draft") ?? configs.data?.configs.find((item) => item.status === "active");
   const [draftOverride, setDraftOverride] = useState<Draft | null>(null);
   const draft: Draft = draftOverride ?? (source ? {
@@ -36,16 +39,16 @@ export default function ModelSettings() {
   }, [query]);
 
   const models = useQuery({
-    queryKey: ["admin-models", workload, debounced],
+    queryKey: ["admin-models", userId, workload, debounced],
     queryFn: ({ signal }) => adminApi.models(workload!, debounced, signal),
-    enabled: workload !== null && (debounced.length === 0 || debounced.length >= 2),
+    enabled: Boolean(user) && workload !== null && (debounced.length === 0 || debounced.length >= 2),
   });
 
   const refresh = async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["admin-model-config"] }),
-      queryClient.invalidateQueries({ queryKey: ["admin-status"] }),
-      queryClient.invalidateQueries({ queryKey: ["admin-jobs"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-model-config", userId] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-status", userId] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-jobs", userId] }),
     ]);
   };
   const validate = useMutation({

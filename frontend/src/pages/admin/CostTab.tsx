@@ -1,12 +1,14 @@
 import { Alert, Box, Button, Skeleton, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import { adminApi } from "@/pages/admin/api";
+import { useAuth } from "@/hooks/useAuth";
 
 const card = { bgcolor: "#0f0f16", border: "1px solid #242431", borderRadius: 3, p: 2 };
 const usd = (value: number) => `$${(value / 1_000_000).toFixed(2)}`;
 
 export default function CostTab() {
-  const query = useQuery({ queryKey: ["admin-cost"], queryFn: ({ signal }) => adminApi.cost(signal) });
+  const { user } = useAuth();
+  const query = useQuery({ queryKey: ["admin-cost", user?.id], queryFn: ({ signal }) => adminApi.cost(signal), enabled: Boolean(user) });
   if (query.isLoading) return <Box sx={card}><Skeleton height={110} /></Box>;
   if (query.isError) return <Alert severity="error" action={<Button onClick={() => query.refetch()}>Retry</Button>}>Cost data is unavailable.</Alert>;
   const data = query.data!;

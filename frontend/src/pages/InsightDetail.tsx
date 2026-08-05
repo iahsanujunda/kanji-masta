@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { Box, Button, CircularProgress, TextField, Typography } from "@mui/material";
 import ReplayIcon from "@mui/icons-material/Replay";
@@ -8,47 +9,63 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import PageHeader from "@/components/PageHeader";
 import { apiFetch } from "@/lib/api";
 import { LESSONS, isLessonCompleted, markLessonCompleted, recordInsightStart } from "@/lib/insights";
+import { useAuth } from "@/hooks/useAuth";
+import { queryKeys } from "@/lib/queryKeys";
+
+interface InsightSettings {
+  quizAllowancePerSlot: number;
+  slotDurationHours: number;
+  birthDate?: string | null;
+}
 
 export default function InsightDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const lesson = LESSONS.find((l) => l.id === id);
 
   const [completed, setCompleted] = useState(() => (lesson ? isLessonCompleted(lesson.id) : false));
-  const [birthDate, setBirthDate] = useState<string | null>(null);
-  const [showBirthGate, setShowBirthGate] = useState(false);
+  const [pendingBirthDate] = useState(() => {
+    try { return localStorage.getItem("pending_birth_date"); } catch { return null; }
+  });
+  const [savedBirthDate, setSavedBirthDate] = useState<string | null>(null);
   const [birthInput, setBirthInput] = useState("");
-  const [savingBirth, setSavingBirth] = useState(false);
   const [birthError, setBirthError] = useState("");
-  const [settingsLoading, setSettingsLoading] = useState(true);
+  const settingsKey = queryKeys.settings(user?.id ?? "");
+  const settings = useQuery({
+    queryKey: settingsKey,
+    queryFn: () => apiFetch<InsightSettings>("/api/settings"),
+    enabled: Boolean(user && lesson),
+    staleTime: 5 * 60_000,
+  });
+  const saveBirthDate = useMutation({
+    mutationFn: (birthDate: string) => apiFetch("/api/settings", { method: "PUT", body: JSON.stringify({ birthDate }) }),
+    onSuccess: (_response, birthDate) => {
+      queryClient.setQueryData<InsightSettings>(settingsKey, (current) => ({
+        quizAllowancePerSlot: current?.quizAllowancePerSlot ?? 5,
+        slotDurationHours: current?.slotDurationHours ?? 6,
+        ...current,
+        birthDate,
+      }));
+      setSavedBirthDate(birthDate);
+      setBirthError("");
+      try { localStorage.removeItem("pending_birth_date"); } catch { /* ignore */ }
+    },
+    onError: () => setBirthError("Failed to save. Please try again."),
+  });
 
   useEffect(() => {
     if (!lesson) return;
     recordInsightStart(lesson.id);
 
-    // Flush pending birth date stored at signup (before auth was available)
-    const pending = localStorage.getItem("pending_birth_date");
-    if (pending) {
-      apiFetch("/api/settings", { method: "PUT", body: JSON.stringify({ birthDate: pending }) })
-        .then(() => {
-          setBirthDate(pending);
-          try { localStorage.removeItem("pending_birth_date"); } catch { /* ignore */ }
-        })
-        .catch(() => {
-          // If save fails, still try to get from backend
-        })
-        .finally(() => setSettingsLoading(false));
-      return;
-    }
+  }, [lesson]);
 
-    apiFetch("/api/settings").then((data: any) => {
-      if (data.birthDate) {
-        setBirthDate(data.birthDate);
-      } else {
-        setShowBirthGate(true);
-      }
-    }).finally(() => setSettingsLoading(false));
-  }, [lesson?.id]);
+  useEffect(() => {
+    if (pendingBirthDate && user && !saveBirthDate.isPending && !saveBirthDate.isSuccess && !saveBirthDate.isError) {
+      saveBirthDate.mutate(pendingBirthDate);
+    }
+  }, [pendingBirthDate, saveBirthDate, user]);
 
   if (!lesson) {
     return (
@@ -70,20 +87,12 @@ export default function InsightDetail() {
   const handleSaveBirthDate = async () => {
     if (!birthInput) { setBirthError("Please enter your date of birth."); return; }
     if (new Date(birthInput) >= new Date()) { setBirthError("Date of birth must be in the past."); return; }
-    setSavingBirth(true);
     setBirthError("");
-    try {
-      await apiFetch("/api/settings", { method: "PUT", body: JSON.stringify({ birthDate: birthInput }) });
-      setBirthDate(birthInput);
-      setShowBirthGate(false);
-    } catch {
-      setBirthError("Failed to save. Please try again.");
-    } finally {
-      setSavingBirth(false);
-    }
+    await saveBirthDate.mutateAsync(birthInput).catch(() => undefined);
   };
 
-  const showGate = showBirthGate && !birthDate;
+  const birthDate = savedBirthDate ?? pendingBirthDate ?? settings.data?.birthDate ?? null;
+  const showGate = settings.isSuccess && !birthDate;
 
   return (
     <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", position: "relative" }}>
@@ -98,7 +107,7 @@ export default function InsightDetail() {
       />
 
       <Box sx={{ flex: 1, px: 3, pb: 4, overflow: "auto" }}>
-        {settingsLoading ? (
+        {settings.isPending && !birthDate ? (
           <Box sx={{ display: "flex", justifyContent: "center", pt: 8 }}>
             <CircularProgress size={28} sx={{ color: "text.disabled" }} />
           </Box>
@@ -107,7 +116,7 @@ export default function InsightDetail() {
             birthInput={birthInput}
             onBirthInputChange={setBirthInput}
             onSave={handleSaveBirthDate}
-            saving={savingBirth}
+            saving={saveBirthDate.isPending}
             error={birthError}
           />
         ) : lesson.id === "illusion-of-flashcards" ? (

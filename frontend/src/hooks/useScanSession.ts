@@ -2,12 +2,15 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import type { PhotoSessionResult } from "@/lib/photo";
+import { useAuth } from "@/hooks/useAuth";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useScanSession(sessionId?: string) {
+  const { user } = useAuth();
   const query = useQuery({
-    queryKey: ["photo-session", sessionId],
+    queryKey: queryKeys.photoSession(user?.id ?? "", sessionId),
     queryFn: () => apiFetch<PhotoSessionResult>(`/api/photo/session/${sessionId}`),
-    enabled: Boolean(sessionId),
+    enabled: Boolean(user && sessionId),
     refetchInterval: (query) =>
       query.state.data?.status === "processing" && document.visibilityState === "visible" ? 2_000 : false,
     refetchIntervalInBackground: false,

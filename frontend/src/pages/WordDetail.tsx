@@ -6,6 +6,8 @@ import FamiliarityDots from "@/components/FamiliarityDots";
 import KanjiBreakdown from "@/components/session/KanjiBreakdown";
 import { apiFetch } from "@/lib/api";
 import type { KanjiBreakdownItem } from "@/lib/session";
+import { useAuth } from "@/hooks/useAuth";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface WordReference {
   id: string; word: string; reading: string; meaning: string; familiarity: number; learningState: string;
@@ -16,7 +18,8 @@ const labels: Record<string, string> = { WAITING_TO_LEARN: "New", WAITING_TO_REV
 
 export default function WordDetail() {
   const { id } = useParams();
-  const query = useQuery({ queryKey: ["word-reference", id], queryFn: () => apiFetch<WordReference>(`/api/words/${id}`), enabled: Boolean(id) });
+  const { user } = useAuth();
+  const query = useQuery({ queryKey: queryKeys.wordReference(user?.id ?? "", id), queryFn: () => apiFetch<WordReference>(`/api/words/${id}`), enabled: Boolean(user && id) });
   const word = query.data;
 
   return (

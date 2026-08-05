@@ -1,9 +1,9 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useSearchParams, Link } from "react-router-dom";
 import { Alert, Box, Button, CircularProgress, TextField, Typography } from "@mui/material";
 import { supabase } from "@/lib/supabase";
-
-const apiUrl = import.meta.env.VITE_API_URL;
+import { apiFetch } from "@/lib/api";
 
 function LeafIcon({ size = 20 }: { size?: number }) {
   return (
@@ -49,38 +49,28 @@ export default function Signup() {
   const [searchParams] = useSearchParams();
   const inviteCode = searchParams.get("invite");
 
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [checking, setChecking] = useState(true);
-  const [success, setSuccess] = useState(false);
-  const [inviteValid, setInviteValid] = useState(false);
-
-  useEffect(() => {
-    if (!inviteCode) {
-      setChecking(false);
-      return;
-    }
-
-    fetch(`${apiUrl}/api/invite/${inviteCode}/details`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Invalid invite");
-        return res.json();
-      })
-      .then((data: { email: string; status: string }) => {
-        if (data.status !== "PENDING") {
-          setError("This invite has already been used or revoked.");
-        } else {
-          setEmail(data.email);
-          setInviteValid(true);
-        }
-      })
-      .catch(() => setError("Invalid or expired invite link."))
-      .finally(() => setChecking(false));
-  }, [inviteCode]);
+  const invite = useQuery({
+    queryKey: ["invite-details", inviteCode],
+    queryFn: () => apiFetch<{ email: string; status: string }>(`/api/invite/${inviteCode}/details`),
+    enabled: Boolean(inviteCode),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const email = invite.data?.email ?? "";
+  const inviteValid = invite.data?.status === "PENDING";
+  const inviteError = invite.isError
+    ? "Invalid or expired invite link."
+    : invite.data && !inviteValid ? "This invite has already been used or revoked." : "";
+  const signup = useMutation({
+    mutationFn: async () => {
+      const { error: signupError } = await supabase.auth.signUp({ email, password });
+      if (signupError) throw signupError;
+    },
+  });
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -103,18 +93,15 @@ export default function Signup() {
       return;
     }
 
-    setLoading(true);
-    const { error } = await supabase.auth.signUp({ email, password });
-    if (error) {
-      setError(error.message);
-    } else {
+    try {
+      await signup.mutateAsync();
       try { localStorage.setItem("pending_birth_date", birthDate); } catch { /* ignore */ }
-      setSuccess(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not create account.");
     }
-    setLoading(false);
   };
 
-  if (checking) {
+  if (inviteCode && invite.isPending) {
     return (
       <PageShell>
         <CircularProgress sx={{ color: "#34d399" }} />
@@ -146,7 +133,7 @@ export default function Signup() {
     );
   }
 
-  if (success) {
+  if (signup.isSuccess) {
     return (
       <PageShell>
         <Box sx={{ textAlign: "center", px: 3, maxWidth: 380 }}>
@@ -190,9 +177,9 @@ export default function Signup() {
           Create your account to start learning
         </Typography>
 
-        {error && (
+        {(error || inviteError) && (
           <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
+            {error || inviteError}
           </Alert>
         )}
 
@@ -241,7 +228,7 @@ export default function Signup() {
           variant="contained"
           fullWidth
           size="large"
-          disabled={loading || !inviteValid}
+          disabled={signup.isPending || !inviteValid}
           sx={{
             bgcolor: "#10b981",
             color: "black",
@@ -254,7 +241,7 @@ export default function Signup() {
             "&:hover": { bgcolor: "#34d399" },
           }}
         >
-          {loading ? "Creating account..." : "Sign Up"}
+          {signup.isPending ? "Creating account..." : "Sign Up"}
         </Button>
         <Typography sx={{ mt: 2.5, textAlign: "center", fontSize: 13, color: "grey.500" }}>
           Already have an account?{" "}

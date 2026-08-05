@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Alert, Box, Button, TextField, Typography } from "@mui/material";
 import { supabase } from "@/lib/supabase";
@@ -16,18 +17,19 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const login = useMutation({
+    mutationFn: async () => {
+      const { error: loginError } = await supabase.auth.signInWithPassword({ email, password });
+      if (loginError) throw loginError;
+    },
+  });
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
-    setLoading(true);
-
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setError(error.message);
-    }
-    setLoading(false);
+    await login.mutateAsync().catch((cause) => {
+      setError(cause instanceof Error ? cause.message : "Could not sign in.");
+    });
   };
 
   return (
@@ -102,7 +104,7 @@ export default function Login() {
           variant="contained"
           fullWidth
           size="large"
-          disabled={loading}
+          disabled={login.isPending}
           sx={{
             bgcolor: "#10b981",
             color: "black",
@@ -115,7 +117,7 @@ export default function Login() {
             "&:hover": { bgcolor: "#34d399" },
           }}
         >
-          {loading ? "Signing in..." : "Sign In"}
+          {login.isPending ? "Signing in..." : "Sign In"}
         </Button>
         <Typography sx={{ mt: 2.5, textAlign: "center", fontSize: 13, color: "grey.500" }}>
           Have an invite?{" "}

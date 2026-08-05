@@ -6,6 +6,8 @@ import CollectionTree from "@/components/CollectionTree";
 import PageHeader from "@/components/PageHeader";
 import FamiliarityDots from "@/components/FamiliarityDots";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface KanjiListItem {
   id: string;
@@ -31,6 +33,7 @@ const ZONE_TRANSFORMS: Record<Zone, string> = {
 export default function KanjiList() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const zone = (searchParams.get("zone") || "roots") as Zone;
   const config = ZONE_CONFIG[zone] || ZONE_CONFIG.roots;
   const [treeFocused, setTreeFocused] = useState(false);
@@ -41,8 +44,9 @@ export default function KanjiList() {
   }, []);
 
   const { data: allKanji = [], isLoading: loading } = useQuery({
-    queryKey: ["kanji-list"],
+    queryKey: queryKeys.kanjiList(user?.id ?? ""),
     queryFn: () => apiFetch<KanjiListItem[]>("/api/kanji/list"),
+    enabled: Boolean(user),
     staleTime: 60_000,
   });
 

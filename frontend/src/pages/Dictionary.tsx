@@ -9,6 +9,8 @@ import PageHeader from "@/components/PageHeader";
 import FamiliarityDots from "@/components/FamiliarityDots";
 import { apiFetch } from "@/lib/api";
 import { formatNextReview } from "@/lib/format";
+import { useAuth } from "@/hooks/useAuth";
+import { queryKeys } from "@/lib/queryKeys";
 
 type LearningState = "WAITING_TO_LEARN" | "WAITING_TO_REVISIT" | "LEARNING" | "REVIEWING" | "MASTERED";
 interface WordListItem { id: string; word: string; reading: string; meaning: string; familiarity: number; nextReview: string | null; learningState: LearningState }
@@ -34,13 +36,14 @@ const stateLabel: Record<LearningState, string> = {
 
 export default function Dictionary() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [query, setQuery] = useState("");
   const [state, setState] = useState<LearningState | "ALL">("ALL");
   const deferredQuery = useDeferredValue(query.trim());
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const wordsQuery = useInfiniteQuery({
-    queryKey: ["words", deferredQuery, state],
+    queryKey: queryKeys.words(user?.id ?? "", deferredQuery, state),
     initialPageParam: 0,
     queryFn: ({ pageParam }) => {
       const params = new URLSearchParams({ offset: String(pageParam), limit: String(PAGE_SIZE) });
@@ -49,6 +52,7 @@ export default function Dictionary() {
       return apiFetch<WordListResponse>(`/api/words/list?${params}`);
     },
     getNextPageParam: (page, pages) => page.hasMore ? pages.reduce((sum, item) => sum + item.words.length, 0) : undefined,
+    enabled: Boolean(user),
   });
 
   const words = wordsQuery.data?.pages.flatMap((page) => page.words) ?? [];

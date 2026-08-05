@@ -24,7 +24,9 @@ Max header: 100 chars.
 - Auth via `@supabase/supabase-js` — `supabase.ts` exports the client
 - API token: `supabase.auth.getSession()` → `session.access_token` in `api.ts`
 - Storage: `supabase.storage.from('photos')` for photo uploads
-- API caching via `@tanstack/react-query` — use `useQuery` for GET endpoints, not manual `useState` + `useEffect` + `apiFetch`
+- All remote reads use TanStack `useQuery`/`useInfiniteQuery`, and writes use `useMutation` with explicit cache updates or invalidation; never fetch server data through `useEffect` plus local loading state.
+- Private query keys must include the authenticated user ID; clear in-memory and persisted private caches on logout or identity change, and never persist tokens, admin data, or signed URLs.
+- Use one shared auth provider, define intentional `staleTime`/`gcTime`, and keep cached data visible during background refetches; show initial loading UI only when no cached data exists.
 - Shared components: `PageHeader` (all pages), `FamiliarityDots` (kanji/word lists)
 - Mobile-first `maxWidth: 480`. No AppBar — pages manage own headers via `PageHeader`
 - Brand icon: emerald→indigo gradient square with leaf SVG (favicon, navbar, footer)

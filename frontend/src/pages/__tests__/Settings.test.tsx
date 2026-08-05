@@ -9,6 +9,7 @@ import {
 } from "@/lib/captureQueue";
 import { supabase } from "@/lib/supabase";
 import { renderWithProviders } from "@/test/mocks";
+import { QueryClient } from "@tanstack/react-query";
 
 const mockApiFetch = vi.fn();
 vi.mock("@/lib/api", () => ({
@@ -59,5 +60,32 @@ describe("Settings logout with locally saved captures", () => {
     await waitFor(() => expect(supabase.auth.signOut).toHaveBeenCalledOnce());
     await expect(getLocalCapture(captureId)).resolves.toBeUndefined();
     confirm.mockRestore();
+  });
+
+  it("shows cached settings while their background refresh is pending", () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 0 } } });
+    queryClient.setQueryData(["settings", "test-user"], { quizAllowancePerSlot: 9, slotDurationHours: 8 });
+    mockApiFetch.mockReturnValue(new Promise(() => {}));
+
+    renderWithProviders(<Settings />, { queryClient });
+
+    expect(screen.getByText("Quizzes per session: 9")).toBeInTheDocument();
+    expect(screen.getByRole("combobox")).toHaveTextContent("8 hours");
+    expect(screen.getByRole("slider")).toBeEnabled();
+  });
+
+  it("rolls a cached setting back when its save fails", async () => {
+    mockApiFetch.mockImplementation((_path: string, init?: RequestInit) => {
+      if (init?.method === "PUT") return Promise.reject(new Error("offline"));
+      return Promise.resolve({ quizAllowancePerSlot: 5, slotDurationHours: 6 });
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<Settings />);
+    expect(await screen.findByText("Quizzes per session: 5")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("combobox"));
+    await user.click(screen.getByRole("option", { name: "8 hours" }));
+
+    await waitFor(() => expect(screen.getByRole("combobox")).toHaveTextContent("6 hours"));
   });
 });

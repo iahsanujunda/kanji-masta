@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Typography } from "@mui/material";
 import SessionHeader from "@/components/session/SessionHeader";
 import IntroductionCard from "@/components/session/IntroductionCard";
@@ -9,12 +9,16 @@ import FeedbackSheet from "@/components/session/FeedbackSheet";
 import SessionSummaryView from "@/components/session/SessionSummaryView";
 import { ApiError, apiFetch } from "@/lib/api";
 import type { SessionCard, SessionCommandResponse, SessionFeedback, SessionResponse, SessionSnapshot } from "@/lib/session";
+import { useAuth } from "@/hooks/useAuth";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface AdvancedBody { code: "SESSION_ADVANCED"; session: SessionSnapshot }
 
 export default function Quiz() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const userId = user?.id ?? "";
   const [session, setSession] = useState<SessionSnapshot | null>(null);
   const [pendingSession, setPendingSession] = useState<SessionSnapshot | null>(null);
   const [feedback, setFeedback] = useState<SessionFeedback | null>(null);
@@ -26,10 +30,18 @@ export default function Quiz() {
   const cardStartedAt = useRef(Date.now());
 
   const startQuery = useQuery({
-    queryKey: ["quiz-session", "active"],
+    queryKey: queryKeys.quizSession(userId),
     queryFn: () => apiFetch<SessionResponse>("/api/quiz/session/start", { method: "POST" }),
+    enabled: Boolean(user),
     retry: 1,
     staleTime: Infinity,
+  });
+  const sessionCommand = useMutation({
+    mutationFn: ({ path, body }: { path: string; body: Record<string, unknown> }) =>
+      apiFetch<SessionCommandResponse>(path, { method: "POST", body: JSON.stringify(body) }),
+  });
+  const exitCommand = useMutation({
+    mutationFn: (slotId: string) => apiFetch<SessionResponse>(`/api/quiz/session/${slotId}/exit`, { method: "POST" }),
   });
 
   useEffect(() => {
@@ -41,8 +53,8 @@ export default function Quiz() {
   }, [session?.currentCard?.cardId]);
 
   const finish = () => {
-    queryClient.invalidateQueries({ queryKey: ["user-summary"] });
-    queryClient.removeQueries({ queryKey: ["quiz-session", "active"] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.userSummary(userId) });
+    queryClient.removeQueries({ queryKey: queryKeys.quizSession(userId) });
     navigate("/home");
   };
 
@@ -55,7 +67,7 @@ export default function Quiz() {
     setSubmitting(true);
     setCommandError(false);
     try {
-      const response = await apiFetch<SessionCommandResponse>(path, { method: "POST", body: JSON.stringify(body) });
+      const response = await sessionCommand.mutateAsync({ path, body });
       if (showFeedback) {
         setAnsweredCard(card);
         setFeedback(response.feedback);
@@ -110,7 +122,7 @@ export default function Quiz() {
     if (!session) return finish();
     setSubmitting(true);
     try {
-      await apiFetch<SessionResponse>(`/api/quiz/session/${session.slotId}/exit`, { method: "POST" });
+      await exitCommand.mutateAsync(session.slotId);
     } finally {
       finish();
     }

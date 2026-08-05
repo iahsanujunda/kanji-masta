@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api";
 import AdminBottomDrawer from "@/pages/admin/AdminBottomDrawer";
 import ModelSettings from "@/pages/admin/ModelSettings";
+import { useAuth } from "@/hooks/useAuth";
 import { adminApi } from "@/pages/admin/api";
 import type { JobItem } from "@/pages/admin/types";
 
@@ -11,25 +12,28 @@ const filters = ["all", "needs-action", "pending", "processing", "failed", "done
 const statusColor: Record<string, string> = { pending: "#a5b4fc", processing: "#818cf8", done: "#34d399", failed: "#f87171" };
 
 export default function JobsTab() {
+  const { user } = useAuth();
+  const userId = user?.id ?? "";
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<(typeof filters)[number]>("all");
   const [selected, setSelected] = useState<JobItem | null>(null);
   const [action, setAction] = useState<"fail" | "rerun" | null>(null);
   const jobs = useQuery({
-    queryKey: ["admin-jobs", filter],
+    queryKey: ["admin-jobs", userId, filter],
     queryFn: ({ signal }) => adminApi.jobs(filter, signal),
+    enabled: Boolean(user),
     refetchInterval: 15_000,
   });
   const detail = useQuery({
-    queryKey: ["admin-job", selected?.type, selected?.id],
+    queryKey: ["admin-job", userId, selected?.type, selected?.id],
     queryFn: ({ signal }) => adminApi.job(selected!.type, selected!.id, signal),
-    enabled: selected !== null,
+    enabled: Boolean(user) && selected !== null,
   });
   const refresh = async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["admin-jobs"] }),
-      queryClient.invalidateQueries({ queryKey: ["admin-job"] }),
-      queryClient.invalidateQueries({ queryKey: ["admin-status"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-jobs", userId] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-job", userId] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-status", userId] }),
       queryClient.invalidateQueries({ queryKey: ["photo-activity"] }),
       queryClient.invalidateQueries({ queryKey: ["photo-activity-unseen"] }),
       queryClient.invalidateQueries({ queryKey: ["photo-session"] }),

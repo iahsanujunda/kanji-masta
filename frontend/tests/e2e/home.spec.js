@@ -35,6 +35,45 @@ test("authenticated learners see their dashboard and can open the collection", a
   await expect(page.getByRole("img", { name: "A low-poly kanji learning tree" })).toBeVisible();
 });
 
+test("a restored session never paints the public landing page", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__landingWasPainted = false;
+    const watch = () => {
+      if (document.body?.innerText.includes("Keep the Japanese you notice.")) {
+        window.__landingWasPainted = true;
+      }
+    };
+    new MutationObserver(watch).observe(document, { childList: true, subtree: true });
+  });
+  await authenticate(page);
+
+  await page.goto("/");
+
+  await expect(page).toHaveURL(/\/home$/);
+  await expect(page.getByText(/You are on 12 day streak/)).toBeVisible();
+  expect(await page.evaluate(() => window.__landingWasPainted)).toBe(false);
+});
+
+test("navigation and reload reuse the signed-in learner cache", async ({ page, request }) => {
+  await request.post("http://127.0.0.1:18080/__test/reset");
+  await authenticate(page);
+  await page.goto("/home");
+  await expect(page.getByText(/You are on 12 day streak/)).toBeVisible();
+
+  await page.getByText("Your Kanji", { exact: true }).click();
+  await expect(page.getByRole("img", { name: "A low-poly kanji learning tree" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByText(/You are on 12 day streak/)).toBeVisible();
+
+  await page.waitForTimeout(350);
+  await page.reload();
+  await expect(page.getByText(/You are on 12 day streak/)).toBeVisible();
+
+  const metrics = await (await request.get("http://127.0.0.1:18080/__test/request-metrics")).json();
+  expect(metrics.counts["/api/user/summary"]).toBe(1);
+  expect(metrics.counts["/api/kanji/list"]).toBe(1);
+});
+
 test("Activity drawer visibly enters and exits without an empty-state action", async ({ page, request }) => {
   await request.post("http://127.0.0.1:18080/__test/reset");
   await page.emulateMedia({ reducedMotion: "no-preference" });

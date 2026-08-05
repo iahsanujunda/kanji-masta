@@ -222,7 +222,8 @@ export async function updateLocalCapture(
   const storedCapture = Object.prototype.hasOwnProperty.call(changes, "blob") || !current.blobBytes
     ? await stored(updated)
     : (() => {
-        const { blob: _blob, ...record } = updated;
+        const record = { ...updated };
+        delete record.blob;
         return { ...record, blobBytes: current.blobBytes, blobType: current.blobType };
       })();
   await db.put("captures", storedCapture);

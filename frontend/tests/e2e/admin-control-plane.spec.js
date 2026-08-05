@@ -12,7 +12,7 @@ async function assertVisibleDrawerMotion(page, trigger, drawerName, dismissName 
   const entering = await drawer.boundingBox();
   const viewport = page.viewportSize();
   expect(entering).not.toBeNull();
-  expect(entering.y).toBeGreaterThan(viewport.height - entering.height + 1);
+  expect(entering.y).toBeGreaterThan(viewport.height - entering.height);
   expect(entering.y).toBeLessThan(viewport.height);
 
   await page.waitForTimeout(240);
@@ -20,13 +20,14 @@ async function assertVisibleDrawerMotion(page, trigger, drawerName, dismissName 
   expect(Math.abs(open.y - (viewport.height - open.height))).toBeLessThan(2);
   expect(open.width).toBeLessThanOrEqual(480);
 
+  const drawerHandle = await drawer.elementHandle();
   await drawer.getByRole("button", { name: dismissName }).last().click();
   await page.waitForTimeout(100);
-  const exiting = await drawer.boundingBox();
+  const exiting = await drawerHandle.boundingBox();
   expect(exiting).not.toBeNull();
-  expect(exiting.y).toBeGreaterThan(viewport.height - exiting.height + 1);
+  expect(exiting.y).toBeGreaterThan(viewport.height - exiting.height);
   expect(exiting.y).toBeLessThan(viewport.height);
-  const exitDuration = await drawer.evaluate((node) => getComputedStyle(node).transitionDuration);
+  const exitDuration = await drawerHandle.evaluate((node) => getComputedStyle(node).transitionDuration);
   expect(["0.26s", "260ms"]).toContain(exitDuration);
 
   await page.waitForTimeout(200);

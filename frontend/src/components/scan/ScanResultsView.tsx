@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Box, Button, Paper, Typography } from "@mui/material";
 import CheckIcon from "@mui/icons-material/Check";
@@ -7,6 +8,8 @@ import StarOutlineIcon from "@mui/icons-material/StarOutline";
 import PageHeader from "@/components/PageHeader";
 import { apiFetch } from "@/lib/api";
 import type { EnrichedKanji } from "@/lib/photo";
+import { useAuth } from "@/hooks/useAuth";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface ScanResultsViewProps {
   sessionId: string;
@@ -15,9 +18,25 @@ interface ScanResultsViewProps {
 
 export default function ScanResultsView({ sessionId, kanji }: ScanResultsViewProps) {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [selections, setSelections] = useState<Record<string, "familiar" | "learning" | null>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const saveSelections = useMutation({
+    mutationFn: (selected: Array<{ kanjiMasterId: string; status: "familiar" | "learning" }>) =>
+      apiFetch("/api/kanji/session", {
+        method: "POST",
+        body: JSON.stringify({ sessionId, selections: selected }),
+      }),
+    onSuccess: async () => {
+      if (!user) return;
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.userSummary(user.id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.kanjiList(user.id) }),
+      ]);
+    },
+  });
 
   const toggle = (character: string, status: "familiar" | "learning") => {
     setSelections((current) => ({
@@ -39,10 +58,7 @@ export default function ScanResultsView({ sessionId, kanji }: ScanResultsViewPro
     setError(null);
     try {
       if (selected.length > 0) {
-        await apiFetch("/api/kanji/session", {
-          method: "POST",
-          body: JSON.stringify({ sessionId, selections: selected }),
-        });
+        await saveSelections.mutateAsync(selected);
       }
       navigate("/home", {
         state: { quizGenerating: selected.some((item) => item.status === "learning") },

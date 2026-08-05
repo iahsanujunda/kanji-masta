@@ -44,6 +44,7 @@ export default function PhotoActivityControl({ userId }: { userId?: string }) {
   const serverItems = activityQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const activeServerItems = serverItems.filter((item) => item.status === "processing");
   const terminalServerItems = serverItems.filter((item) => item.status !== "processing");
+  const { fetchNextPage, hasNextPage, isFetchingNextPage } = activityQuery;
 
   const seenMutation = useMutation({
     mutationFn: (seenThrough: string) => apiFetch<{ acknowledged: boolean }>("/api/photo/activity/seen", {
@@ -71,15 +72,15 @@ export default function PhotoActivityControl({ userId }: { userId?: string }) {
   useEffect(() => {
     const target = sentinelRef.current;
     const root = scrollRef.current;
-    if (!target || !root || !activityQuery.hasNextPage) return;
+    if (!target || !root || !hasNextPage) return;
     const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting && !activityQuery.isFetchingNextPage) {
-        void activityQuery.fetchNextPage();
+      if (entry.isIntersecting && !isFetchingNextPage) {
+        void fetchNextPage();
       }
     }, { root, rootMargin: "160px" });
     observer.observe(target);
     return () => observer.disconnect();
-  }, [activityQuery.fetchNextPage, activityQuery.hasNextPage, activityQuery.isFetchingNextPage]);
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
   const hasUnseen = Boolean(unseenQuery.data?.hasUnseen) && !open;
   const iconLabel = hasUnseen ? "Activity, new updates" : "Activity";

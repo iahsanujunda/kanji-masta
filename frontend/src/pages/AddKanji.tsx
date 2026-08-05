@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Box,
   Button,
@@ -14,6 +14,8 @@ import CheckIcon from "@mui/icons-material/Check";
 import StarOutlineIcon from "@mui/icons-material/StarOutline";
 import PageHeader from "@/components/PageHeader";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface CurriculumItem {
   jlpt: number;
@@ -73,9 +75,11 @@ export default function AddKanji() {
 
 function CurriculumHub({ onSelect }: { onSelect: (jlpt: number) => void }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { data, isLoading } = useQuery({
-    queryKey: ["curriculum"],
+    queryKey: queryKeys.curriculum(user?.id ?? ""),
     queryFn: () => apiFetch<{ curriculums: CurriculumItem[] }>("/api/kanji/curriculum"),
+    enabled: Boolean(user),
   });
 
   return (
@@ -182,9 +186,12 @@ function CurriculumDetail({
   level: number | null;
   queryClient: ReturnType<typeof useQueryClient>;
 }) {
+  const { user } = useAuth();
+  const userId = user?.id ?? "";
   const { data, isLoading } = useQuery({
-    queryKey: ["curriculum-detail", jlpt],
+    queryKey: queryKeys.curriculumDetail(userId, jlpt),
     queryFn: () => apiFetch<CurriculumDetailResponse>(`/api/kanji/curriculum/${jlpt}`),
+    enabled: Boolean(user),
   });
 
   // Legacy mode state
@@ -193,6 +200,12 @@ function CurriculumDetail({
   // Batch mode state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
+  const addKanji = useMutation({
+    mutationFn: (selections: Array<{ kanjiMasterId: string; status: string }>) => apiFetch("/api/kanji/add", {
+      method: "POST",
+      body: JSON.stringify({ selections }),
+    }),
+  });
 
   const isLearningBatch = batchMode && level !== null && levelToStatus(level) === "learning";
   const cap = isLearningBatch ? MAX_LEARNING_BATCH : Infinity;
@@ -215,18 +228,13 @@ function CurriculumDetail({
     if (!selectedIds.size || level === null) return;
     setSubmitting(true);
     try {
-      await apiFetch("/api/kanji/add", {
-        method: "POST",
-        body: JSON.stringify({
-          selections: Array.from(selectedIds).map((id) => ({
-            kanjiMasterId: id,
-            status: levelToStatus(level),
-          })),
-        }),
-      });
-      queryClient.invalidateQueries({ queryKey: ["curriculum-detail", jlpt] });
-      queryClient.invalidateQueries({ queryKey: ["curriculum"] });
-      queryClient.invalidateQueries({ queryKey: ["kanji-list"] });
+      await addKanji.mutateAsync(Array.from(selectedIds).map((id) => ({
+        kanjiMasterId: id,
+        status: levelToStatus(level),
+      })));
+      queryClient.invalidateQueries({ queryKey: ["curriculum-detail", userId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.curriculum(userId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.kanjiList(userId) });
       setSelectedIds(new Set());
     } finally {
       setSubmitting(false);
@@ -236,15 +244,10 @@ function CurriculumDetail({
   const handleTriage = async (status: string) => {
     if (!selectedKanji) return;
     try {
-      await apiFetch("/api/kanji/add", {
-        method: "POST",
-        body: JSON.stringify({
-          selections: [{ kanjiMasterId: selectedKanji.kanjiMasterId, status }],
-        }),
-      });
+      await addKanji.mutateAsync([{ kanjiMasterId: selectedKanji.kanjiMasterId, status }]);
       setSelectedKanji(null);
-      queryClient.invalidateQueries({ queryKey: ["curriculum-detail", jlpt] });
-      queryClient.invalidateQueries({ queryKey: ["curriculum"] });
+      queryClient.invalidateQueries({ queryKey: ["curriculum-detail", userId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.curriculum(userId) });
     } catch {
       // fail silently
     }

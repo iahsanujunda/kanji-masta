@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   Box,
@@ -12,6 +13,8 @@ import CheckIcon from "@mui/icons-material/Check";
 import ParkIcon from "@mui/icons-material/Park";
 import SpaIcon from "@mui/icons-material/Spa";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface SeenAs {
   word: string;
@@ -39,6 +42,8 @@ type View = "welcome" | "loading" | "deck" | "saving" | "batch-done" | "photo-pr
 
 export default function Onboarding() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [kanji, setKanji] = useState<OnboardingKanji[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [batchSelections, setBatchSelections] = useState<Selection[]>([]);
@@ -51,13 +56,28 @@ export default function Onboarding() {
   // Cumulative counts across all saved batches
   const [totalLearning, setTotalLearning] = useState(0);
   const [totalFamiliar, setTotalFamiliar] = useState(0);
+  const loadBatchRequest = useMutation({
+    mutationFn: (newOffset: number) => apiFetch<{ kanji: OnboardingKanji[]; hasMore: boolean }>(
+      `/api/onboarding/kanji?offset=${newOffset}&limit=10`,
+    ),
+  });
+  const saveSelectionRequest = useMutation({
+    mutationFn: (selections: Selection[]) => apiFetch("/api/onboarding/select", {
+      method: "POST",
+      body: JSON.stringify({ selections }),
+    }),
+  });
+  const completeRequest = useMutation({
+    mutationFn: () => apiFetch("/api/onboarding/complete", { method: "POST" }),
+    onSuccess: () => {
+      if (user) void queryClient.invalidateQueries({ queryKey: queryKeys.userSummary(user.id) });
+    },
+  });
 
   const loadBatch = useCallback(async (newOffset: number) => {
     setView("loading");
     try {
-      const data = await apiFetch<{ kanji: OnboardingKanji[]; hasMore: boolean }>(
-        `/api/onboarding/kanji?offset=${newOffset}&limit=10`
-      );
+      const data = await loadBatchRequest.mutateAsync(newOffset);
       setKanji(data.kanji);
       setHasMore(data.hasMore);
       setCurrentIndex(0);
@@ -67,7 +87,7 @@ export default function Onboarding() {
     } catch {
       navigate("/home");
     }
-  }, [navigate]);
+  }, [loadBatchRequest, navigate]);
 
   const startDeck = useCallback(() => {
     loadBatch(0);
@@ -77,10 +97,7 @@ export default function Onboarding() {
     if (selections.length === 0) return;
     setView("saving");
     try {
-      await apiFetch("/api/onboarding/select", {
-        method: "POST",
-        body: JSON.stringify({ selections }),
-      });
+      await saveSelectionRequest.mutateAsync(selections);
     } catch {
       // Continue anyway — selections may be partially saved
     }
@@ -89,7 +106,7 @@ export default function Onboarding() {
     setTotalLearning((prev) => prev + batchLearning);
     setTotalFamiliar((prev) => prev + batchFamiliar);
     setView("batch-done");
-  }, []);
+  }, [saveSelectionRequest]);
 
   const handleDecision = useCallback((status: "learning" | "familiar") => {
     if (animating) return;
@@ -122,11 +139,11 @@ export default function Onboarding() {
 
   const completeOnboarding = useCallback(async () => {
     try {
-      await apiFetch("/api/onboarding/complete", { method: "POST" });
+      await completeRequest.mutateAsync();
     } catch {
       // Continue anyway
     }
-  }, []);
+  }, [completeRequest]);
 
   const allLearning = totalLearning;
   const allFamiliar = totalFamiliar;

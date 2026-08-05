@@ -50,6 +50,7 @@ let scanStatus = "processing";
 let scanUpdatedAt = "2026-08-05T00:00:00.000Z";
 let activitySeenThrough = null;
 let analyzeCalls = 0;
+const requestCounts = new Map();
 const sessionsByCapture = new Map();
 const adminJob = {
   id: "a60e1b9a-cc7d-4eff-ab6e-3025e688d449",
@@ -71,6 +72,7 @@ function resetCaptureState() {
   scanUpdatedAt = "2026-08-05T00:00:00.000Z";
   activitySeenThrough = null;
   analyzeCalls = 0;
+  requestCounts.clear();
   sessionsByCapture.clear();
 }
 
@@ -125,6 +127,13 @@ createServer(async (request, response) => {
     });
     return;
   }
+
+  if (path === "/__test/request-metrics") {
+    sendJson(response, 200, { counts: Object.fromEntries(requestCounts) });
+    return;
+  }
+
+  requestCounts.set(path, (requestCounts.get(path) ?? 0) + 1);
 
   if (path === "/api/user/summary") {
     sendJson(response, 200, {

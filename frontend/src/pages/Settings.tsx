@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Box,
   Divider,
@@ -16,10 +17,11 @@ import {
 import LogoutIcon from "@mui/icons-material/Logout";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/lib/supabase";
 import { apiFetch } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import { deleteLocalCapturesForUser, listLocalCaptures } from "@/lib/captureQueue";
+import { useAuth } from "@/hooks/useAuth";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface Settings {
   quizAllowancePerSlot: number;
@@ -28,27 +30,47 @@ interface Settings {
 
 export default function Settings() {
   const navigate = useNavigate();
-  const [settings, setSettings] = useState<Settings>({ quizAllowancePerSlot: 5, slotDurationHours: 6 });
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    apiFetch<Settings>("/api/settings")
-      .then((data) => { setSettings(data); setLoaded(true); })
-      .catch(() => setLoaded(true));
-  }, []);
-
-  const handleSave = async (updated: Partial<Settings>) => {
-    const merged = { ...settings, ...updated };
-    setSettings(merged);
-    await apiFetch("/api/settings", {
+  const { user, signOut } = useAuth();
+  const queryClient = useQueryClient();
+  const settingsKey = queryKeys.settings(user?.id ?? "");
+  const settingsQuery = useQuery({
+    queryKey: settingsKey,
+    queryFn: () => apiFetch<Settings>("/api/settings"),
+    enabled: Boolean(user),
+    staleTime: 5 * 60_000,
+  });
+  const [draft, setDraft] = useState<Settings | null>(null);
+  const settings = draft ?? settingsQuery.data ?? { quizAllowancePerSlot: 5, slotDurationHours: 6 };
+  const saveSettings = useMutation({
+    mutationFn: (updated: Settings) => apiFetch("/api/settings", {
       method: "PUT",
-      body: JSON.stringify(merged),
-    }).catch(() => {});
+      body: JSON.stringify(updated),
+    }),
+    onMutate: async (updated) => {
+      await queryClient.cancelQueries({ queryKey: settingsKey });
+      const previous = queryClient.getQueryData<Settings>(settingsKey);
+      queryClient.setQueryData(settingsKey, updated);
+      return previous;
+    },
+    onError: (_error, _updated, previous) => {
+      if (previous) queryClient.setQueryData(settingsKey, previous);
+      setDraft(null);
+    },
+    onSuccess: (_data, updated) => {
+      queryClient.setQueryData(settingsKey, updated);
+      setDraft(null);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: settingsKey }),
+  });
+
+  const handleSave = (updated: Partial<Settings>) => {
+    const merged = { ...settings, ...updated };
+    setDraft(merged);
+    saveSettings.mutate(merged);
   };
 
   const handleLogout = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const userId = session?.user.id;
+    const userId = user?.id;
     if (userId) {
       const captures = await listLocalCaptures(userId);
       const savedPhotos = captures.filter((capture) => capture.blob).length;
@@ -60,7 +82,7 @@ export default function Settings() {
       }
       await deleteLocalCapturesForUser(userId);
     }
-    await supabase.auth.signOut();
+    await signOut();
   };
 
   return (
@@ -88,13 +110,13 @@ export default function Settings() {
             </Typography>
             <Slider
               value={settings.quizAllowancePerSlot}
-              onChange={(_, v) => setSettings({ ...settings, quizAllowancePerSlot: v as number })}
+              onChange={(_, v) => setDraft({ ...settings, quizAllowancePerSlot: v as number })}
               onChangeCommitted={(_, v) => handleSave({ quizAllowancePerSlot: v as number })}
               min={3}
               max={15}
               step={1}
               marks={[{ value: 3, label: "3" }, { value: 5, label: "5" }, { value: 10, label: "10" }, { value: 15, label: "15" }]}
-              disabled={!loaded}
+              disabled={!settingsQuery.data}
               sx={{ color: "#4338ca" }}
             />
             <Typography variant="caption" color="text.secondary">
@@ -113,7 +135,7 @@ export default function Settings() {
               onChange={(e) => handleSave({ slotDurationHours: e.target.value as number })}
               fullWidth
               size="small"
-              disabled={!loaded}
+              disabled={!settingsQuery.data}
               sx={{ borderRadius: 2 }}
             >
               <MenuItem value={3}>3 hours</MenuItem>

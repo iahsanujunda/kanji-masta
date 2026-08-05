@@ -3,20 +3,23 @@ import { Alert, Box, Button, Checkbox, FormControlLabel, TextField, Typography }
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import AdminBottomDrawer from "@/pages/admin/AdminBottomDrawer";
 import { adminApi } from "@/pages/admin/api";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function InvitesTab() {
+  const { user } = useAuth();
+  const userId = user?.id ?? "";
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [sendEmail, setSendEmail] = useState(false);
-  const invites = useQuery({ queryKey: ["admin-invites"], queryFn: ({ signal }) => adminApi.invites(signal) });
+  const invites = useQuery({ queryKey: ["admin-invites", userId], queryFn: ({ signal }) => adminApi.invites(signal), enabled: Boolean(user) });
   const create = useMutation({
     mutationFn: () => adminApi.createInvite(email.trim(), sendEmail),
-    onSuccess: async () => { setOpen(false); setEmail(""); await queryClient.invalidateQueries({ queryKey: ["admin-invites"] }); },
+    onSuccess: async () => { setOpen(false); setEmail(""); await queryClient.invalidateQueries({ queryKey: ["admin-invites", userId] }); },
   });
   const revoke = useMutation({
     mutationFn: adminApi.revokeInvite,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-invites"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-invites", userId] }),
   });
   return <Box sx={{ display: "grid", gap: 1.5 }}>
     <Button onClick={() => setOpen(true)} sx={{ minHeight: 48, bgcolor: "#10b981", color: "#050508", textTransform: "none", fontWeight: 900 }}>Create invite</Button>

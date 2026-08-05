@@ -5,6 +5,8 @@ import { Box, Typography } from "@mui/material";
 import CollectionTree from "@/components/CollectionTree";
 import PageHeader from "@/components/PageHeader";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface KanjiItem {
   familiarity: number;
@@ -90,11 +92,13 @@ function ZoneBadge({
 
 export default function Collection() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [hoveredZone, setHoveredZone] = useState<Zone>(null);
 
   const { data: kanjiList = [] } = useQuery({
-    queryKey: ["kanji-list"],
+    queryKey: queryKeys.kanjiList(user?.id ?? ""),
     queryFn: () => apiFetch<KanjiItem[]>("/api/kanji/list"),
+    enabled: Boolean(user),
     staleTime: 60_000,
   });
 

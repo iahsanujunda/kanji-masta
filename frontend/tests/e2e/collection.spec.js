@@ -87,6 +87,20 @@ test("keeps the focused tree anchored while a long tier scrolls", async ({ page 
   }));
 
   await page.route("**/api/kanji/list", (route) => route.fulfill({ json: masteredKanji }));
+  await page.evaluate(async () => {
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("kanji-masta-query-cache");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise((resolve, reject) => {
+      const transaction = database.transaction("caches", "readwrite");
+      transaction.objectStore("caches").clear();
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error);
+    });
+    database.close();
+  });
   await page.reload();
   await expect(page.getByText("45 Kanji", { exact: true })).toBeVisible();
   await page.getByText("Mastered", { exact: true }).click();

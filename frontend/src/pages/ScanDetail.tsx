@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Box, Button, Typography } from "@mui/material";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
@@ -8,7 +7,7 @@ import ScanProgressView from "@/components/scan/ScanProgressView";
 import ScanResultsView from "@/components/scan/ScanResultsView";
 import { useScanSession } from "@/hooks/useScanSession";
 import { ApiError } from "@/lib/api";
-import { supabase } from "@/lib/supabase";
+import { useSignedPhotoUrl } from "@/hooks/useSignedPhotoUrl";
 
 function failureMessage(code?: string | null): string {
   if (code === "timed_out") return "Analysis took too long and stopped.";
@@ -20,17 +19,7 @@ export default function ScanDetail() {
   const { sessionId } = useParams();
   const navigate = useNavigate();
   const query = useScanSession(sessionId);
-  const [imageUrl, setImageUrl] = useState<string>();
-
-  useEffect(() => {
-    const storagePath = query.data?.storagePath;
-    if (!storagePath) return;
-    let active = true;
-    supabase.storage.from("photos").createSignedUrl(storagePath, 300).then(({ data }) => {
-      if (active && data?.signedUrl) setImageUrl(data.signedUrl);
-    });
-    return () => { active = false; };
-  }, [query.data?.storagePath]);
+  const imageUrl = useSignedPhotoUrl(query.data?.storagePath).data;
 
   if (query.data?.status === "done" && query.data.kanji) {
     return <ScanResultsView sessionId={query.data.sessionId} kanji={query.data.kanji} />;

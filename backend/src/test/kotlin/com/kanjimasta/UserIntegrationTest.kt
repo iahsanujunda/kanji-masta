@@ -1,9 +1,9 @@
 package com.kanjimasta
 
-import com.kanjimasta.core.db.KanjiMasterTable
-import com.kanjimasta.core.db.QuizType
-import com.kanjimasta.core.db.UserKanjiStatus
-import com.kanjimasta.core.db.UserKanjiTable
+import com.kanjimasta.db.KanjiMasterTable
+import com.kanjimasta.db.QuizType
+import com.kanjimasta.db.UserKanjiStatus
+import com.kanjimasta.db.UserKanjiTable
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*

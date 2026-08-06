@@ -1,0 +1,55 @@
+package com.kanjimasta.user
+
+import com.kanjimasta.quiz.QuizRepository
+import com.kanjimasta.settings.SettingsRepository
+import java.time.Instant
+
+class UserService(
+    private val userRepository: UserRepository,
+    private val quizRepository: QuizRepository,
+    private val settingsRepository: SettingsRepository,
+) {
+    fun ensureUserInitialized(email: String?, userId: String) {
+        settingsRepository.ensureUserInitialized(email, userId)
+    }
+
+    fun getSummary(userId: String): UserSummaryResponse {
+        val (learning, familiar) = userRepository.getKanjiCounts(userId)
+        val wordCount = userRepository.getWordCount(userId)
+        val streak = userRepository.getStreak(userId)
+
+        val (allowance, _) = quizRepository.getUserSettings(userId)
+        val activeSlot = quizRepository.getActiveSlot(userId)
+        val now = Instant.now()
+
+        var slotRemaining = allowance
+        var slotEndsAt: String? = null
+        var sessionState = "READY"
+
+        if (activeSlot != null && activeSlot.slotEnd.isAfter(now)) {
+            slotRemaining = (activeSlot.allowance - activeSlot.completed).coerceAtLeast(0)
+            slotEndsAt = activeSlot.slotEnd.toString()
+            sessionState = "ACTIVE"
+        } else {
+            val latest = quizRepository.getLatestFinishedSlot(userId)
+            if (latest != null && latest.status == "COMPLETED" && latest.slotEnd.isAfter(now)) {
+                slotRemaining = 0
+                slotEndsAt = latest.slotEnd.toString()
+                sessionState = "COOLDOWN"
+            }
+        }
+
+        return UserSummaryResponse(
+            kanjiLearning = learning,
+            kanjiFamiliar = familiar,
+            wordCount = wordCount,
+            streak = streak,
+            slotRemaining = slotRemaining,
+            slotTotal = allowance,
+            slotEndsAt = slotEndsAt,
+            sessionState = sessionState,
+            onboardingComplete = settingsRepository.getSettings(userId).onboardingComplete ||
+                learning + familiar > 0 || wordCount > 0,
+        )
+    }
+}

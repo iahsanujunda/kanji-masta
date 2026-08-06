@@ -1,10 +1,10 @@
 package com.kanjimasta
 
-import com.kanjimasta.core.ai.AiModelConfigRepository
-import com.kanjimasta.core.db.*
-import com.kanjimasta.modules.kanji.KanjiRepository
-import com.kanjimasta.modules.worker.GeneratedQuiz
-import com.kanjimasta.modules.worker.QuizGenerationRepository
+import com.kanjimasta.ai.AiModelConfigRepository
+import com.kanjimasta.db.*
+import com.kanjimasta.kanji.KanjiRepository
+import com.kanjimasta.quiz.generation.GeneratedQuiz
+import com.kanjimasta.quiz.generation.QuizGenerationRepository
 import com.kanjimasta.support.PersistenceTest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async

@@ -1,10 +1,10 @@
 package com.kanjimasta
 
-import com.kanjimasta.core.db.JobAttemptTable
-import com.kanjimasta.core.db.PhotoSessionTable
-import com.kanjimasta.modules.internal.InternalService
-import com.kanjimasta.modules.internal.KotlinClaimConflictException
-import com.kanjimasta.modules.internal.PhotoResultRequest
+import com.kanjimasta.db.JobAttemptTable
+import com.kanjimasta.db.PhotoSessionTable
+import com.kanjimasta.internal.InternalService
+import com.kanjimasta.internal.KotlinClaimConflictException
+import com.kanjimasta.internal.PhotoResultRequest
 import com.kanjimasta.support.PersistenceTest
 import org.ktorm.dsl.*
 import java.time.Instant

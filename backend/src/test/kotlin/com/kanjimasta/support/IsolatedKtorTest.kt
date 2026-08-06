@@ -1,7 +1,7 @@
 package com.kanjimasta.support
 
-import com.kanjimasta.core.auth.AuthUser
-import com.kanjimasta.core.plugins.configureSerialization
+import com.kanjimasta.auth.AuthUser
+import com.kanjimasta.configureSerialization
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.auth.Authentication

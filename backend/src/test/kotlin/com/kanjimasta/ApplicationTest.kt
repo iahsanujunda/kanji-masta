@@ -1,16 +1,16 @@
 package com.kanjimasta
 
-import com.kanjimasta.core.auth.AuthUser
-import com.kanjimasta.core.ai.ModelCatalogGateway
-import com.kanjimasta.core.ai.UnavailableModelCatalogGateway
-import com.kanjimasta.core.plugins.configureRouting
-import com.kanjimasta.core.plugins.configureSerialization
-import com.kanjimasta.core.jobs.JobDispatcher
+import com.kanjimasta.auth.AuthUser
+import com.kanjimasta.ai.ModelCatalogGateway
+import com.kanjimasta.ai.UnavailableModelCatalogGateway
+import com.kanjimasta.configureRouting
+import com.kanjimasta.configureSerialization
+import com.kanjimasta.jobs.JobDispatcher
 import com.kanjimasta.support.TestPostgres
-import com.kanjimasta.modules.kanji.KanjiRepository
-import com.kanjimasta.modules.kanji.KanjiService
-import com.kanjimasta.modules.photo.PhotoRepository
-import com.kanjimasta.modules.photo.PhotoService
+import com.kanjimasta.kanji.KanjiRepository
+import com.kanjimasta.kanji.KanjiService
+import com.kanjimasta.photo.PhotoRepository
+import com.kanjimasta.photo.PhotoService
 import io.ktor.client.*
 import io.ktor.client.engine.mock.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -78,20 +78,20 @@ fun Application.testModule(
     val acceptedDispatcher = JobDispatcher { true }
     val photoService = PhotoService(PhotoRepository(db), acceptedDispatcher)
     val kanjiService = KanjiService(KanjiRepository(db), PhotoRepository(db), acceptedDispatcher)
-    val quizRepository = com.kanjimasta.modules.quiz.QuizRepository(db)
-    val quizService = com.kanjimasta.modules.quiz.QuizService(quizRepository)
-    val settingsRepository = com.kanjimasta.modules.settings.SettingsRepository(db)
-    val userService = com.kanjimasta.modules.user.UserService(com.kanjimasta.modules.user.UserRepository(db), quizRepository, settingsRepository)
-    val resendClient = com.kanjimasta.core.email.ResendClient(httpClient, "")
-    val inviteRepository = com.kanjimasta.modules.invite.InviteRepository(db)
-    val inviteService = com.kanjimasta.modules.invite.InviteService(inviteRepository, resendClient)
-    val adminRepository = com.kanjimasta.modules.admin.AdminRepository(db)
-    val adminService = com.kanjimasta.modules.admin.AdminService(
+    val quizRepository = com.kanjimasta.quiz.QuizRepository(db)
+    val quizService = com.kanjimasta.quiz.QuizService(quizRepository)
+    val settingsRepository = com.kanjimasta.settings.SettingsRepository(db)
+    val userService = com.kanjimasta.user.UserService(com.kanjimasta.user.UserRepository(db), quizRepository, settingsRepository)
+    val resendClient = com.kanjimasta.invite.ResendClient(httpClient, "")
+    val inviteRepository = com.kanjimasta.invite.InviteRepository(db)
+    val inviteService = com.kanjimasta.invite.InviteService(inviteRepository, resendClient)
+    val adminRepository = com.kanjimasta.admin.AdminRepository(db)
+    val adminService = com.kanjimasta.admin.AdminService(
         adminRepository,
         adminJobDispatcher,
         modelCatalogGateway,
     )
-    val internalService = com.kanjimasta.modules.internal.InternalService(db)
+    val internalService = com.kanjimasta.internal.InternalService(db)
 
     // Seed settings for test user so tests that depend on settings work
     settingsRepository.upsertSettings(TEST_USER_ID, 5, 6, null)

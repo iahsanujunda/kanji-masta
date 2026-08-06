@@ -1,11 +1,11 @@
 package com.kanjimasta
 
-import com.kanjimasta.core.ai.AiModelConfigRepository
-import com.kanjimasta.core.ai.OpenRouterClient
-import com.kanjimasta.core.db.*
-import com.kanjimasta.modules.photo.PhotoAnalysisExecutor
-import com.kanjimasta.modules.photo.PhotoAnalysisRepository
-import com.kanjimasta.modules.photo.PhotoRepository
+import com.kanjimasta.ai.AiModelConfigRepository
+import com.kanjimasta.ai.OpenRouterClient
+import com.kanjimasta.db.*
+import com.kanjimasta.photo.PhotoAnalysisExecutor
+import com.kanjimasta.photo.PhotoAnalysisRepository
+import com.kanjimasta.photo.PhotoRepository
 import com.kanjimasta.support.PersistenceTest
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine

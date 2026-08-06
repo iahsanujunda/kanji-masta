@@ -1,28 +1,28 @@
 package com.kanjimasta
 
-import com.kanjimasta.core.auth.configureAuth
-import com.kanjimasta.core.db.connectDatabase
-import com.kanjimasta.core.email.ResendClient
-import com.kanjimasta.core.jobs.CloudRunJobDispatcher
-import com.kanjimasta.core.jobs.JobDispatcher
-import com.kanjimasta.core.jobs.LocalJobDispatcher
-import com.kanjimasta.core.storage.SupabaseStorageSigner
-import com.kanjimasta.modules.admin.AdminRepository
-import com.kanjimasta.modules.admin.AdminService
-import com.kanjimasta.core.ai.OpenRouterCatalogClient
-import com.kanjimasta.modules.internal.InternalService
-import com.kanjimasta.core.plugins.configureCors
-import com.kanjimasta.core.plugins.configureObservability
-import com.kanjimasta.core.plugins.configureRouting
-import com.kanjimasta.core.plugins.configureSerialization
-import com.kanjimasta.modules.invite.InviteRepository
-import com.kanjimasta.modules.invite.InviteService
-import com.kanjimasta.modules.kanji.KanjiRepository
-import com.kanjimasta.modules.kanji.KanjiService
-import com.kanjimasta.modules.photo.PhotoRepository
-import com.kanjimasta.modules.photo.PhotoService
-import com.kanjimasta.modules.quiz.QuizRepository
-import com.kanjimasta.modules.quiz.QuizService
+import com.kanjimasta.auth.configureAuth
+import com.kanjimasta.db.connectDatabase
+import com.kanjimasta.invite.ResendClient
+import com.kanjimasta.jobs.CloudRunJobDispatcher
+import com.kanjimasta.jobs.JobDispatcher
+import com.kanjimasta.jobs.LocalJobDispatcher
+import com.kanjimasta.photo.SupabaseStorageSigner
+import com.kanjimasta.admin.AdminRepository
+import com.kanjimasta.admin.AdminService
+import com.kanjimasta.ai.OpenRouterCatalogClient
+import com.kanjimasta.internal.InternalService
+import com.kanjimasta.configureCors
+import com.kanjimasta.configureObservability
+import com.kanjimasta.configureRouting
+import com.kanjimasta.configureSerialization
+import com.kanjimasta.invite.InviteRepository
+import com.kanjimasta.invite.InviteService
+import com.kanjimasta.kanji.KanjiRepository
+import com.kanjimasta.kanji.KanjiService
+import com.kanjimasta.photo.PhotoRepository
+import com.kanjimasta.photo.PhotoService
+import com.kanjimasta.quiz.QuizRepository
+import com.kanjimasta.quiz.QuizService
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
@@ -84,9 +84,9 @@ fun Application.module() {
     val quizRepository = QuizRepository(database)
     val quizService = QuizService(quizRepository)
 
-    val settingsRepository = com.kanjimasta.modules.settings.SettingsRepository(database)
-    val userRepository = com.kanjimasta.modules.user.UserRepository(database)
-    val userService = com.kanjimasta.modules.user.UserService(userRepository, quizRepository, settingsRepository)
+    val settingsRepository = com.kanjimasta.settings.SettingsRepository(database)
+    val userRepository = com.kanjimasta.user.UserRepository(database)
+    val userService = com.kanjimasta.user.UserService(userRepository, quizRepository, settingsRepository)
 
     val resendApiKey = environment.config.propertyOrNull("resend.apiKey")?.getString() ?: ""
     val adminUserId = environment.config.propertyOrNull("admin.userId")?.getString() ?: ""

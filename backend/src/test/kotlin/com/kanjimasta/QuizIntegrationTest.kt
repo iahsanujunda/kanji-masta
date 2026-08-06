@@ -1,6 +1,6 @@
 package com.kanjimasta
 
-import com.kanjimasta.core.db.*
+import com.kanjimasta.db.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText

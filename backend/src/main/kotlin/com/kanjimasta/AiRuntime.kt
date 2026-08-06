@@ -1,13 +1,13 @@
 package com.kanjimasta
 
-import com.kanjimasta.core.ai.AiModelConfigRepository
-import com.kanjimasta.core.ai.OpenRouterClient
-import com.kanjimasta.modules.kanji.WordDiscoveryRepository
-import com.kanjimasta.modules.kanji.WordDiscoveryService
-import com.kanjimasta.modules.photo.PhotoAnalysisExecutor
-import com.kanjimasta.modules.photo.PhotoAnalysisRepository
-import com.kanjimasta.modules.worker.QuizGenerationRepository
-import com.kanjimasta.modules.worker.QuizGenerationWorker
+import com.kanjimasta.ai.AiModelConfigRepository
+import com.kanjimasta.ai.OpenRouterClient
+import com.kanjimasta.kanji.WordDiscoveryRepository
+import com.kanjimasta.kanji.WordDiscoveryService
+import com.kanjimasta.photo.PhotoAnalysisExecutor
+import com.kanjimasta.photo.PhotoAnalysisRepository
+import com.kanjimasta.quiz.generation.QuizGenerationRepository
+import com.kanjimasta.quiz.generation.QuizGenerationWorker
 import io.ktor.client.HttpClient
 import org.ktorm.database.Database
 

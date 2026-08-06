@@ -1,6 +1,7 @@
 package com.kanjimasta
 
-import com.kanjimasta.core.db.*
+import com.kanjimasta.db.*
+import com.kanjimasta.photo.PhotoFailureCode
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*

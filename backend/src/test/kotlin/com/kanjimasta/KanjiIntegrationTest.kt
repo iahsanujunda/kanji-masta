@@ -1,6 +1,6 @@
 package com.kanjimasta
 
-import com.kanjimasta.core.db.KanjiMasterTable
+import com.kanjimasta.db.KanjiMasterTable
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*

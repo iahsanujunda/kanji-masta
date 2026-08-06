@@ -1,6 +1,6 @@
 package com.kanjimasta
 
-import com.kanjimasta.core.db.UserInviteTable
+import com.kanjimasta.db.UserInviteTable
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
@@ -181,13 +181,13 @@ class InviteIntegrationTest : com.kanjimasta.support.PersistenceTest() {
                 .where { UserInviteTable.email eq testEmail }
                 .map { it[UserInviteTable.status] to it[UserInviteTable.acceptedAt] }
                 .first()
-            assertEquals(com.kanjimasta.core.db.InviteStatus.ACCEPTED, inviteStatus.first)
+            assertEquals(com.kanjimasta.db.InviteStatus.ACCEPTED, inviteStatus.first)
             assertNotNull(inviteStatus.second, "accepted_at should be set")
 
             // Verify user_settings was created
-            val hasSettings = TestDatabase.db.from(com.kanjimasta.core.db.UserSettingsTable)
+            val hasSettings = TestDatabase.db.from(com.kanjimasta.db.UserSettingsTable)
                 .select()
-                .where { com.kanjimasta.core.db.UserSettingsTable.userId eq testUserId }
+                .where { com.kanjimasta.db.UserSettingsTable.userId eq testUserId }
                 .totalRecordsInAllPages
             assertEquals(1, hasSettings, "user_settings row should be created")
         } finally {
@@ -231,12 +231,12 @@ class InviteIntegrationTest : com.kanjimasta.support.PersistenceTest() {
                 .where { UserInviteTable.email eq testEmail }
                 .map { it[UserInviteTable.status] }
                 .first()
-            assertEquals(com.kanjimasta.core.db.InviteStatus.REVOKED, inviteStatus, "REVOKED invite should not change")
+            assertEquals(com.kanjimasta.db.InviteStatus.REVOKED, inviteStatus, "REVOKED invite should not change")
 
             // Settings should still be created (user signed up legitimately even if invite was later revoked)
-            val hasSettings = TestDatabase.db.from(com.kanjimasta.core.db.UserSettingsTable)
+            val hasSettings = TestDatabase.db.from(com.kanjimasta.db.UserSettingsTable)
                 .select()
-                .where { com.kanjimasta.core.db.UserSettingsTable.userId eq testUserId }
+                .where { com.kanjimasta.db.UserSettingsTable.userId eq testUserId }
                 .totalRecordsInAllPages
             assertEquals(1, hasSettings, "user_settings should still be created")
         } finally {
@@ -285,12 +285,12 @@ class InviteIntegrationTest : com.kanjimasta.support.PersistenceTest() {
                 .where { UserInviteTable.email eq testEmail }
                 .map { it[UserInviteTable.status] }
                 .first()
-            assertEquals(com.kanjimasta.core.db.InviteStatus.ACCEPTED, inviteStatus)
+            assertEquals(com.kanjimasta.db.InviteStatus.ACCEPTED, inviteStatus)
 
             // Verify only 1 settings row
-            val settingsCount = TestDatabase.db.from(com.kanjimasta.core.db.UserSettingsTable)
+            val settingsCount = TestDatabase.db.from(com.kanjimasta.db.UserSettingsTable)
                 .select()
-                .where { com.kanjimasta.core.db.UserSettingsTable.userId eq testUserId }
+                .where { com.kanjimasta.db.UserSettingsTable.userId eq testUserId }
                 .totalRecordsInAllPages
             assertEquals(1, settingsCount, "Should have exactly 1 settings row after 2 calls")
         } finally {

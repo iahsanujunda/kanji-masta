@@ -1,12 +1,12 @@
 package com.kanjimasta
 
-import com.kanjimasta.core.db.KanjiMasterTable
-import com.kanjimasta.core.db.PhotoSessionTable
-import com.kanjimasta.core.db.QuizGenerationJobTable
-import com.kanjimasta.core.db.UserCostTable
-import com.kanjimasta.core.ai.CatalogModel
-import com.kanjimasta.core.ai.ModelCatalogGateway
-import com.kanjimasta.core.ai.ModelValidationResult
+import com.kanjimasta.db.KanjiMasterTable
+import com.kanjimasta.db.PhotoSessionTable
+import com.kanjimasta.db.QuizGenerationJobTable
+import com.kanjimasta.db.UserCostTable
+import com.kanjimasta.ai.CatalogModel
+import com.kanjimasta.ai.ModelCatalogGateway
+import com.kanjimasta.ai.ModelValidationResult
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*

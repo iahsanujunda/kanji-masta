@@ -1,11 +1,11 @@
 package com.kanjimasta
 
-import com.kanjimasta.core.ai.AiModelConfigRepository
-import com.kanjimasta.core.ai.OpenRouterClient
-import com.kanjimasta.core.db.*
-import com.kanjimasta.modules.kanji.WordDiscoveryRepository
-import com.kanjimasta.modules.kanji.WordDiscoveryRequest
-import com.kanjimasta.modules.kanji.WordDiscoveryService
+import com.kanjimasta.ai.AiModelConfigRepository
+import com.kanjimasta.ai.OpenRouterClient
+import com.kanjimasta.db.*
+import com.kanjimasta.kanji.WordDiscoveryRepository
+import com.kanjimasta.kanji.WordDiscoveryRequest
+import com.kanjimasta.kanji.WordDiscoveryService
 import com.kanjimasta.support.PersistenceTest
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine

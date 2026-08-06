@@ -1,0 +1,102 @@
+package com.kanjimasta.kanji
+
+import com.kanjimasta.auth.AuthUser
+import com.kanjimasta.settings.SettingsRepository
+import io.ktor.http.*
+import io.ktor.server.auth.*
+import io.ktor.server.request.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
+
+fun Route.kanjiRoutes(kanjiService: KanjiService, settingsRepository: SettingsRepository) {
+    route("/api/kanji") {
+        post("/session") {
+            val user = call.principal<AuthUser>()!!
+            val request = call.receive<SaveSessionRequest>()
+            kanjiService.saveSession(user.uid, request)
+            call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
+        }
+
+        get("/jobs/pending") {
+            val user = call.principal<AuthUser>()!!
+            val count = kanjiService.getPendingJobCount(user.uid)
+            call.respond(mapOf("pending" to count))
+        }
+
+        get("/list") {
+            val user = call.principal<AuthUser>()!!
+            val result = kanjiService.getKanjiList(user.uid)
+            call.respond(result)
+        }
+
+        post("/add") {
+            val user = call.principal<AuthUser>()!!
+            val request = call.receive<OnboardingSelectRequest>()
+            val learningCount = request.selections.count { it.status.uppercase() == "LEARNING" }
+            if (learningCount > 5) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Max 5 kanji per submission at learning level"))
+                return@post
+            }
+            kanjiService.saveOnboardingSelections(user.uid, request.selections)
+            call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
+        }
+
+        get("/curriculum") {
+            val user = call.principal<AuthUser>()!!
+            val result = kanjiService.getCurriculumSummary(user.uid)
+            call.respond(result)
+        }
+
+        get("/curriculum/{jlpt}") {
+            val user = call.principal<AuthUser>()!!
+            val jlpt = call.parameters["jlpt"]?.toIntOrNull()
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid JLPT level"))
+            val result = kanjiService.getCurriculumKanji(user.uid, jlpt)
+            call.respond(result)
+        }
+    }
+
+    route("/api/onboarding") {
+        get("/kanji") {
+            val user = call.principal<AuthUser>()!!
+            val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 10
+            val result = kanjiService.getOnboardingKanji(user.uid, offset, limit)
+            call.respond(result)
+        }
+
+        post("/select") {
+            val user = call.principal<AuthUser>()!!
+            val request = call.receive<OnboardingSelectRequest>()
+            kanjiService.saveOnboardingSelections(user.uid, request.selections)
+            call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
+        }
+
+        post("/complete") {
+            val user = call.principal<AuthUser>()!!
+            settingsRepository.markOnboardingComplete(user.uid)
+            call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
+        }
+    }
+
+    route("/api/words") {
+        get("/list") {
+            val user = call.principal<AuthUser>()!!
+            val query = call.request.queryParameters["q"]
+            val state = call.request.queryParameters["state"]
+            val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
+            val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 30
+            val result = kanjiService.getWordList(user.uid, query, state, offset, limit.coerceIn(1, 100))
+            call.respond(result)
+        }
+
+        get("/{userWordId}") {
+            val user = call.principal<AuthUser>()!!
+            val userWordId = call.parameters["userWordId"]
+                ?: return@get call.respond(HttpStatusCode.BadRequest)
+            val result = runCatching { kanjiService.getWordReference(user.uid, userWordId) }.getOrNull()
+                ?: return@get call.respond(HttpStatusCode.NotFound)
+            call.respond(result)
+        }
+    }
+}

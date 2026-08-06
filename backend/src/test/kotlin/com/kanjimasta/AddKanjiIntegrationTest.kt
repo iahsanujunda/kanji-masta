@@ -1,6 +1,6 @@
 package com.kanjimasta
 
-import com.kanjimasta.core.db.*
+import com.kanjimasta.db.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
@@ -239,7 +239,7 @@ class AddKanjiIntegrationTest : com.kanjimasta.support.PersistenceTest() {
 
             // Now simulate second user adding the same kanji directly via repository
             // (We can't change the auth user in the test harness, so verify at DB level)
-            val kanjiRepo = com.kanjimasta.modules.kanji.KanjiRepository(TestDatabase.db)
+            val kanjiRepo = com.kanjimasta.kanji.KanjiRepository(TestDatabase.db)
             kanjiRepo.insertUserKanji(secondUserId, kanjiId.toString(), "learning", null)
 
             // Check if global quizzes exist for the word

@@ -1,8 +1,8 @@
 package com.kanjimasta
 
-import com.kanjimasta.core.db.UserWordsTable
-import com.kanjimasta.core.db.WordMasterTable
-import com.kanjimasta.core.db.WordSource
+import com.kanjimasta.db.UserWordsTable
+import com.kanjimasta.db.WordMasterTable
+import com.kanjimasta.db.WordSource
 import com.kanjimasta.support.PersistenceTest
 import org.ktorm.dsl.insert
 import java.util.UUID

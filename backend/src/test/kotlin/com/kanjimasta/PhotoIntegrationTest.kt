@@ -1,11 +1,11 @@
 package com.kanjimasta
 
-import com.kanjimasta.core.auth.AuthUser
-import com.kanjimasta.core.db.PhotoSessionTable
-import com.kanjimasta.core.db.PhotoSessionStatus
-import com.kanjimasta.core.jobs.CloudRunJobDispatcher
-import com.kanjimasta.modules.photo.PhotoService
-import com.kanjimasta.modules.photo.PhotoRepository
+import com.kanjimasta.auth.AuthUser
+import com.kanjimasta.db.PhotoSessionTable
+import com.kanjimasta.photo.PhotoSessionStatus
+import com.kanjimasta.jobs.CloudRunJobDispatcher
+import com.kanjimasta.photo.PhotoService
+import com.kanjimasta.photo.PhotoRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond

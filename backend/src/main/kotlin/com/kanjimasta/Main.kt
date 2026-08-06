@@ -1,7 +1,7 @@
 package com.kanjimasta
 
-import com.kanjimasta.core.db.connectDatabase
-import com.kanjimasta.core.jobs.runLocalJobProcessServer
+import com.kanjimasta.db.connectDatabase
+import com.kanjimasta.jobs.runLocalJobProcessServer
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout

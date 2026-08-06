@@ -1,5 +1,7 @@
 package com.kanjimasta.modules.photo
 
+import com.kanjimasta.core.ai.AiModelConfigRepository
+import com.kanjimasta.core.db.JobAttemptTable
 import com.kanjimasta.core.db.PhotoSessionTable
 import com.kanjimasta.core.db.PhotoSessionStatus
 import com.kanjimasta.core.db.UserPhotoActivityStateTable
@@ -17,7 +19,7 @@ class PhotoRepository(private val db: Database) {
         imageUrl: String,
         storagePath: String? = null,
         clientCaptureId: UUID? = null,
-    ): PhotoSessionCreation {
+    ): PhotoSessionCreation = db.useTransaction {
         val id = UUID.randomUUID()
         if (clientCaptureId == null) {
             val insertedId = db.insertReturning(PhotoSessionTable, PhotoSessionTable.id) {
@@ -26,7 +28,8 @@ class PhotoRepository(private val db: Database) {
                 set(it.imageUrl, imageUrl)
                 if (storagePath != null) set(it.storagePath, storagePath)
             }
-            return PhotoSessionCreation(insertedId.toString(), created = true, shouldDispatch = true)
+            createInitialAttempt(checkNotNull(insertedId) { "Photo session insert did not return an id" })
+            return@useTransaction PhotoSessionCreation(insertedId.toString(), created = true, shouldDispatch = true)
         }
 
         val returnedId = db.insertOrUpdateReturning(PhotoSessionTable, PhotoSessionTable.id) {
@@ -43,6 +46,7 @@ class PhotoRepository(private val db: Database) {
             }
         } ?: error("Photo session upsert did not return an id")
         val created = returnedId == id
+        if (created) createInitialAttempt(returnedId)
         val shouldDispatch = created || db.from(PhotoSessionTable)
             .select(PhotoSessionTable.status, PhotoSessionTable.attempts)
             .where { PhotoSessionTable.id eq returnedId }
@@ -51,7 +55,22 @@ class PhotoRepository(private val db: Database) {
                     row[PhotoSessionTable.attempts] == 0
             }
             .firstOrNull() == true
-        return PhotoSessionCreation(returnedId.toString(), created, shouldDispatch)
+        PhotoSessionCreation(returnedId.toString(), created, shouldDispatch)
+    }
+
+    private fun createInitialAttempt(sessionId: UUID) {
+        val config = AiModelConfigRepository(db).getActive()
+        db.insert(JobAttemptTable) {
+            set(it.id, UUID.randomUUID())
+            set(it.jobType, "photo_analysis")
+            set(it.jobId, sessionId)
+            set(it.attemptNumber, 1)
+            set(it.status, "pending")
+            set(it.trigger, "initial")
+            set(it.modelConfigVersion, config?.version)
+            set(it.modelId, config?.photoAnalysisModel)
+            set(it.createdBy, "system")
+        }
     }
 
     fun getSession(sessionId: UUID, userId: String): PhotoSessionRow? =
@@ -150,11 +169,32 @@ class PhotoRepository(private val db: Database) {
     }
 
     fun markFailed(sessionId: String, userId: String, failureCode: String) {
-        db.update(PhotoSessionTable) {
-            set(it.status, PhotoSessionStatus.FAILED.name)
-            set(it.failureCode, failureCode)
-            set(it.attempts, it.attempts + 1)
-            where { (it.id eq UUID.fromString(sessionId)) and (it.userId eq userId) }
+        db.useTransaction {
+            val id = UUID.fromString(sessionId)
+            db.update(PhotoSessionTable) {
+                set(it.status, PhotoSessionStatus.FAILED.name)
+                set(it.failureCode, failureCode)
+                where { (it.id eq id) and (it.userId eq userId) }
+            }
+            val activeAttempt = db.from(JobAttemptTable)
+                .select(JobAttemptTable.id)
+                .where {
+                    (JobAttemptTable.jobType eq "photo_analysis") and
+                        (JobAttemptTable.jobId eq id) and
+                        (JobAttemptTable.status inList listOf("pending", "processing"))
+                }
+                .orderBy(JobAttemptTable.attemptNumber.desc())
+                .limit(1)
+                .map { it[JobAttemptTable.id] }
+                .firstOrNull()
+            if (activeAttempt != null) {
+                db.update(JobAttemptTable) {
+                    set(it.status, "failed")
+                    set(it.failureCode, failureCode)
+                    set(it.finishedAt, Instant.now())
+                    where { it.id eq activeAttempt }
+                }
+            }
         }
     }
 

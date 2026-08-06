@@ -7,6 +7,7 @@ ktor:
 
 database:
   url: "$DATABASE_URL:"
+  maxPoolSize: "$HIKARI_MAX_POOL_SIZE:7"
 
 supabase:
   url: "$SUPABASE_URL:"
@@ -15,11 +16,11 @@ supabase:
 cors:
   allowedOrigins: "$CORS_ALLOWED_ORIGINS:"
 
-aiWorker:
-  baseUrl: "$AI_WORKER_URL:"
-
 photoAnalysis:
   jobName: "$PHOTO_ANALYSIS_JOB:"
+
+quizGeneration:
+  jobName: "$QUIZ_GENERATION_JOB:"
 
 resend:
   apiKey: "$RESEND_API_KEY:"
@@ -30,15 +31,14 @@ admin:
 internal:
   key: "$INTERNAL_API_KEY:"
 
-self:
-  url: "$SELF_URL:"
-
 openrouter:
   apiKey: "$OPENROUTER_API_KEY:"
   baseUrl: "$OPENROUTER_BASE_URL:https://openrouter.ai"
+  siteUrl: "$OPENROUTER_SITE_URL:"
+  appName: "$OPENROUTER_APP_NAME:Kanji Masta"
+  reasoningEffort: "$OPENROUTER_REASONING_EFFORT:medium"
 
-claude:
-  apiKey: "$CLAUDE_API_KEY:"
-
-gemini:
-  apiKey: "$GEMINI_API_KEY:"
+jobs:
+  leaseSeconds: "$JOB_LEASE_SECONDS:300"
+  quizBatchSize: "$QUIZ_JOB_BATCH_SIZE:10"
+  maxImageBytes: "$PHOTO_MAX_IMAGE_BYTES:10485760"

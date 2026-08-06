@@ -8,7 +8,7 @@ group = "com.kanjimasta"
 version = "0.1.0"
 
 application {
-    mainClass.set("com.kanjimasta.ApplicationKt")
+    mainClass.set("com.kanjimasta.MainKt")
 }
 
 ktor {
@@ -34,9 +34,6 @@ dependencies {
     implementation(libs.ktor.server.call.logging)
     implementation(libs.ktor.server.status.pages)
     implementation(libs.ktor.serialization.kotlinx.json)
-
-    // Koog AI agents (Anthropic + Google providers)
-    implementation(libs.koog.agents)
 
     // Ktor client
     implementation(libs.ktor.client.core)

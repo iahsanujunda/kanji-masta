@@ -15,6 +15,7 @@ class InternalService(private val db: Database) {
     fun handlePhotoResult(request: PhotoResultRequest) {
         db.useTransaction {
             val sessionId = UUID.fromString(request.sessionId)
+            rejectKotlinClaim("photo_analysis", sessionId)
             val session = db.from(PhotoSessionTable)
                 .select(PhotoSessionTable.status, PhotoSessionTable.userId)
                 .where { PhotoSessionTable.id eq sessionId }
@@ -60,6 +61,7 @@ class InternalService(private val db: Database) {
 
     fun handleQuizResult(request: QuizResultRequest) {
         db.useTransaction {
+            rejectKotlinClaim("quiz_generation", UUID.fromString(request.jobId))
             // 1. Insert quizzes + distractors
             for (quiz in request.quizzes) {
                 val quizId = UUID.randomUUID()
@@ -159,6 +161,7 @@ class InternalService(private val db: Database) {
 
     fun handleJobStatus(request: JobStatusRequest) {
         val jobId = UUID.fromString(request.jobId)
+        rejectKotlinClaim("quiz_generation", jobId)
         if (request.incrementAttempts) {
             db.update(QuizGenerationJobTable) {
                 set(it.status, JobStatus.valueOf(request.status))
@@ -213,4 +216,21 @@ class InternalService(private val db: Database) {
             .limit(1)
             .map { it[JobAttemptTable.id] }
             .firstOrNull()
+
+    private fun rejectKotlinClaim(jobType: String, jobId: UUID) {
+        val claimed = db.from(JobAttemptTable)
+            .select(JobAttemptTable.claimToken)
+            .where {
+                (JobAttemptTable.jobType eq jobType) and
+                    (JobAttemptTable.jobId eq jobId) and
+                    (JobAttemptTable.status inList listOf("pending", "processing"))
+            }
+            .orderBy(JobAttemptTable.attemptNumber.desc())
+            .limit(1)
+            .map { it[JobAttemptTable.claimToken] }
+            .firstOrNull()
+        if (claimed != null) throw KotlinClaimConflictException()
+    }
 }
+
+class KotlinClaimConflictException : RuntimeException("job is owned by a Kotlin executor")

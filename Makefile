@@ -1,7 +1,6 @@
 -include .env
 export
 
-AI_PROVIDER ?= gemini
 OPENROUTER_SITE_URL ?= https://shuukanhq.com
 OPENROUTER_APP_NAME ?= Kanji Masta
 OPENROUTER_REASONING_EFFORT ?= medium
@@ -16,8 +15,7 @@ dev: ## Start everything (Supabase + app stack via Docker Compose)
 	@echo ""
 	@echo "Or run services individually:"
 	@echo "  make supabase-start  (database + auth + storage)"
-	@echo "  make ai-worker       (AI worker)"
-	@echo "  make backend         (Ktor backend)"
+	@echo "  make backend         (Ktor API + local Kotlin jobs)"
 	@echo "  make frontend        (React dev server)"
 
 up: ## Start app services via Docker Compose (run supabase-start first)
@@ -35,23 +33,34 @@ supabase-stop: ## Stop local Supabase
 supabase-reset: ## Reset Supabase DB (reapply migrations + seed)
 	npx supabase db reset
 
-ai-worker: ## Start AI worker (quiz gen, photo analysis, word discovery)
-	cd services/ai-worker && \
+backend: ## Start the Ktor API; local durable jobs execute in the same Kotlin process
+	cd backend && \
 	DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
-	AI_PROVIDER=$(AI_PROVIDER) \
-	GEMINI_API_KEY=$(GEMINI_API_KEY) \
+	SUPABASE_URL=http://127.0.0.1:54321 \
 	OPENROUTER_API_KEY=$(OPENROUTER_API_KEY) \
 	OPENROUTER_REASONING_EFFORT=$(OPENROUTER_REASONING_EFFORT) \
 	OPENROUTER_SITE_URL=$(OPENROUTER_SITE_URL) \
 	OPENROUTER_APP_NAME='$(OPENROUTER_APP_NAME)' \
-	uvicorn app.main:app --reload --port 5001
+	./gradlew run --args=web
 
-backend: ## Start Ktor backend (connects to local Supabase + AI worker)
+photo-job: ## Run one pending photo by PHOTO_SESSION_ID using the shared Kotlin artifact
 	cd backend && \
 	DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
-	SUPABASE_URL=http://127.0.0.1:54321 \
-	AI_WORKER_URL=http://127.0.0.1:5001 \
-	./gradlew run
+	OPENROUTER_API_KEY=$(OPENROUTER_API_KEY) \
+	PHOTO_SESSION_ID=$(PHOTO_SESSION_ID) \
+	./gradlew run --args=photo-job
+
+quiz-job: ## Drain a bounded quiz batch using the shared Kotlin artifact
+	cd backend && \
+	DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
+	OPENROUTER_API_KEY=$(OPENROUTER_API_KEY) \
+	./gradlew run --args='quiz-job drain'
+
+check-regen: ## Enqueue eligible distractor regeneration jobs
+	cd backend && \
+	DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
+	OPENROUTER_API_KEY=$(OPENROUTER_API_KEY) \
+	./gradlew run --args='quiz-job check-regen'
 
 frontend: ## Start React dev server
 	cd frontend && npm run dev
@@ -60,7 +69,6 @@ frontend: ## Start React dev server
 
 setup: ## Install all dependencies
 	cd frontend && npm install
-	cd services/ai-worker && pip install -r requirements.txt
 	cd backend && ./gradlew build
 
 # --- Build & Check ---
@@ -77,14 +85,10 @@ check: ## Type-check and compile without running
 
 test: ## Run all tests
 	cd backend && ./gradlew test
-	cd services/ai-worker && pytest tests/ -v
 	cd frontend && npx vitest run
 
 test-backend: ## Run backend integration tests
 	cd backend && ./gradlew test
-
-test-ai-worker: ## Run AI worker tests
-	cd services/ai-worker && pytest tests/ -v
 
 test-frontend: ## Run frontend unit tests
 	cd frontend && npx vitest run
@@ -104,63 +108,118 @@ GCS_BUCKET = gs://shuukanhq.com
 CLOUD_RUN_REGION = asia-east1
 GCP_PROJECT_ID = kanji-masta
 ARTIFACT_REGISTRY = asia-east1-docker.pkg.dev/kanji-masta
-PHOTO_ANALYSIS_JOB = kanji-masta-photo-analysis
+PHOTO_ANALYSIS_JOB = photo-analysis-kotlin
+QUIZ_GENERATION_JOB = quiz-generation-kotlin
 PHOTO_ANALYSIS_JOB_RESOURCE = projects/$(GCP_PROJECT_ID)/locations/$(CLOUD_RUN_REGION)/jobs/$(PHOTO_ANALYSIS_JOB)
+QUIZ_GENERATION_JOB_RESOURCE = projects/$(GCP_PROJECT_ID)/locations/$(CLOUD_RUN_REGION)/jobs/$(QUIZ_GENERATION_JOB)
+BACKEND_IMAGE_REPOSITORY = $(ARTIFACT_REGISTRY)/kanji-masta-backend/backend
+BACKEND_IMAGE = $(BACKEND_IMAGE_REPOSITORY):$(COMMIT)
+KOTLIN_CANDIDATE_TAG ?= kotlin-candidate
+SCHEDULER_LOCATION ?= asia-east1
+GENERATE_QUIZZES_SCHEDULER ?=
+CHECK_REGEN_SCHEDULER ?=
+SCHEDULER_SERVICE_ACCOUNT ?=
 
 _mark-deploy = python3 -c "import json; f=open('$(DEPLOY_STATE)'); d=json.load(f); f.close(); d['$(1)']={'commit':'$(COMMIT)','deployedAt':'$(TIMESTAMP)'}; f=open('$(DEPLOY_STATE)','w'); json.dump(d,f,indent=2); f.close(); print('  Marked $(1) deployed at $(COMMIT)')"
 
 deploy-db: ## Apply pending Supabase migrations to production
 	test -n "$(PROD_SUPABASE_DB_URI)"
 	npx supabase db push --db-url "$(shell echo '$(PROD_SUPABASE_DB_URI)' | sed 's|^jdbc:||')" --include-all
+	@$(call _mark-deploy,database)
 
 deploy-frontend: ## Build + deploy frontend to GCS (Cloudflare CDN)
 	cd frontend && npm run build
 	gcloud storage rsync --recursive --delete-unmatched-destination-objects frontend/dist $(GCS_BUCKET)
 	@$(call _mark-deploy,frontend)
 
-deploy-backend: ## Build + deploy backend to Cloud Run
+publish-kotlin-image: ## Test, build, and push the shared Kotlin image under an immutable commit tag
 	cd backend && ./gradlew build
-	docker build -t $(ARTIFACT_REGISTRY)/kanji-masta-backend/backend ./backend
-	docker push $(ARTIFACT_REGISTRY)/kanji-masta-backend/backend
-	$(eval AI_WORKER_SVC_URL := $(shell gcloud run services describe kanji-masta-ai-worker --region $(CLOUD_RUN_REGION) --format='value(status.url)' 2>/dev/null || echo 'http://NOT_DEPLOYED'))
-	$(eval BACKEND_SVC_URL := $(shell gcloud run services describe kanji-masta-backend --region $(CLOUD_RUN_REGION) --format='value(status.url)' 2>/dev/null || echo 'http://NOT_DEPLOYED'))
-	gcloud run deploy kanji-masta-backend \
-		--image $(ARTIFACT_REGISTRY)/kanji-masta-backend/backend \
-		--region $(CLOUD_RUN_REGION) \
-		--set-env-vars "DATABASE_URL=$(PROD_SUPABASE_DB_URI),SUPABASE_URL=$(PROD_SUPABASE_URL),SUPABASE_SERVICE_ROLE_KEY=$(PROD_SUPABASE_SERVICE_ROLE_KEY),AI_WORKER_URL=$(AI_WORKER_SVC_URL),PHOTO_ANALYSIS_JOB=$(PHOTO_ANALYSIS_JOB_RESOURCE),CORS_ALLOWED_ORIGINS=shuukanhq.com,LOG_LEVEL=INFO,RESEND_API_KEY=$(RESEND_API_KEY),ADMIN_USER_ID=$(ADMIN_USER_ID),INTERNAL_API_KEY=$(INTERNAL_API_KEY),SELF_URL=$(BACKEND_SVC_URL),OPENROUTER_API_KEY=$(OPENROUTER_API_KEY)" \
-		--allow-unauthenticated
-	@$(call _mark-deploy,backend)
+	docker build -t $(BACKEND_IMAGE) ./backend
+	docker push $(BACKEND_IMAGE)
 
-deploy-ai-worker: ## Build + deploy AI worker to Cloud Run
-	docker build -t $(ARTIFACT_REGISTRY)/kanji-masta-ai-worker/ai-worker ./services/ai-worker
-	docker push $(ARTIFACT_REGISTRY)/kanji-masta-ai-worker/ai-worker
-	$(eval BACKEND_SVC_URL := $(shell gcloud run services describe kanji-masta-backend --region $(CLOUD_RUN_REGION) --format='value(status.url)'))
+deploy-kotlin-jobs: publish-kotlin-image ## Deploy the new Kotlin Cloud Run Jobs without changing schedulers
 	$(eval BACKEND_SERVICE_ACCOUNT := $(shell gcloud run services describe kanji-masta-backend --region $(CLOUD_RUN_REGION) --format='value(spec.template.spec.serviceAccountName)'))
-	gcloud run deploy kanji-masta-ai-worker \
-		--image $(ARTIFACT_REGISTRY)/kanji-masta-ai-worker/ai-worker \
-		--region $(CLOUD_RUN_REGION) \
-		--set-env-vars "DATABASE_URL=$(shell echo '$(PROD_SUPABASE_DB_URI)' | sed 's|^jdbc:||'),AI_PROVIDER=$(AI_PROVIDER),GEMINI_API_KEY=$(GEMINI_API_KEY),OPENROUTER_API_KEY=$(OPENROUTER_API_KEY),OPENROUTER_REASONING_EFFORT=$(OPENROUTER_REASONING_EFFORT),OPENROUTER_SITE_URL=$(OPENROUTER_SITE_URL),OPENROUTER_APP_NAME=$(OPENROUTER_APP_NAME)" \
-		--no-allow-unauthenticated
-	test -n "$(BACKEND_SVC_URL)"
 	test -n "$(BACKEND_SERVICE_ACCOUNT)"
-	gcloud run jobs deploy $(PHOTO_ANALYSIS_JOB) \
-		--image $(ARTIFACT_REGISTRY)/kanji-masta-ai-worker/ai-worker \
+	@image_digest=$$(gcloud artifacts docker images describe $(BACKEND_IMAGE) --format='value(image_summary.digest)'); \
+		test -n "$$image_digest"; \
+		image_ref="$(BACKEND_IMAGE_REPOSITORY)@$$image_digest"; \
+		gcloud run jobs deploy $(PHOTO_ANALYSIS_JOB) \
+		--image "$$image_ref" \
 		--region $(CLOUD_RUN_REGION) \
-		--command python \
-		--args=-m,app.photo_job \
+		--args=photo-job \
 		--task-timeout=24h \
 		--max-retries=1 \
-		--set-env-vars "DATABASE_URL=$(shell echo '$(PROD_SUPABASE_DB_URI)' | sed 's|^jdbc:||'),BACKEND_CALLBACK_URL=$(BACKEND_SVC_URL)/api/internal/photo-result,INTERNAL_API_KEY=$(INTERNAL_API_KEY),AI_PROVIDER=$(AI_PROVIDER),GEMINI_API_KEY=$(GEMINI_API_KEY),OPENROUTER_API_KEY=$(OPENROUTER_API_KEY),OPENROUTER_REASONING_EFFORT=$(OPENROUTER_REASONING_EFFORT),OPENROUTER_SITE_URL=$(OPENROUTER_SITE_URL),OPENROUTER_APP_NAME=$(OPENROUTER_APP_NAME)"
-	gcloud run jobs add-iam-policy-binding $(PHOTO_ANALYSIS_JOB) \
+		--memory=1Gi \
+		--set-env-vars "DATABASE_URL=$(PROD_SUPABASE_DB_URI),OPENROUTER_API_KEY=$(OPENROUTER_API_KEY),OPENROUTER_REASONING_EFFORT=$(OPENROUTER_REASONING_EFFORT),OPENROUTER_SITE_URL=$(OPENROUTER_SITE_URL),OPENROUTER_APP_NAME=$(OPENROUTER_APP_NAME),HIKARI_MAX_POOL_SIZE=5,JOB_LEASE_SECONDS=300,PHOTO_MAX_IMAGE_BYTES=10485760,JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=55 -XX:MaxDirectMemorySize=128m -XX:+ExitOnOutOfMemoryError"; \
+		gcloud run jobs deploy $(QUIZ_GENERATION_JOB) \
+		--image "$$image_ref" \
 		--region $(CLOUD_RUN_REGION) \
-		--member serviceAccount:$(BACKEND_SERVICE_ACCOUNT) \
-		--role roles/run.developer
-	@$(call _mark-deploy,ai-worker)
+		--args=quiz-job,drain \
+		--task-timeout=30m \
+		--max-retries=1 \
+		--memory=512Mi \
+		--set-env-vars "DATABASE_URL=$(PROD_SUPABASE_DB_URI),OPENROUTER_API_KEY=$(OPENROUTER_API_KEY),OPENROUTER_REASONING_EFFORT=$(OPENROUTER_REASONING_EFFORT),OPENROUTER_SITE_URL=$(OPENROUTER_SITE_URL),OPENROUTER_APP_NAME=$(OPENROUTER_APP_NAME),HIKARI_MAX_POOL_SIZE=5,JOB_LEASE_SECONDS=300,QUIZ_JOB_BATCH_SIZE=10,JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=55 -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError"
+	gcloud run jobs add-iam-policy-binding $(PHOTO_ANALYSIS_JOB) --region $(CLOUD_RUN_REGION) --member serviceAccount:$(BACKEND_SERVICE_ACCOUNT) --role roles/run.developer
+	gcloud run jobs add-iam-policy-binding $(QUIZ_GENERATION_JOB) --region $(CLOUD_RUN_REGION) --member serviceAccount:$(BACKEND_SERVICE_ACCOUNT) --role roles/run.developer
+	@$(call _mark-deploy,kotlin-jobs)
 
-deploy-all: ## Deploy all services
+deploy-backend: publish-kotlin-image ## Deploy a tagged Kotlin backend revision with no production traffic
+	@image_digest=$$(gcloud artifacts docker images describe $(BACKEND_IMAGE) --format='value(image_summary.digest)'); \
+		test -n "$$image_digest"; \
+		image_ref="$(BACKEND_IMAGE_REPOSITORY)@$$image_digest"; \
+		gcloud run deploy kanji-masta-backend \
+		--image "$$image_ref" \
+		--region $(CLOUD_RUN_REGION) \
+		--args=web \
+		--tag=$(KOTLIN_CANDIDATE_TAG) \
+		--no-traffic \
+		--memory=1Gi \
+		--set-env-vars "DATABASE_URL=$(PROD_SUPABASE_DB_URI),SUPABASE_URL=$(PROD_SUPABASE_URL),SUPABASE_SERVICE_ROLE_KEY=$(PROD_SUPABASE_SERVICE_ROLE_KEY),PHOTO_ANALYSIS_JOB=$(PHOTO_ANALYSIS_JOB_RESOURCE),QUIZ_GENERATION_JOB=$(QUIZ_GENERATION_JOB_RESOURCE),CORS_ALLOWED_ORIGINS=shuukanhq.com,LOG_LEVEL=INFO,RESEND_API_KEY=$(RESEND_API_KEY),ADMIN_USER_ID=$(ADMIN_USER_ID),INTERNAL_API_KEY=$(INTERNAL_API_KEY),OPENROUTER_API_KEY=$(OPENROUTER_API_KEY),OPENROUTER_REASONING_EFFORT=$(OPENROUTER_REASONING_EFFORT),OPENROUTER_SITE_URL=$(OPENROUTER_SITE_URL),OPENROUTER_APP_NAME=$(OPENROUTER_APP_NAME),HIKARI_MAX_POOL_SIZE=7,JOB_LEASE_SECONDS=300,QUIZ_JOB_BATCH_SIZE=10,PHOTO_MAX_IMAGE_BYTES=10485760,JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=55 -XX:MaxDirectMemorySize=128m -XX:+ExitOnOutOfMemoryError" \
+		--allow-unauthenticated
+	@$(call _mark-deploy,backend-candidate)
+
+promote-kotlin-backend: ## Route production traffic to the verified tagged Kotlin revision
+	gcloud run services update-traffic kanji-masta-backend \
+		--region $(CLOUD_RUN_REGION) \
+		--to-tags=$(KOTLIN_CANDIDATE_TAG)=100
+	@$(call _mark-deploy,backend)
+
+deploy-scheduler-targets: ## Pause and retarget quiz schedulers to the Kotlin Job; leaves them paused
+	test -n "$(GENERATE_QUIZZES_SCHEDULER)"
+	test -n "$(CHECK_REGEN_SCHEDULER)"
+	test -n "$(SCHEDULER_SERVICE_ACCOUNT)"
+	gcloud scheduler jobs pause $(GENERATE_QUIZZES_SCHEDULER) --location $(SCHEDULER_LOCATION)
+	gcloud scheduler jobs pause $(CHECK_REGEN_SCHEDULER) --location $(SCHEDULER_LOCATION)
+	gcloud scheduler jobs update http $(GENERATE_QUIZZES_SCHEDULER) \
+		--location $(SCHEDULER_LOCATION) \
+		--uri "https://run.googleapis.com/v2/$(QUIZ_GENERATION_JOB_RESOURCE):run" \
+		--http-method POST \
+		--oauth-service-account-email "$(SCHEDULER_SERVICE_ACCOUNT)" \
+		--update-headers Content-Type=application/json \
+		--message-body '{}'
+	gcloud scheduler jobs update http $(CHECK_REGEN_SCHEDULER) \
+		--location $(SCHEDULER_LOCATION) \
+		--uri "https://run.googleapis.com/v2/$(QUIZ_GENERATION_JOB_RESOURCE):run" \
+		--http-method POST \
+		--oauth-service-account-email "$(SCHEDULER_SERVICE_ACCOUNT)" \
+		--update-headers Content-Type=application/json \
+		--message-body '{"overrides":{"containerOverrides":[{"args":["quiz-job","check-regen"]}]}}'
+
+resume-kotlin-schedulers: ## Resume both verified Kotlin quiz scheduler targets
+	test -n "$(GENERATE_QUIZZES_SCHEDULER)"
+	test -n "$(CHECK_REGEN_SCHEDULER)"
+	gcloud scheduler jobs resume $(GENERATE_QUIZZES_SCHEDULER) --location $(SCHEDULER_LOCATION)
+	gcloud scheduler jobs resume $(CHECK_REGEN_SCHEDULER) --location $(SCHEDULER_LOCATION)
+
+smoke-production: ## Check the tagged backend health endpoint (set BACKEND_CANDIDATE_URL)
+	test -n "$(BACKEND_CANDIDATE_URL)"
+	curl --fail --silent --show-error "$(BACKEND_CANDIDATE_URL)/health"
+
+stage-kotlin-runtime: deploy-kotlin-jobs deploy-backend ## Build once and stage Jobs plus a no-traffic API revision
+
+deploy-all: ## Apply DB changes and stage Kotlin Jobs/backend plus frontend; does not promote traffic
 	$(MAKE) deploy-db
-	$(MAKE) deploy-ai-worker
-	$(MAKE) deploy-backend
+	$(MAKE) stage-kotlin-runtime
 	$(MAKE) deploy-frontend
 
 deploy-status: ## Show deployment state for all components
@@ -190,14 +249,9 @@ reset-quiz: ## Reset quiz progress (keep generated quizzes, reset familiarity/sl
 		UPDATE user_words SET familiarity = 0, current_tier = 'MEANING_RECALL', next_review = NULL; \
 		SELECT count(*) as ready_quizzes FROM quiz_bank;"
 
-trigger-quizzes: ## Trigger quiz generation manually (ai-worker must be running)
-	curl -s -X POST http://localhost:5001/generate-quizzes | python3 -m json.tool
+trigger-quizzes: quiz-job ## Alias for running the Kotlin quiz drainer
 
-trigger-regen: ## Trigger regen check manually (ai-worker must be running)
-	curl -s -X POST http://localhost:5001/cron/check-regen | python3 -m json.tool
-
-trigger-cron: ## Trigger scheduled quiz generation cron (ai-worker must be running)
-	curl -s -X POST http://localhost:5001/cron/generate-quizzes | python3 -m json.tool
+trigger-regen: check-regen ## Alias for the Kotlin regeneration eligibility pass
 
 psql: ## Connect to local Supabase PostgreSQL
 	psql postgresql://postgres:postgres@127.0.0.1:54322/postgres
@@ -216,6 +270,6 @@ check-deploy: ## Show what needs deploying based on changes since last deploy
 	@python3 scripts/check_deploy.py
 
 help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 .DEFAULT_GOAL := help

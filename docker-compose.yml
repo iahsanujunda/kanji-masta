@@ -8,35 +8,12 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres
       SUPABASE_URL: http://host.docker.internal:54321
-      AI_WORKER_URL: http://ai-worker:8080
-      ADMIN_USER_ID: ${ADMIN_USER_ID:-}
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-local-dev-key}
-      SELF_URL: http://backend:8080
-    depends_on:
-      ai-worker:
-        condition: service_healthy
-
-  ai-worker:
-    build: ./services/ai-worker
-    ports:
-      - "5001:8080"  # exposed for manual cron triggers
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres
-      AI_PROVIDER: ${AI_PROVIDER:-gemini}
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_REASONING_EFFORT: ${OPENROUTER_REASONING_EFFORT:-medium}
       OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-https://shuukanhq.com}
       OPENROUTER_APP_NAME: ${OPENROUTER_APP_NAME:-Kanji Masta}
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
-      interval: 5s
-      timeout: 3s
-      retries: 3
-      start_period: 5s
-
+      ADMIN_USER_ID: ${ADMIN_USER_ID:-}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-local-dev-key}
   frontend:
     build:
       context: ./frontend

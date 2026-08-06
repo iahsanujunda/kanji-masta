@@ -12,7 +12,6 @@ fun ApplicationTestBuilder.configureWithTestDb() {
             "database.url" to "${postgres.jdbcUrl}&user=${postgres.username}&password=${postgres.password}",
             "supabase.url" to "http://127.0.0.1:1",
             "cors.allowedOrigins" to "https://kanji.test",
-            "aiWorker.baseUrl" to "http://127.0.0.1:2",
             "resend.apiKey" to "test-resend-key",
             "admin.userId" to "test-admin",
             "internal.key" to "test-internal-key",

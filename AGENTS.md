@@ -45,12 +45,13 @@ Max header: 100 chars.
   - Glass cards: `rgba(15,15,22,0.8)` + `backdropFilter: "blur(12px)"` — login/signup forms
   - Glow effects: `boxShadow: "0 0 30px rgba(16,185,129,0.3)"` on primary CTAs
 
-### AI Worker (FastAPI + Python)
-- Located at `services/ai-worker/app/`
-- Routes: `/analyze-photo`, `/generate-quizzes`, `/discover-words`, `/cron/generate-quizzes`, `/cron/check-regen`
-- DB access via psycopg2 connection pool in `db.py`. All queries parameterized.
-- Gemini API calls in `gemini.py`. Prompts in `prompts.py`.
-- TraceContext for structured logging with `[callId] [userId]` prefix
+### AI Runtime (Ktor + Kotlin)
+- Lives in the backend Gradle project and ships in the same fat JAR/image as the API.
+- `Main.kt` roles: `web`, `photo-job`, `quiz-job drain`, `quiz-job check-regen`.
+- OpenRouter client and prompts live in `core/ai/`; model IDs come from active `ai_model_config`.
+- Photo execution lives in `modules/photo/`; quiz execution in `modules/worker/`; word discovery in `modules/kanji/`.
+- Durable jobs use `job_attempt` leases/claim tokens and write results directly through Ktorm.
+- Word discovery remains an inline callable Kotlin service with no automatic product trigger.
 
 ### Schema
 - Single source of truth: `supabase/migrations/` (SQL DDL)
@@ -62,9 +63,8 @@ Max header: 100 chars.
 
 ```
 make supabase-start   # Terminal 1 (or: make up for Docker Compose)
-make ai-worker        # Terminal 2
-make backend          # Terminal 3
-make frontend         # Terminal 4
+make backend          # Terminal 2
+make frontend         # Terminal 3
 ```
 
 Or all-in-one with Docker Compose:
@@ -78,19 +78,19 @@ make up
 ## Testing
 
 ```
-make test             # Run all tests (backend + ai-worker + frontend)
+make test             # Run all tests (backend + frontend)
 make test-backend     # Integration tests (uses Testcontainers — no Supabase needed)
-make test-ai-worker   # Pytest tests (uses Testcontainers — no Supabase needed)
 make test-frontend    # Frontend unit tests
 ```
 
 ## Deploy
 
 ```
-make deploy-all       # Deploy ai-worker → backend → frontend
+make deploy-all       # Stage schema → Kotlin Jobs/no-traffic API → frontend; no promotion
 make deploy-frontend  # GCS bucket + Cloudflare CDN (shuukanhq.com)
-make deploy-backend   # Cloud Run (asia-east1)
-make deploy-ai-worker # Cloud Run (asia-east1)
+make deploy-kotlin-jobs # New Cloud Run Jobs (asia-east1), no scheduler changes
+make deploy-backend   # Tagged Cloud Run revision (asia-east1), no traffic
+make promote-kotlin-backend # Explicit API traffic cutover after verification
 make deploy-status    # Show what's deployed
 make check-deploy     # Show what needs deploying
 ```

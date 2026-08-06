@@ -1,7 +1,10 @@
-KANJI_PROMPT = """You are a Japanese kanji tutor for a conversational English speaker living in Japan.
+package com.kanjimasta.core.ai
+
+object AiPrompts {
+    const val PHOTO_ANALYSIS = """You are a Japanese kanji tutor for a conversational English speaker living in Japan.
 Analyze this image and extract all kanji visible.
 
-{known_kanji_section}
+%s
 
 For each kanji return 5 example words commonly encountered in daily life in Japan
 (shops, stations, restaurants, signage, packaging). Prioritize words the user
@@ -14,28 +17,28 @@ Only recommend known kanji if there are fewer than 3 unknown kanji in the image 
 
 Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
 [
-  {{
+  {
     "character": "電",
     "recommended": true,
     "whyUseful": "Core kanji for anything electric — trains, phones, appliances",
     "exampleWords": [
-      {{ "word": "電車", "reading": "でんしゃ", "meaning": "train" }},
-      {{ "word": "電話", "reading": "でんわ", "meaning": "telephone" }},
-      {{ "word": "電気", "reading": "でんき", "meaning": "electricity / lights" }},
-      {{ "word": "電池", "reading": "でんち", "meaning": "battery" }},
-      {{ "word": "充電", "reading": "じゅうでん", "meaning": "charging (a device)" }}
+      { "word": "電車", "reading": "でんしゃ", "meaning": "train" },
+      { "word": "電話", "reading": "でんわ", "meaning": "telephone" },
+      { "word": "電気", "reading": "でんき", "meaning": "electricity / lights" },
+      { "word": "電池", "reading": "でんち", "meaning": "battery" },
+      { "word": "充電", "reading": "じゅうでん", "meaning": "charging (a device)" }
     ]
-  }}
+  }
 ]"""
 
-QUIZ_PROMPT = """You are building quizzes for a Japanese learner living in Japan.
+    const val QUIZ_GENERATION = """You are building quizzes for a Japanese learner living in Japan.
 They speak conversational Japanese but are learning to read kanji from real encounters.
-Target word: {word} ({reading}) — meaning: {meaning}
+Target word: %s (%s) — meaning: %s
 
 Generate exactly 5 quizzes, one of each type below.
 Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
 [
-  {{
+  {
     "quiz_type": "meaning_recall",
     "prompt": "電",
     "target": "電",
@@ -43,8 +46,8 @@ Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
     "answer": "electricity",
     "distractors": ["iron", "east", "express"],
     "explanation": "電 is the root of 電車 (train), 電話 (phone), 電気 (electricity)"
-  }},
-  {{
+  },
+  {
     "quiz_type": "reading_recognition",
     "prompt": "電車",
     "target": "電車",
@@ -52,8 +55,8 @@ Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
     "answer": "でんしゃ",
     "distractors": ["てっどう", "きゅうこう", "ちかてつ"],
     "explanation": "でん (on-yomi of 電) + しゃ (on-yomi of 車)"
-  }},
-  {{
+  },
+  {
     "quiz_type": "reverse_reading",
     "prompt": "でんしゃ",
     "target": "でんしゃ",
@@ -61,8 +64,8 @@ Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
     "answer": "電車",
     "distractors": ["電話", "電気", "電池"],
     "explanation": "電車 — the kanji for electricity + vehicle"
-  }},
-  {{
+  },
+  {
     "quiz_type": "bold_word_meaning",
     "prompt": "電車、遅れてるじゃん。",
     "target": "電車",
@@ -70,8 +73,8 @@ Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
     "answer": "train",
     "distractors": ["bus", "taxi", "subway"],
     "explanation": "電車 literally means electric vehicle — the standard word for train"
-  }},
-  {{
+  },
+  {
     "quiz_type": "fill_in_the_blank",
     "prompt": "＿＿乗り換えどこだっけ？",
     "target": "電車",
@@ -79,7 +82,7 @@ Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
     "answer": "電車",
     "distractors": ["急行", "地下鉄", "バス停"],
     "explanation": "電車 fits here — asking where to transfer trains"
-  }}
+  }
 ]
 
 Rules:
@@ -94,34 +97,27 @@ Rules:
 - Explanations brief and memorable, not academic
 - furigana is null for word-level types; always a string for sentence-level"""
 
-REGEN_PROMPT = """Regenerate distractors for this quiz. The learner is now at familiarity {familiarity}/5.
+    const val DISTRACTOR_REGENERATION = """Regenerate distractors for this quiz. The learner is now at familiarity %d/5.
 Make distractors more challenging than earlier sets — choose options that are
 more plausible or confusable at this level.
 
-Quiz type: {quiz_type}
-Prompt: {prompt}
-Answer: {answer}
-Previous distractor sets: {previous_distractors}
+Quiz type: %s
+Prompt: %s
+Answer: %s
+Previous distractor sets: %s
 
 Return ONLY a JSON array of exactly 3 distractors — no markdown, no preamble:
 ["option1", "option2", "option3"]"""
 
-DISCOVERY_PROMPT = """The learner is studying the kanji: {character}
-They already know these words well: {known_words}
+    const val WORD_DISCOVERY = """The learner is studying the kanji: %s
+They already know these words well: %s
 
-Suggest 5 more common daily-life words containing {character} that are
+Suggest 5 more common daily-life words containing %s that are
 NOT in the known list. Words the learner is likely to encounter in Japan
 (shops, stations, restaurants, signage, packaging).
 
 Return ONLY a valid JSON array — no markdown, no preamble:
 [
-  {{ "word": "会話", "reading": "かいわ", "meaning": "conversation" }}
+  { "word": "会話", "reading": "かいわ", "meaning": "conversation" }
 ]"""
-
-QUIZ_TYPE_MAP = {
-    "meaning_recall": "MEANING_RECALL",
-    "reading_recognition": "READING_RECOGNITION",
-    "reverse_reading": "REVERSE_READING",
-    "bold_word_meaning": "BOLD_WORD_MEANING",
-    "fill_in_the_blank": "FILL_IN_THE_BLANK",
 }

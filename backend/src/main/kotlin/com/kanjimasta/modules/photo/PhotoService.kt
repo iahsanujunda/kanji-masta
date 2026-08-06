@@ -1,20 +1,15 @@
 package com.kanjimasta.modules.photo
 
-import com.kanjimasta.core.auth.getGoogleAccessToken
-import com.kanjimasta.core.auth.getIdentityToken
 import com.kanjimasta.core.db.PhotoFailureCode
 import com.kanjimasta.core.db.PhotoSessionStatus
+import com.kanjimasta.core.jobs.CloudRunJobDispatcher
 import com.kanjimasta.core.storage.SupabaseStorageSigner
 import io.ktor.client.*
-import io.ktor.client.request.*
-import io.ktor.client.statement.*
-import io.ktor.http.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
-import org.slf4j.MDC
 import java.util.UUID
 import java.util.Base64
 import java.time.Instant
@@ -24,11 +19,9 @@ private val logger = LoggerFactory.getLogger("com.kanjimasta.modules.photo.Photo
 class PhotoService(
     private val photoRepository: PhotoRepository,
     private val httpClient: HttpClient,
-    private val aiWorkerUrl: String,
-    private val selfUrl: String = "",
-    private val internalKey: String = "",
     private val photoAnalysisJobName: String = "",
     private val storageSigner: SupabaseStorageSigner? = null,
+    private val localPhotoRunner: (suspend (UUID) -> Boolean)? = null,
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
 
@@ -43,8 +36,9 @@ class PhotoService(
         val sessionId = creation.id
         if (!creation.created) {
             logger.info("Reusing photo session={} for clientCaptureId={}", sessionId, clientCaptureId)
-            if (creation.shouldDispatch && photoAnalysisJobName.isNotBlank()) {
-                dispatchCloudRunJob(sessionId, userId)
+            if (creation.shouldDispatch) {
+                if (photoAnalysisJobName.isNotBlank()) dispatchCloudRunJob(sessionId, userId)
+                else dispatchLocalJob(sessionId)
             }
             return AnalyzePhotoResponse(sessionId = sessionId, status = PhotoSessionStatus.PROCESSING.apiValue)
         }
@@ -53,7 +47,7 @@ class PhotoService(
         if (photoAnalysisJobName.isNotBlank()) {
             dispatchCloudRunJob(sessionId, userId)
         } else {
-            dispatchLocalWorker(sessionId, userId, imageUrl)
+            dispatchLocalJob(sessionId)
         }
 
         return AnalyzePhotoResponse(sessionId = sessionId, status = PhotoSessionStatus.PROCESSING.apiValue)
@@ -73,84 +67,32 @@ class PhotoService(
         return if (photoAnalysisJobName.isNotBlank()) {
             dispatchCloudRunJob(sessionId.toString(), userId)
         } else {
-            dispatchLocalWorker(sessionId.toString(), userId, imageUrl)
-            true
+            dispatchLocalJob(sessionId.toString())
         }
     }
 
     private suspend fun dispatchCloudRunJob(sessionId: String, userId: String): Boolean {
-        try {
-            val accessToken = getGoogleAccessToken(httpClient)
-                ?: error("Google Cloud access token is unavailable")
-            val response = httpClient.post("https://run.googleapis.com/v2/$photoAnalysisJobName:run") {
-                contentType(ContentType.Application.Json)
-                bearerAuth(accessToken)
-                setBody(buildJsonObject {
-                    putJsonObject("overrides") {
-                        putJsonArray("containerOverrides") {
-                            addJsonObject {
-                                putJsonArray("env") {
-                                    addJsonObject {
-                                        put("name", "PHOTO_SESSION_ID")
-                                        put("value", sessionId)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }.toString())
-            }
-            if (!response.status.isSuccess()) {
-                logger.error(
-                    "Cloud Run photo job dispatch failed for session={}, status={}: {}",
-                    sessionId,
-                    response.status,
-                    response.bodyAsText(),
-                )
-                photoRepository.markFailed(sessionId, userId, PhotoFailureCode.DISPATCH_FAILED)
-                return false
-            }
-            logger.info("Cloud Run photo job accepted for session={}", sessionId)
-            return true
-        } catch (e: Exception) {
-            logger.error("Cloud Run photo job dispatch failed for session={}: {}", sessionId, e.message, e)
+        val accepted = CloudRunJobDispatcher(httpClient, photoAnalysisJobName)
+            .dispatch(mapOf("PHOTO_SESSION_ID" to sessionId))
+        if (!accepted) {
             photoRepository.markFailed(sessionId, userId, PhotoFailureCode.DISPATCH_FAILED)
-            return false
         }
+        return accepted
     }
 
-    private fun dispatchLocalWorker(sessionId: String, userId: String, imageUrl: String) {
-        val url = "$aiWorkerUrl/analyze-photo"
-
-        // Local development keeps the HTTP worker path so Docker Compose remains self-contained.
+    private fun dispatchLocalJob(sessionId: String): Boolean {
+        val runner = localPhotoRunner
+        if (runner == null) {
+            logger.info("Photo session={} queued; run the photo-job role to process it", sessionId)
+            return true
+        }
         scope.launch {
-            try {
-                val idToken = getIdentityToken(httpClient, aiWorkerUrl)
-                val response = httpClient.post(url) {
-                    contentType(ContentType.Application.Json)
-                    idToken?.let { header("Authorization", "Bearer $it") }
-                    header("X-Call-Id", MDC.get("callId") ?: "no-call")
-                    header("X-User-Id", userId)
-                    setBody(buildJsonObject {
-                        put("imageUrl", imageUrl)
-                        put("userId", userId)
-                        put("sessionId", sessionId)
-                        if (selfUrl.isNotBlank()) {
-                            put("callbackUrl", "$selfUrl/api/internal/photo-result")
-                            put("callbackKey", internalKey)
-                        }
-                    }.toString())
-                }
-                logger.info("AI worker call completed for session={}, status={}", sessionId, response.status)
-                if (!response.status.isSuccess()) {
-                    logger.error("AI worker returned error for session={}: {}", sessionId, response.bodyAsText())
-                    photoRepository.markFailed(sessionId, userId, PhotoFailureCode.DISPATCH_FAILED)
-                }
-            } catch (e: Exception) {
-                logger.error("AI worker call failed for session={}: {}", sessionId, e.message, e)
-                photoRepository.markFailed(sessionId, userId, PhotoFailureCode.DISPATCH_FAILED)
+            val succeeded = runCatching { runner(UUID.fromString(sessionId)) }.getOrDefault(false)
+            if (!succeeded) {
+                logger.warn("Local photo job did not complete session={}", sessionId)
             }
         }
+        return true
     }
 
     suspend fun getSessionResult(userId: String, sessionId: UUID): PhotoSessionResult? {

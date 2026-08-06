@@ -8,9 +8,9 @@ from pathlib import Path
 STATE_FILE = Path(__file__).parent.parent / "deploy-state.json"
 
 MAPPING = {
-    "frontend":  ("frontend/",          "make deploy-frontend"),
-    "backend":   ("backend/",           "make deploy-backend"),
-    "ai-worker": ("services/ai-worker/", "make deploy-ai-worker"),
+    "frontend":  (("frontend/",), "make deploy-frontend"),
+    "database":  (("supabase/migrations/",), "make deploy-db"),
+    "backend":   (("backend/", "Makefile", "docker-compose.yml"), "make stage-kotlin-runtime"),
 }
 
 def main():
@@ -20,7 +20,7 @@ def main():
     print(f"\n  HEAD: {head}\n")
 
     any_needed = False
-    for name, (path, cmd) in MAPPING.items():
+    for name, (paths, cmd) in MAPPING.items():
         last = state.get(name, {}).get("commit", "")
 
         if not last:
@@ -35,7 +35,7 @@ def main():
             changes = subprocess.check_output(
                 ["git", "diff", "--name-only", last, "HEAD"]
             ).decode().splitlines()
-            matched = [l for l in changes if l.startswith(path)]
+            matched = [line for line in changes if any(line.startswith(path) for path in paths)]
             if matched:
                 print(f"  \033[33m{name:<14}\033[0m {len(matched)} file(s) changed since {last} → {cmd}")
                 any_needed = True

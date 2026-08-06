@@ -26,21 +26,33 @@ fun Route.internalRoutes(internalService: InternalService, internalKey: String) 
         post("/photo-result") {
             if (!requireInternalKey(internalKey)) return@post
             val request = call.receive<PhotoResultRequest>()
-            internalService.handlePhotoResult(request)
+            try {
+                internalService.handlePhotoResult(request)
+            } catch (_: KotlinClaimConflictException) {
+                return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "job_owned_by_kotlin"))
+            }
             call.respond(mapOf("status" to "ok"))
         }
 
         post("/quiz-result") {
             if (!requireInternalKey(internalKey)) return@post
             val request = call.receive<QuizResultRequest>()
-            internalService.handleQuizResult(request)
+            try {
+                internalService.handleQuizResult(request)
+            } catch (_: KotlinClaimConflictException) {
+                return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "job_owned_by_kotlin"))
+            }
             call.respond(mapOf("status" to "ok"))
         }
 
         post("/job-status") {
             if (!requireInternalKey(internalKey)) return@post
             val request = call.receive<JobStatusRequest>()
-            internalService.handleJobStatus(request)
+            try {
+                internalService.handleJobStatus(request)
+            } catch (_: KotlinClaimConflictException) {
+                return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "job_owned_by_kotlin"))
+            }
             call.respond(mapOf("status" to "ok"))
         }
 

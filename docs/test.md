@@ -1,20 +1,18 @@
 # Kanji Masta testing guide
 
-The repository has four test harnesses:
+The repository has three test harnesses:
 
 - Backend: JUnit 5, Ktor `testApplication`, MockK, Ktorm, and Testcontainers Postgres.
-- AI worker: Pytest, FastAPI `TestClient`, mocked AI providers, and Testcontainers Postgres.
 - Frontend components: Vitest, jsdom, and Testing Library.
 - Frontend browser: Playwright Firefox with a deterministic fake API.
 
-The SQL files in `supabase/migrations/` are the schema authority in production and tests. Backend and AI-worker persistence tests apply every migration, in order, to fresh Postgres. There is no handwritten test schema.
+The SQL files in `supabase/migrations/` are the schema authority in production and tests. Backend persistence tests apply every migration, in order, to fresh Postgres. There is no handwritten test schema.
 
 ## Quick verification
 
 ```bash
-make test                 # backend + AI worker + frontend components
+make test                 # backend + frontend components
 make test-backend         # Docker required
-make test-ai-worker       # Docker required
 make test-frontend
 make test-frontend-e2e    # starts fake API and Vite
 ```
@@ -73,21 +71,27 @@ Use a service plus its real repository and migrated Postgres when correctness de
 
 [`TestApp.kt`](../backend/src/test/kotlin/com/kanjimasta/support/TestApp.kt) runs the real `Application.module()` with the Testcontainers database and inert test configuration. Use it only when testing the production composition root. [`ProductionApplicationTest.kt`](../backend/src/test/kotlin/com/kanjimasta/ProductionApplicationTest.kt) is the current startup smoke test.
 
-The older `testModule` harness is retained for broad integration coverage. Its HTTP client uses Ktor `MockEngine`; automated tests must never contact the AI worker, Cloud metadata server, Resend, or any paid provider.
+The older `testModule` harness is retained for broad integration coverage. Its HTTP client uses Ktor `MockEngine`; automated tests must never contact Cloud metadata, Resend, OpenRouter, or any paid provider.
 
-## AI-worker harness
+### Kotlin AI-runtime coverage
 
-[`conftest.py`](../services/ai-worker/tests/conftest.py) follows the same database contract as the backend: one shared Postgres container, the minimal Supabase prelude, all production migrations, and dynamic truncation of all public tables after each integration test.
+AI execution is part of the backend Gradle project and uses the same persistence harness.
+[`OpenRouterClientTest.kt`](../backend/src/test/kotlin/com/kanjimasta/core/ai/OpenRouterClientTest.kt)
+covers provider request/response behavior with Ktor `MockEngine`.
+[`PhotoAnalysisExecutorIntegrationTest.kt`](../backend/src/test/kotlin/com/kanjimasta/PhotoAnalysisExecutorIntegrationTest.kt),
+[`QuizGenerationWorkerIntegrationTest.kt`](../backend/src/test/kotlin/com/kanjimasta/QuizGenerationWorkerIntegrationTest.kt),
+and [`WordDiscoveryIntegrationTest.kt`](../backend/src/test/kotlin/com/kanjimasta/WordDiscoveryIntegrationTest.kt)
+exercise the shared Ktorm persistence layer against migrated PostgreSQL.
 
-Route tests mock the provider-neutral `get_ai_client()` boundary. Mocking a legacy provider implementation is insufficient because changing the configured provider could otherwise send a paid network request during tests.
-
-Use pure tests for JSON parsing, cost calculations, provider selection, and request construction. Use FastAPI plus Postgres only when the route's database orchestration is part of the behavior.
+Use pure tests for JSON parsing, cost calculations, and request construction. Use migrated
+PostgreSQL when claim fencing, direct result writes, attempt-level cost, or transactional
+enqueueing is part of the behavior. MockEngine must terminate every OpenRouter or image request.
 
 ## Frontend tests
 
 Vitest covers application state and semantics: loading, empty, success, error, retry, authoritative-conflict replacement, accessible controls, and query/mutation effects. Prefer role/name queries and `userEvent`.
 
-Playwright covers facts jsdom cannot prove: responsive layout, actual routing, focus, browser timing, geometry, and motion. The suite starts [`fake-api.mjs`](../frontend/tests/e2e/fake-api.mjs) on port `18080` and Vite on `4173`; it does not require Ktor, Supabase, or the AI worker.
+Playwright covers facts jsdom cannot prove: responsive layout, actual routing, focus, browser timing, geometry, and motion. The suite starts [`fake-api.mjs`](../frontend/tests/e2e/fake-api.mjs) on port `18080` and Vite on `4173`; it does not require Ktor, Supabase, or OpenRouter.
 
 When an API response or mutation contract changes, update the fake API in the same change. Keep browser journeys few, deterministic, and centered on user-visible outcomes.
 
@@ -109,9 +113,6 @@ For concurrent commands, assert both the returned outcomes and the single commit
 cd backend
 ./gradlew test --tests '*QuizRoutesTest*'
 ./gradlew test --tests '*QuizSessionBehaviorTest*simultaneous answers*'
-
-cd services/ai-worker
-pytest tests/test_db.py::test_database_uses_phase3_failure_count_constraint -q
 
 cd frontend
 npm run test:run -- src/pages/__tests__/Quiz.test.tsx

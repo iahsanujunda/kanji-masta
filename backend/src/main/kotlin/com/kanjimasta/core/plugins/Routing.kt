@@ -34,7 +34,6 @@ fun Application.configureRouting(
     internalService: InternalService,
     adminUserId: String,
     internalKey: String,
-    selfUrl: String,
 ) {
     routing {
         get("/health") {
@@ -44,7 +43,7 @@ fun Application.configureRouting(
         // Public (no auth)
         invitePublicRoutes(inviteService)
 
-        // Internal (ai-worker callbacks, shared secret auth)
+        // Temporary legacy callbacks plus scheduled stale cleanup.
         internalRoutes(internalService, internalKey)
 
         authenticate("supabase") {

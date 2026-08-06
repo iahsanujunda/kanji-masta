@@ -61,6 +61,13 @@ private fun toJdbcUrl(url: String): String {
 fun connectDatabase(environment: ApplicationEnvironment): Database {
     val url = environment.config.property("database.url").getString()
     require(url.isNotBlank()) { "database.url must be set (DATABASE_URL env var)" }
+    val maximumPoolSize = environment.config.propertyOrNull("database.maxPoolSize")
+        ?.getString()?.toIntOrNull() ?: 7
+    return connectDatabase(url, maximumPoolSize)
+}
+
+fun connectDatabase(url: String, maximumPoolSize: Int = 7): Database {
+    require(url.isNotBlank()) { "DATABASE_URL must be set" }
 
     val jdbcUrl = toJdbcUrl(url)
     log.info("Connecting to database: {}", redactDatabaseSecrets(jdbcUrl))
@@ -72,7 +79,7 @@ fun connectDatabase(environment: ApplicationEnvironment): Database {
 
     val config = HikariConfig().apply {
         this.jdbcUrl = finalJdbcUrl
-        maximumPoolSize = 7
+        this.maximumPoolSize = maximumPoolSize.coerceAtLeast(1)
         minimumIdle = 1
         idleTimeout = 60_000
         connectionTimeout = 10_000

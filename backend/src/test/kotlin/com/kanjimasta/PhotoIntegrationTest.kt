@@ -54,7 +54,6 @@ class PhotoIntegrationTest : com.kanjimasta.support.PersistenceTest() {
             val service = PhotoService(
                 repository,
                 httpClient,
-                "https://worker.example",
                 photoAnalysisJobName = "projects/test/locations/test/jobs/photo-analysis",
             )
 
@@ -98,7 +97,6 @@ class PhotoIntegrationTest : com.kanjimasta.support.PersistenceTest() {
             val service = PhotoService(
                 repository,
                 httpClient,
-                "https://worker.example",
                 photoAnalysisJobName = "projects/test/locations/test/jobs/photo-analysis",
             )
 
@@ -144,7 +142,6 @@ class PhotoIntegrationTest : com.kanjimasta.support.PersistenceTest() {
             val service = PhotoService(
                 repository,
                 httpClient,
-                "https://worker.example",
                 photoAnalysisJobName = "projects/test/locations/test/jobs/photo-analysis",
             )
 

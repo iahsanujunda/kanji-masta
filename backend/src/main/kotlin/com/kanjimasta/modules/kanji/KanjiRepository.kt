@@ -1,5 +1,6 @@
 package com.kanjimasta.modules.kanji
 
+import com.kanjimasta.core.ai.AiModelConfigRepository
 import com.kanjimasta.core.db.*
 import org.ktorm.database.Database
 import org.ktorm.dsl.*
@@ -170,10 +171,26 @@ class KanjiRepository(private val db: Database) {
     // --- QuizGenerationJob ---
 
     fun insertQuizGenerationJob(userId: String, kanjiMasterId: String, wordMasterId: String? = null) {
-        db.insert(QuizGenerationJobTable) {
-            set(it.userId, userId)
-            set(it.kanjiId, UUID.fromString(kanjiMasterId))
-            if (wordMasterId != null) set(it.wordMasterId, UUID.fromString(wordMasterId))
+        db.useTransaction {
+            val jobId = UUID.randomUUID()
+            db.insert(QuizGenerationJobTable) {
+                set(it.id, jobId)
+                set(it.userId, userId)
+                set(it.kanjiId, UUID.fromString(kanjiMasterId))
+                if (wordMasterId != null) set(it.wordMasterId, UUID.fromString(wordMasterId))
+            }
+            val config = AiModelConfigRepository(db).getActive()
+            db.insert(JobAttemptTable) {
+                set(it.id, UUID.randomUUID())
+                set(it.jobType, "quiz_generation")
+                set(it.jobId, jobId)
+                set(it.attemptNumber, 1)
+                set(it.status, "pending")
+                set(it.trigger, "initial")
+                set(it.modelConfigVersion, config?.version)
+                set(it.modelId, config?.quizGenerationModel)
+                set(it.createdBy, "system")
+            }
         }
     }
 

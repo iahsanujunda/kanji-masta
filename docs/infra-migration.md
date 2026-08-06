@@ -4,6 +4,13 @@ _Fold the Python AI worker into the Kotlin/Ktor codebase (Milestone 1), then opt
 the runtime from Cloud Run + GCS to Fly.io + Cloudflare Pages (Milestone 2). Supabase remains
 the database, auth, and storage provider throughout._
 
+> **Implementation status (2026-08-06):** Milestone 1 code consolidation is implemented in
+> the working tree: the Python worker source/build targets are removed, the Kotlin launcher
+> and direct-write executors exist, the reliability migration is added, and the full Kotlin
+> test suite, fat-JAR build, and frontend build pass. The Definition of Done remains unchecked until the
+> migration is applied, the new Cloud Run Jobs and backend revision are deployed, scheduler
+> targets are cut over, and the production soak and rollback drill complete.
+
 ---
 
 ## 0. Two independent milestones
@@ -38,11 +45,12 @@ This migration begins with a language consolidation, and the consolidation carri
 justification. Do it first; the platform move is smaller and cleaner once there is one
 application instead of two.
 
-**1. Remove a second language and a duplicated database layer.** The AI worker's
-[`services/ai-worker/app/db.py`](../services/ai-worker/app/db.py) is ~438 lines that
-re-implement, in psycopg2, database access the Ktor backend already expresses in Ktorm
+**1. Remove a second language and a duplicated database layer.** The retired AI worker's
+`services/ai-worker/app/db.py` was ~636 lines that re-implemented, in psycopg2, database
+access the Ktor backend already expresses in Ktorm
 against the *same* Supabase tables. Today every schema change is applied in two places, in
-two languages, with two connection pools, two Docker images, and two deploy targets, plus a
+two languages, with two connection-pool implementations, two Docker images, and two deploy
+targets, plus a
 backend↔worker authentication handshake and result callbacks between them. Consolidating to
 one Kotlin codebase deletes all of that surface. This is the primary reason and it needs no
 qualification.
@@ -67,12 +75,13 @@ mental model is faster and more pleasant to work in than a Kotlin/Python split. 
 tiebreaker, not the load-bearing reason, but it is why this is worth doing now rather than
 never.
 
-**What consolidation costs.** Essentially nothing in ecosystem terms. The worker has no Python
-lock-in — its runtime dependencies are FastAPI, uvicorn, psycopg2, and pydantic once the
-Gemini path is dropped (see below), and images are handled as raw `bytes` → base64 → data URL,
-all trivial in Kotlin. The AI call is OpenRouter, which is a plain JSON POST — gpipi already
-proves the Kotlin port (`OpenRouterClient`, strict-JSON structured extraction). Prompts become
-Kotlin constants; pydantic models become data classes; the worker queries become Ktorm.
+**What consolidation costs.** The worker has no Python-specific capability that blocks a port,
+but the move is still a meaningful application rewrite. Its runtime is conventional HTTP,
+Postgres, JSON validation, prompts, and image bytes → base64 → data URL. The AI call is an
+OpenRouter JSON POST, and gpipi provides a Kotlin reference (`OpenRouterClient`, strict-JSON
+structured extraction). Prompts become Kotlin constants; pydantic models become data classes;
+and the worker queries become Ktorm. The material work is preserving claim/retry semantics,
+transactional result application, cost accounting, and the existing test contract.
 
 **Drop Gemini during the port.** The provider abstraction and the `gemini.py` /
 `google-genai` path are retired rather than ported — OpenRouter is now the only AI provider in
@@ -102,9 +111,11 @@ Migrate the application runtime and topology without moving application data:
 - Retire Cloud Run, Cloud Run Jobs, GCS frontend hosting, and Google Cloud Scheduler.
 - Provide a staged cutover with a DNS-based rollback path.
 
-No schema or production-data migration is required. The database contract that already backs
-durability — `photo_session` and `quiz_generation_job` rows created before dispatch,
-idempotent terminal writes, and stale-state cleanup — is preserved and becomes the queue.
+No production-data move is required. Milestone 1 does require a small **additive, backward-
+compatible schema migration** for claim fencing and result idempotency. The durable source
+rows — `photo_session` and `quiz_generation_job` — remain in place; new lease/claim metadata,
+result identity, and cost uniqueness make their execution safe to retry. Milestone 2 later
+reuses and generalizes those primitives rather than introducing a second queue schema.
 
 ---
 
@@ -141,7 +152,7 @@ flowchart TB
   Browser -->|API| BE
   Browser -->|direct| AUTH
   Browser -->|upload| ST
-  BE -->|HTTP + WORKER_API_KEY| WK
+  BE -->|HTTP + Cloud Run IAM identity token| WK
   BE -->|Jobs API dispatch| JOB
   WK -->|callback + INTERNAL_API_KEY| BE
   JOB -->|callback + INTERNAL_API_KEY| BE
@@ -159,8 +170,9 @@ flowchart TB
 
 This is where feature work happens. One Kotlin image runs as a Cloud Run service plus Kotlin
 Cloud Run Jobs. The separate Python worker service is gone; the Jobs write results directly to
-Postgres through the shared Ktorm code, so there are no result callbacks and no
-application-to-application secrets. The platform is still Google Cloud.
+Postgres through shared Ktorm code, so there are no worker result callbacks. The existing
+`INTERNAL_API_KEY` remains temporarily only for the Cloud Scheduler → stale-cleanup endpoint;
+it is not used by either Kotlin Job. The platform is still Google Cloud.
 
 ```mermaid
 flowchart TB
@@ -171,8 +183,8 @@ flowchart TB
   subgraph GCP["Google Cloud · asia-east1 · one Kotlin image"]
     GCS[("GCS bucket · static frontend")]
     BE["Cloud Run service · Ktor / JVM<br/>API + inline word discovery"]
-    PJOB["Cloud Run Job · photo analysis (Kotlin)"]
-    QJOB["Cloud Run Job · quiz generation (Kotlin)"]
+    PJOB["Cloud Run Job · photo-analysis-kotlin"]
+    QJOB["Cloud Run Job · quiz-generation-kotlin"]
     SCH["Google Cloud Scheduler · cron"]
   end
   subgraph SB["Supabase · AWS"]
@@ -191,7 +203,8 @@ flowchart TB
   Browser -->|upload| ST
   BE -->|Jobs API dispatch| PJOB
   BE -->|Jobs API dispatch| QJOB
-  SCH -->|OIDC dispatch| BE
+  SCH -->|Jobs API: drain / check-regen| QJOB
+  SCH -->|HTTP + INTERNAL_API_KEY: cleanup| BE
   BE --> PG
   PJOB -->|write result directly| PG
   QJOB -->|write result directly| PG
@@ -258,9 +271,11 @@ flowchart TB
   entrypoints).
 - Runtime deployables: **2 Cloud Run services + 1 Job → 1 Cloud Run service + 2 Jobs**, all
   from that one image; the separate worker service is gone.
-- Cross-service secrets: **Supabase JWT + `WORKER_API_KEY` + `INTERNAL_API_KEY` → Supabase JWT
-  only**. Jobs write results directly to Postgres, so there is no worker HTTP call and no
-  callback, hence no application-to-application secret.
+- Worker coordination: the Cloud Run IAM identity token used for backend→worker HTTP and the
+  `INTERNAL_API_KEY` used for worker→backend result callbacks are removed from those paths.
+  `INTERNAL_API_KEY` remains temporarily only on the existing scheduled cleanup endpoint and
+  is removed with Google Cloud Scheduler in Milestone 2. There is no `WORKER_API_KEY` in the
+  current implementation.
 - AI provider: **two-provider (Gemini / OpenRouter) → OpenRouter only**; the `google-genai`
   dependency and the `AI_PROVIDER` switch are removed.
 - Cloud provider: **still Google Cloud.** Nothing about the platform changes yet.
@@ -285,10 +300,52 @@ through a job or queue would only add latency for no durability benefit.
 |---|---|---|---|---|
 | Photo analysis | slow, durable, user locks the phone | durable | Kotlin Cloud Run Job | drainer |
 | Quiz generation | backed by a durable `quiz_generation_job` row; batch/cron | durable | Kotlin Cloud Run Job | drainer |
-| Word discovery | interactive; user waits for the result | inline | inline in the service | inline on `web` |
+| Word discovery | interactive capability | inline | Kotlin service in the API codebase | inline on `web` |
 | Cron (generate quizzes, check-regen, cleanup) | scheduled | trigger | Cloud Scheduler → dispatch Job | scheduler → enqueue |
 
-### 3.6 Milestone 2 shape — one codebase, three roles
+Milestone 1 ports word discovery into Kotlin and keeps its database-backed model selection.
+The service remains callable from Kotlin application code, but the migration does **not**
+introduce a new automatic product trigger. Wiring discovery into manual kanji addition or a
+new public endpoint is a separate feature change.
+
+### 3.6 Milestone 1 fixed implementation decisions
+
+These decisions are part of the Milestone 1 scope, not open questions:
+
+- Apply an additive migration for `job_attempt.claim_token`, `lease_until`, and `claimed_by`;
+  one-active-attempt protection; stable quiz-result source identity; queue indexes; and a
+  nullable attempt reference on cost rows with uniqueness for new writes. Existing rows stay
+  valid and no production rows are moved.
+- Create the initial `job_attempt` in the same transaction as each new `photo_session` or
+  `quiz_generation_job`, before invoking the Jobs API. The runner may create a reconciler
+  attempt for legacy pending rows that predate this rule.
+- Run quiz generation as a **bounded batch** Cloud Run Job. Each row is claimed with
+  `FOR UPDATE SKIP LOCKED`, a lease deadline, and an unguessable claim token before the AI
+  call. The runner claims work only immediately before an execution slot is available — it
+  never pre-claims an entire sequential batch. Start with batch size `10`, concurrency `1`,
+  and a 300-second lease; keep all three configurable.
+- Require the active claim token on every terminal transaction. An expired or superseded
+  executor cannot publish results after another attempt has taken ownership.
+- During the cutover compatibility window, legacy Python callbacks may terminalize only an
+  active attempt whose `claim_token IS NULL`. A legacy callback must never apply to a row
+  claimed by a Kotlin Job.
+- Record provider cost once per `job_attempt`, not merely once per logical job, so a real
+  provider retry is visible while a duplicate cost write for the same attempt is ignored. A
+  superseded executor may record only the provider cost belonging to its own attempt; it may
+  not publish domain results or change the current attempt.
+- On lease expiry, terminalize the old attempt with an attempt-level `lease_expired` failure
+  and create a new numbered `reconciler` attempt; never recycle an attempt record or token.
+  A Cloud Run platform retry from the same execution may supersede its own prior task attempt
+  immediately, while unrelated executors must wait for lease expiry.
+- Keep `INTERNAL_API_KEY` only for the existing scheduled stale-cleanup endpoint during
+  Milestone 1; do not add Google OIDC verification solely for this consolidation.
+- Deploy Kotlin Jobs under **new names** (`photo-analysis-kotlin` and
+  `quiz-generation-kotlin`). Do not update the existing Python photo Job in place; it remains
+  an intact rollback target through the soak.
+- Port word discovery to a Kotlin service with tests and database-backed model selection, but
+  do not activate a new automatic word-discovery trigger as part of the migration.
+
+### 3.7 Milestone 2 shape — one codebase, three roles
 
 For reference, the Milestone 2 end state runs the single Kotlin image as three roles. The
 `web` and `worker` roles are separate Fly process groups from the same deploy; the scheduler
@@ -325,12 +382,14 @@ The drainer's own drawbacks are accepted and mitigated in §4.5.
 
 ### 4.2 Enqueue
 
-The `web` process creates the durable row exactly as it does today, then does **not** call a
-worker:
+The `web` process creates the durable row, then does **not** call a long-running HTTP worker:
 
-- `PhotoService` inserts a `photo_session` row with `PROCESSING`/`PENDING` status before
-  returning to the browser (it already does this).
-- Quiz selection and the scheduler insert `quiz_generation_job` rows with `PENDING`.
+- `PhotoService` inserts a `photo_session` plus a pending `job_attempt` in one transaction
+  before invoking the Jobs API or returning to the browser. The source status remains
+  `PROCESSING`; claim ownership lives on `job_attempt` rather than overloading the user-visible
+  photo status.
+- Quiz selection and the scheduler insert each `quiz_generation_job` plus its pending
+  `job_attempt` in one transaction before dispatch.
 - Optionally, the enqueuing transaction issues a Postgres `NOTIFY` on a well-known channel to
   wake the drainer immediately.
 
@@ -345,24 +404,29 @@ The `worker` process runs a bounded pool of drain coroutines:
   interval as a backstop, because a `NOTIFY` issued while the worker is disconnected (deploy,
   restart) is lost. `LISTEN` requires its own dedicated connection.
 - Each coroutine claims a row with `SELECT … FOR UPDATE SKIP LOCKED`, sets it to `PROCESSING`
-  with a lease deadline and increments `attempts`, and commits the claim before starting the
-  slow AI work — never holding a transaction open across the AI call.
+  with a lease deadline and a fresh claim token, increments `attempts`, and commits the claim
+  before starting the slow AI work — never holding a transaction open across the AI call.
 - It performs the AI call (OpenRouter) with hard per-call timeouts.
 - It writes the terminal result **directly** to Postgres by calling the same Kotlin service
-  and repository code the backend uses. There is no callback HTTP and no `INTERNAL_API_KEY`;
-  applying a result is an in-process function call within the drainer.
-- Terminal writes are idempotent: a duplicate completion is ignored and cost is recorded once
-  (the existing callback idempotency, relocated).
+  and repository code the backend uses. There is no result callback HTTP; applying a result
+  is an in-process function call within the drainer.
+- The terminal transaction is fenced by the active claim token. Generated quiz rows have a
+  stable source identity, and cost is unique per attempt, so a duplicate completion is
+  ignored while a real provider retry remains separately accountable. A superseded attempt
+  can record its own provider usage at most once but cannot publish domain results. This
+  idempotency is built in Milestone 1; it is not assumed to exist in the current quiz callback.
 
 ### 4.4 Recover
 
 - A **short lease/visibility timeout** returns a row whose worker died mid-job to `PENDING`
-  for re-claim, giving fast liveness recovery.
+  for re-claim, giving fast liveness recovery. The expired `job_attempt` is terminalized and
+  a new numbered reconciler attempt receives a new token; attempt history is never rewritten.
 - A **long stale reaper** (the existing 25h photo path, plus the new quiz-job equivalent)
   converts abandoned rows to `FAILED` with a bounded `failure_code`, surfaced on the admin
   Jobs page for manual rerun.
-- Because every job is claimed idempotently and re-runnable, an interrupted drainer loses no
-  work; the durable row is the source of truth.
+- Because every job is claimed with a fenced token and is re-runnable, an interrupted drainer
+  loses no work; the durable row is the source of truth and a late superseded worker cannot
+  overwrite the current attempt.
 
 ### 4.5 Accepted drawbacks and required mitigations
 
@@ -380,19 +444,21 @@ Definition of Done, not a follow-up:
 - **Always-on cost / no scale-to-zero.** The `worker` process has no inbound HTTP, so Fly
   Proxy cannot manage its lifecycle; it must run continuously (autostop off). This is the
   accepted cost of the model.
-- **You own retry/idempotency.** The lease + reaper + idempotent terminal write are your
-  code, not a platform feature. This is a port, not an invention — the durable record,
-  attempt claim, idempotent completion, and reaper already ship (see
-  [`capture-resilience.md`](capture-resilience.md) Milestone 3); the change is relocating the
-  claim key from `CLOUD_RUN_TASK_ATTEMPT` to a database lease.
+- **You own retry/idempotency.** The lease + reaper + fenced terminal write are application
+  code, not a platform feature. Durable records and photo duplicate protection already ship
+  (see [`capture-resilience.md`](capture-resilience.md) Milestone 3), but quiz-result
+  idempotency and general claim fencing are net-new Milestone 1 work. Milestone 2 relocates
+  execution from Cloud Run Jobs to the always-on drainer while retaining those primitives.
 
 ---
 
 ## 5. Current-state gaps
 
 The containers are portable, but several assumptions must change. Compared with the earlier
-two-app plan, all worker-authentication, worker-private-networking, and worker-callback gaps
-are **removed** because there is no separate worker service.
+two-app plan, worker invocation, private networking, and result-callback concerns disappear
+because there is no separate worker service. The Milestone 1 cleanup schedule temporarily
+retains its existing `INTERNAL_API_KEY`; that is scheduler authentication, not worker
+coordination.
 
 ### 5.1 Two database layers and two languages (resolved by consolidation)
 
@@ -438,15 +504,18 @@ The advisory lock is required even with one `web` Machine so later scaling or ov
 deploys do not double-enqueue. `SCHEDULER_ENABLED=false` is the cross-platform overlap
 control while Google Cloud Scheduler is still active during cutover.
 
-### 5.4 Durable records exist; the queue formalizes them
+### 5.4 Durable records exist; retry fencing is incomplete
 
 The dispatch paths already create durable rows before contacting the worker, and photo
-sessions already have an hourly stale-cleanup path. The queue model uses these same rows as
-its work items. The one net-new reliability item is the **quiz-job reaper** (interrupted quiz
-jobs can currently remain `PROCESSING` indefinitely), plus admin visibility and rerun for
-both photo and quiz failures. Ship that as Phase 0 on the current stack before any language
-or platform change. A transactional outbox is explicitly **not** introduced; the durable row
-plus the reaper is sufficient.
+sessions already have a stale-cleanup path. Quiz stale detection, admin visibility, and rerun
+are now present in the Kotlin code, but Phase 0 still has to prove the operator path and make
+quiz rerun reach execution within a bounded interval rather than merely resetting the row to
+`PENDING`.
+
+Phase A adds the missing general reliability boundary: a lease + claim token on the active
+attempt, stable identity for quiz results, and attempt-level cost deduplication. These are
+small additive migrations, not a transactional outbox. The durable source row plus fenced
+claim, terminal transaction, reaper, and admin rerun are sufficient for Milestone 1.
 
 ### 5.5 Public API requests already return before AI completion
 
@@ -507,10 +576,15 @@ This is the prerequisite (Phase A). Port, then delete Python:
 - `prompts.py` → Kotlin string constants/objects.
 - pydantic models → Kotlin data classes / `kotlinx.serialization`.
 - worker queries in `db.py` → Ktorm against the existing `core/db/Tables.kt`.
-- `main.py` route handlers → inline service methods on `web` (discovery) and drainer job
-  handlers (`worker`).
-- `photo_job.py` / `callback.py` → the drainer's claim/execute/write-result loop; the
-  callback becomes a direct in-process service call.
+- `main.py` route handlers → an inline Kotlin word-discovery service plus photo- and
+  quiz-execution services shared by Cloud Run Job entrypoints and the later Fly drainer.
+- `photo_job.py` / `callback.py` → claim/execute/direct-write entrypoints. Applying a result
+  becomes a fenced in-process transaction rather than a callback.
+- Add a small JVM launcher with explicit `web`, `photo-job`, and `quiz-job` roles. The
+  `quiz-job` role supports `drain` and `check-regen` modes; the same fat JAR and image run all
+  roles through Cloud Run command/argument overrides.
+- Keep word discovery in Kotlin with its existing prompt, model configuration, Ktorm writes,
+  and tests. Do not automatically call it from manual kanji addition during this migration.
 - Port the pytest suites (`test_openrouter.py`, `test_db.py`, `test_routes.py`,
   `test_photo_job.py`) to Kotlin/Testcontainers integration tests alongside the existing
   backend suite. `test_gemini.py` and `test_ai_client.py` are dropped with the Gemini path.
@@ -520,20 +594,17 @@ three model IDs exclusively in the active database configuration.
 
 ### 6.3 Runtime configuration
 
-Backend/app variables (both processes read the shared set they need):
+Common Kotlin image variables:
 
 ```text
 PORT=8080
 DATABASE_URL=...
 SUPABASE_URL=...
+SUPABASE_SERVICE_ROLE_KEY=...
 OPENROUTER_API_KEY=...
 OPENROUTER_REASONING_EFFORT=...
 OPENROUTER_SITE_URL=https://shuukanhq.com
 OPENROUTER_APP_NAME=Kanji Masta
-SCHEDULER_ENABLED=false
-DRAINER_CONCURRENCY=4
-DRAINER_POLL_INTERVAL_SECONDS=...
-JOB_LEASE_SECONDS=...
 HIKARI_MAX_POOL_SIZE=...
 CORS_ALLOWED_ORIGINS=shuukanhq.com
 RESEND_API_KEY=...
@@ -541,10 +612,33 @@ ADMIN_USER_ID=...
 LOG_LEVEL=INFO
 ```
 
-Note the secrets that are **gone**: `WORKER_API_KEY` and `INTERNAL_API_KEY` (no
-backend↔worker HTTP, no callbacks). Do not include secret values in `fly.toml`, images, logs,
-error messages, frontend env, or committed `.env` files. Non-sensitive settings (log level,
-concurrency, intervals) may live in `[env]`.
+Milestone 1 Cloud Run settings:
+
+```text
+PHOTO_ANALYSIS_JOB=.../jobs/photo-analysis-kotlin
+QUIZ_GENERATION_JOB=.../jobs/quiz-generation-kotlin
+QUIZ_JOB_BATCH_SIZE=10
+QUIZ_JOB_CONCURRENCY=1
+JOB_LEASE_SECONDS=300
+PHOTO_MAX_IMAGE_BYTES=10485760
+INTERNAL_API_KEY=...        # temporary: Cloud Scheduler → stale cleanup only
+```
+
+Milestone 2 Fly settings add:
+
+```text
+SCHEDULER_ENABLED=false
+DRAINER_ENABLED=false
+DRAINER_CONCURRENCY=4
+DRAINER_POLL_INTERVAL_SECONDS=...
+JOB_LEASE_SECONDS=...
+```
+
+The Cloud Run IAM identity token for backend→Python-worker HTTP disappears with that service,
+and `INTERNAL_API_KEY` is no longer sent by either Kotlin Job. Keep the key only for the
+Milestone 1 cleanup schedule; remove it when Google Cloud Scheduler is retired. Do not include
+secret values in `fly.toml`, images, logs, error messages, frontend env, or committed `.env`
+files. Non-sensitive settings may live in version-controlled runtime configuration.
 
 ### 6.4 Memory and connection-pool hardening
 
@@ -568,9 +662,10 @@ database concurrently; compute the worst-case old-plus-new ceiling (Cloud Run au
 raises the real number) and confirm it sits comfortably under the Supabase plan limit before
 creating Fly Machines. Reduce pool sizes or Cloud Run max instances first if it does not.
 
-Worker-side image safety (ported from the Python guardrails): explicit connect/read/total
-timeouts on image downloads; reject or cap unexpectedly large responses before base64
-expansion.
+Worker-side image safety added during the Kotlin port: explicit connect/read/total timeouts on
+image downloads; reject or cap unexpectedly large responses before base64 expansion. The
+current Python path does not provide the complete size guard, so this is hardening rather than
+behavior that can be assumed from the port.
 
 ### 6.5 Graceful shutdown and in-flight work
 
@@ -588,7 +683,27 @@ the reaper is the guarantee.
 
 ### 6.6 Makefile and deployment state
 
-Provider-neutral targets:
+Milestone 1 Cloud Run targets:
+
+```text
+make deploy-db
+make deploy-kotlin-jobs       # deploy new names; never overwrites Python photo Job
+make deploy-backend           # one Kotlin image/revision, initially tagged with no traffic
+make deploy-scheduler-targets # only after API cutover and legacy drain
+make smoke-production
+```
+
+- Build and push the Kotlin image once by immutable digest; deploy the API and both Kotlin Jobs
+  from that digest.
+- Record the retained Python service revision, Python image digest, original photo Job export,
+  Job name, scheduler targets, and environment-variable names before removing Python source or
+  its deploy target. Secret values remain in the secret manager/environment, never in the
+  document or repository.
+- Deployment order is migration → new unscheduled Jobs → tagged backend → verification → API
+  traffic → scheduler targets. A normal post-migration deploy may collapse this after the
+  rollback window closes.
+
+Milestone 2 provider-neutral targets:
 
 ```text
 make deploy-db
@@ -674,7 +789,9 @@ App secrets:
 
 - `DATABASE_URL`
 - `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
 - `SCHEDULER_ENABLED` (set `false` through Phases B and C)
+- `DRAINER_ENABLED` (set `false` through Phases B and C)
 - `OPENROUTER_API_KEY`
 - `RESEND_API_KEY`
 - `ADMIN_USER_ID`
@@ -733,9 +850,9 @@ Provision `api.shuukanhq.com` on the Fly app (`web` service):
 - Logs never contain API keys, database credentials, JWTs, or full signed storage URLs.
 - Fly and Cloudflare CI tokens have the narrowest practical scopes; production secrets are
   never Docker build arguments.
-- Backend↔worker coordination is the shared database; there is no application-to-application
-  network secret to protect, which removes the `WORKER_API_KEY`/`INTERNAL_API_KEY` trust
-  surface entirely.
+- Backend↔worker coordination is the shared database; there is no worker invocation or result-
+  callback network secret. The temporary Milestone 1 cleanup key is removed when Google Cloud
+  Scheduler is retired, so it is not present in the Fly topology.
 - User authentication remains Supabase JWT (HS256), unchanged.
 
 ---
@@ -782,19 +899,49 @@ scheduler enqueues, growing queue lag, and stale-state recovery.
 
 ### 10.1 Automated tests
 
-- Backend tests pass after removing Cloud Run identity-token code and the Jobs-API dispatch.
+- Backend tests pass after removing the Python-worker identity-token call; Google OAuth access
+  tokens remain for Milestone 1 Jobs-API dispatch.
 - Ported worker logic (the OpenRouter client, prompts, queries) has Kotlin/Testcontainers
   coverage equivalent to the retired pytest suites.
+- Milestone 1 quiz-Job tests: bounded `FOR UPDATE SKIP LOCKED` claims do not double-process;
+  lease expiry permits recovery; a stale claim token cannot publish; stable result identity
+  prevents duplicate quizzes; and cost is recorded once per attempt.
+- Enqueue tests prove the source row and initial pending `job_attempt` commit atomically before
+  Jobs-API dispatch; legacy pending rows without attempts receive a reconciler attempt.
+- Milestone 1 photo-Job tests preserve Cloud Run task-attempt claim behavior while applying
+  terminal results directly through the same fenced Kotlin transaction.
+- Kotlin word-discovery tests cover model selection, structured-response validation, Ktorm
+  writes, and quiz enqueueing without adding a new automatic product trigger.
 - Drainer tests: claim with `FOR UPDATE SKIP LOCKED` does not double-process; lease expiry
-  re-queues; idempotent terminal write ignores duplicates and charges once; reaper marks
-  stale rows `FAILED`.
+  re-queues; the Milestone 1 claim token remains the fencing boundary; reaper marks stale rows
+  `FAILED`.
 - Scheduler tests: two `web` instances enqueue a schedule exactly once via the advisory lock.
 - Enqueue endpoints return promptly while drain work continues.
 - Frontend unit and browser tests pass against the existing fake API.
-- The single Docker image builds and runs both process commands.
+- The single Docker image builds and runs `web`, `photo-job`, and `quiz-job` commands.
 - `fly config validate --strict` passes.
 
-### 10.2 End-to-end staging tests
+### 10.2 Milestone 1 Cloud Run parity tests
+
+- On the current stack, interrupt a quiz job, let reconciliation make it actionable, rerun it
+  from Admin, and verify it reaches `DONE` through the Python executor before the port begins.
+- Build one Kotlin image and run all three launcher roles locally against Testcontainers.
+- Invoke each new Kotlin Job with dedicated records while it is unscheduled; verify direct DB
+  completion, model-version snapshots, attempt-level cost, and no result callback.
+- Run two quiz Job executions concurrently; verify row locking prevents duplicate claims.
+- Expire a lease and start a replacement attempt; verify the old claim token cannot publish
+  quizzes or terminal status, but can idempotently record only its own attempt's provider cost.
+- Exercise Kotlin word discovery through its service integration test and confirm the active
+  `word_discovery_model` is used; verify manual kanji addition does not acquire a new implicit
+  trigger during the migration.
+- Move traffic through the transitional backend revision while a dedicated legacy Python job
+  is finishing; verify its callback is accepted only for an active attempt with no claim token
+  and is rejected for a Kotlin-claimed attempt. Remove the compatibility routes only after
+  callback traffic reaches zero.
+- Run generate-quizzes and check-regen through their new Scheduler→Kotlin-Job targets, keep
+  stale cleanup on its existing protected endpoint, and complete a rollback drill before soak.
+
+### 10.3 Milestone 2 end-to-end staging tests
 
 Run queue-mutating tests against local Supabase or an isolated staging project. While Fly and
 Cloud Run share production Supabase in Phases B–C, limit production checks to health, auth,
@@ -810,7 +957,7 @@ and read-only behavior; **do not let both stacks drain the same production job q
 - Run every scheduled enqueue manually; verify CORS rejection from an unapproved origin;
   verify the public internet cannot reach the `worker` process.
 
-### 10.3 Failure tests
+### 10.4 Failure tests
 
 Prove recovery first on Cloud Run in Phase 0; during Fly migration repeat only the
 platform-specific cases with dedicated records.
@@ -841,8 +988,11 @@ that hosts feature work indefinitely.
 
 ### Phase 0 — ship recovery on Cloud Run
 
-- Add stale quiz-job detection and the quiz-job reaper; complete the admin rerun flow for
-  interrupted quiz jobs; add the failed-photo recovery/rescan path.
+- Verify the stale quiz-job reconciliation and admin Jobs UI that already ship; complete the
+  quiz rerun path so a reset row reaches execution within a bounded interval, and preserve the
+  failed-photo admin recovery path.
+- Add an integration test that reruns a failed quiz job and observes the new attempt reach
+  `DONE`, rather than testing only the reset to `PENDING`.
 - Deploy to the current (Python) Cloud Run stack; force an interrupted job, recover and rerun
   it to `DONE`; observe with the existing Cloud Logging/Monitoring.
 
@@ -858,47 +1008,79 @@ deliberately tight so this milestone is a clean, defensible end state.
 **Target topology (the resting state):**
 
 - One Cloud Run **service** (Ktor): the API plus **inline word discovery**.
-- One Cloud Run **Job** `photo-analysis` (Kotlin entrypoint in the same image), dispatched by
-  the service via the Jobs API — the durable-execution mechanism, unchanged in shape from
-  today, only the language differs.
-- One Cloud Run **Job** `quiz-generation` (Kotlin entrypoint in the same image), dispatched by
-  the service and by cron. This retires the separate worker service's synchronous
-  `/generate-quizzes` endpoint and makes quiz generation durable the same way photo analysis
-  already is. _(This is the one modest execution change beyond a pure language port; it is
-  what lets the standalone Python worker service be deleted entirely.)_
-- Cron stays on **Google Cloud Scheduler**, now dispatching the Kotlin Jobs (directly, or via
-  authenticated service endpoints that dispatch them).
+- One Cloud Run **Job** `photo-analysis-kotlin` (Kotlin entrypoint in the same image),
+  dispatched by the service via the Jobs API. The existing Python `photo-analysis` Job is not
+  modified and remains the rollback target.
+- One Cloud Run **Job** `quiz-generation-kotlin` (Kotlin entrypoint in the same image),
+  dispatched by the service and by cron. It drains a configurable bounded batch using
+  `FOR UPDATE SKIP LOCKED`, a lease, and an attempt claim token. It also supports a
+  `check-regen` mode for the existing scheduled eligibility pass.
+- Cron stays on **Google Cloud Scheduler**. Quiz generation/check-regen execute the Kotlin
+  quiz Job; stale cleanup continues to call the existing Ktor endpoint with
+  `INTERNAL_API_KEY` during this milestone.
 
 **Work:**
 
 - Port `openrouter.py`, `prompts.py`, and the worker `db.py` queries into Kotlin (§6.2). Drop
   `gemini.py` and the `AI_PROVIDER` abstraction — OpenRouter is the only provider.
+- Apply the additive reliability migration: claim token + lease on active attempts, stable
+  quiz-result identity, supporting indexes, and per-attempt cost uniqueness. No production
+  rows move and old Python/backend revisions remain compatible during the rollback window.
 - **Both Jobs write terminal results directly to Postgres** through the shared Ktorm
-  service/repository code. Remove the worker→backend callback, `INTERNAL_API_KEY`, and
-  `WORKER_API_KEY`. Keep the writes idempotent (relocate the existing callback idempotency).
-- Word discovery becomes an inline service call.
+  service/repository code. Remove the worker→backend callback. Require the current claim token
+  in the terminal transaction so expired workers cannot publish, and make result/cost writes
+  idempotent by construction rather than relying on the current quiz callback.
+- Keep `INTERNAL_API_KEY` only for scheduled stale cleanup. It is no longer a Job callback
+  credential and is removed in Milestone 2. The current stack has no `WORKER_API_KEY`.
+- Word discovery becomes a tested inline Kotlin service using the database-authoritative
+  `word_discovery_model`. Preserve the capability, but do not add a new automatic trigger from
+  manual kanji addition during the migration.
+- Add one launcher/main dispatch for `web`, `photo-job`, and `quiz-job` so the same image and
+  fat JAR run all Cloud Run roles.
 - Remove the Python worker source, its Dockerfile, and its build/deploy target from the repo,
-  so it is no longer built or deployed.
+  so it is no longer built or updated. The last-deployed Python runtime targets remain idle
+  only for rollback through the soak.
 - Port the pytest suites to Kotlin/Testcontainers.
 - Deploy to Cloud Run and verify parity against the pre-consolidation behavior.
 
-**Retain the old service for rollback (do not delete it yet).** Removing the Python source
-does not delete the *running* Cloud Run service. Leave the last-deployed Python worker service
-in place at **zero traffic** — it costs nothing while idle (Cloud Run scales it to zero) and
-becomes the rollback target. Because Cloud Run also retains the backend's previous revision, a
-Milestone 1 rollback is then a **traffic/revision change, not a redeploy from git** (§12).
-Delete the retained Python worker service only after the Milestone 1 Definition of Done is
-signed off.
+**Milestone 1 deployment and handoff order:**
+
+1. Apply the additive migration while the current Kotlin backend and Python worker are still
+   production; confirm both ignore the new nullable columns and indexes.
+2. Deploy `photo-analysis-kotlin` and `quiz-generation-kotlin` under new names with no
+   scheduler targets. Invoke them only with dedicated verification records.
+3. Deploy a tagged/no-traffic Kotlin backend revision pointing at the new Job names. This
+   transition revision keeps the legacy callback routes temporarily so Python work that was
+   already running can still publish its result after API traffic moves.
+4. Verify the tagged revision, direct Job writes, fenced duplicate handling, word discovery
+   service tests, and admin rerun on dedicated records.
+5. Pause the old generate-quizzes and check-regen schedules, move API traffic to the Kotlin
+   backend revision, and wait for all Python worker requests and Python photo Job executions
+   that started before the switch to finish. The new backend dispatches only the Kotlin Jobs.
+6. Confirm no legacy callbacks are still arriving, then remove the result-callback routes in a
+   follow-up Kotlin revision. Retain `INTERNAL_API_KEY` only on stale cleanup.
+7. Point generate-quizzes and check-regen schedules at `quiz-generation-kotlin`, exercise each
+   once, and begin the soak. Never schedule the Python and Kotlin quiz executors concurrently.
+
+**Retain the old service and Job for rollback (do not update or delete them yet).** Removing
+the Python source does not delete the running Cloud Run service. Leave the last-deployed
+Python worker service idle and keep the existing Python photo-analysis Job definition
+unchanged. The consolidated backend revision alone points at the new `*-kotlin` Job names;
+the previous backend revision retains its original worker URL and Python photo Job name. A
+Milestone 1 rollback is therefore a traffic/revision change plus scheduler-target restoration,
+not an image rebuild (§12). Delete the retained Python service and Job only after the
+Milestone 1 Definition of Done is signed off.
 
 **Soak, then decommission.** After deploying the consolidated stack, soak it in production
-(24–48 hours) with the retained Python worker service standing by. When the Definition of Done
-is signed off, delete the retained Python worker Cloud Run service, its Artifact Registry
-image, and its deploy artifacts.
+(24–48 hours) with the retained Python worker service and photo Job standing by. When the
+Definition of Done is signed off, delete those retained runtime targets, their Artifact
+Registry image, and obsolete deploy artifacts.
 
-**Milestone 1 is done when** (see §15) the Python source is gone and no longer deployed, the
-one Kotlin image serves the API and runs both Jobs, results are written directly to Postgres
-with no callback or app-to-app secret, admin recovery works for both job types, and the stack
-has soaked in production with the retained rollback target still available. At that point
+**Milestone 1 is done when** (see §15) Python source is gone and no Python target is receiving
+new production work, the one Kotlin image serves the API and runs both Jobs, results are
+written directly to Postgres with no result callback, admin recovery works for both job types,
+and the stack has soaked in production with the retained rollback target still available. At
+that point
 feature development proceeds here with no dependency on Milestone 2.
 
 **What carries forward to Milestone 2 unchanged:** the AI clients, prompts, Ktorm queries, the
@@ -919,14 +1101,16 @@ drainer; the Kotlin code is largely reused.
 - Convert the Kotlin Jobs' Jobs-API dispatch to enqueue-and-drain, and convert the scheduler
   from a Job dispatcher to an enqueuer. (The direct-to-Postgres result write already exists
   from Milestone 1 and is reused as-is.)
-- Set secrets, including `SCHEDULER_ENABLED=false`.
+- Set secrets, including `SCHEDULER_ENABLED=false` and `DRAINER_ENABLED=false`; verify both
+  startup logs before connecting either process to production Supabase.
 - Deploy to the `.fly.dev` hostname; verify Supabase connectivity and `LISTEN/NOTIFY` from
   both processes; verify `worker` has no public service or IP; verify the startup log confirms
   the scheduler disabled; verify logs/metrics and the queue-lag dashboard; record baseline
   memory and latency.
 
 Cloud Run remains production during this phase; do not let the Fly `worker` drain the
-production queue yet.
+production queue yet. `SCHEDULER_ENABLED=false` does not stop claims;
+`DRAINER_ENABLED=false` is the queue-consumer cutover control.
 
 ### Phase C — provision public endpoints
 
@@ -934,8 +1118,8 @@ production queue yet.
   ownership; validate TLS with `Full (strict)`.
 - Create the Cloudflare Pages project pointing at `https://api.shuukanhq.com`; deploy a
   preview; complete the end-to-end staging checklist against isolated data.
-- Reconfirm `SCHEDULER_ENABLED=false` and that Google Cloud Scheduler remains the only active
-  scheduler and Cloud Run the only active drainer.
+- Reconfirm `SCHEDULER_ENABLED=false` and `DRAINER_ENABLED=false`, and that Google Cloud
+  Scheduler remains the only active scheduler and Cloud Run the only active executor.
 
 ### Phase D — backend cutover
 
@@ -943,6 +1127,9 @@ production queue yet.
   executions remain.
 - Point `api.shuukanhq.com` at Fly; wait for old Cloud Run traffic and any in-flight Cloud Run
   Job to drain.
+- Set `DRAINER_ENABLED=true` and wait for the `worker` Machine restart; confirm no old Cloud Run
+  or Python executor still owns a valid claim, then verify the Fly drainer processes dedicated
+  pending records.
 - Manually invoke each Fly scheduled enqueue once and verify the drainer executes it while
   Google Cloud Scheduler is off and the in-process scheduler is still disabled.
 - Set `SCHEDULER_ENABLED=true` (this restarts the `web` Machine); confirm the startup log
@@ -963,7 +1150,7 @@ review uptime; review all Machine restarts; confirm no OOM; inspect drain failur
 lag; verify no rows stuck; verify connection counts; compare latency with the previous
 deployment; confirm Pages health.
 
-After soak: remove Cloud Run services and the Cloud Run Job; remove obsolete Artifact Registry
+After soak: remove Cloud Run services and Cloud Run Jobs; remove obsolete Artifact Registry
 images; remove GCS frontend automation; remove Google Cloud Scheduler jobs; remove temporary
 DNS records and `deploy-legacy-*` targets; rotate migration-time credentials; update
 `deploy-state.json` and architecture docs. Do not delete Supabase resources, migrations,
@@ -978,33 +1165,43 @@ services are removed.
 
 ### Milestone 1 rollback (within Cloud Run)
 
-Because the Python worker service is retained at zero traffic (Phase A) and Cloud Run keeps the
-backend's previous revision, a Milestone 1 rollback is a **traffic/revision change, not a
-redeploy from git**:
+Because the Python worker service and Python photo Job remain intact under their original
+names, the Kotlin Jobs use new names, and Cloud Run keeps the backend's previous revision, a
+Milestone 1 rollback does not require a source rebuild:
 
 1. Roll the backend Cloud Run service back to its pre-consolidation revision (the one that
-   still speaks the worker-HTTP + callback protocol).
-2. Confirm the retained Python worker service accepts traffic again; it now handles quiz
-   generation and the local photo path as before.
-3. Re-point any cron that targeted the Kotlin Jobs back to the pre-consolidation targets.
+   still speaks the worker-HTTP + callback protocol and points at the original Python photo
+   Job name).
+2. Stop new executions of both Kotlin Jobs and wait for existing executions to finish or lose
+   their leases. Do not start a Python execution while a Kotlin attempt still owns a valid
+   claim token; reconcile any interrupted photo attempt through the admin path before retrying
+   it on Python.
+3. Confirm the retained Python worker service accepts traffic again and the original Python
+   photo Job definition is unchanged.
+4. Re-point the generate-quizzes and check-regen schedules to their pre-consolidation targets;
+   leave the cleanup endpoint/key unchanged.
+5. Verify one dedicated photo and quiz record through the restored Python paths.
 
-No git revert or image rebuild is required. Keep both the retained Python worker service and
-the prior backend revision until the Milestone 1 Definition of Done is signed off; only then
-delete them. Do not run the Kotlin Jobs and the Python worker against the same pending queue
-at once — roll fully forward or fully back.
+No git revert or image rebuild is required. Keep the Python worker service, Python photo Job,
+and prior backend revision until the Milestone 1 Definition of Done is signed off; only then
+delete them. The additive migration remains because it is backward compatible. Do not run the
+Kotlin quiz Job and Python worker against the same pending queue at once — roll fully forward
+or fully back.
 
 ### Milestone 2 — backend rollback (Fly → Cloud Run)
 
-1. Restore `api.shuukanhq.com` DNS to the Cloud Run endpoint.
-2. Set the Fly secret `SCHEDULER_ENABLED=false` and wait for the Machine restart; verify the
-   startup log reports the scheduler disabled.
-3. Re-enable Google Cloud Scheduler only after Fly scheduling is confirmed off.
-4. Confirm the frontend reaches the restored API.
+1. Set the Fly secrets `SCHEDULER_ENABLED=false` and `DRAINER_ENABLED=false`; wait for both
+   process restarts and verify the startup logs report scheduling and draining disabled.
+2. Wait for active Fly claims to finish or expire; do not restore a Cloud Run executor while
+   Fly still owns a valid claim.
+3. Restore `api.shuukanhq.com` DNS to the Cloud Run endpoint.
+4. Re-enable Google Cloud Scheduler only after Fly scheduling and draining are confirmed off.
+5. Confirm the frontend reaches the restored API and one dedicated async record completes.
 
-API rollback is a fast Cloudflare origin/DNS change. Scheduler rollback is slower because
-`SCHEDULER_ENABLED` restarts the Machine. Never re-enable Cloud Scheduler before the Fly
-scheduler-disable restart completes, and never let both the Cloud Run and Fly drainers process
-the production queue at once.
+API rollback is a fast Cloudflare origin/DNS change. Async-execution rollback is slower because
+changing `SCHEDULER_ENABLED` and `DRAINER_ENABLED` restarts Machines and active claims must be
+settled. Never re-enable Cloud Scheduler or Cloud Run execution before both Fly disable
+restarts complete, and never let both platforms process the production queue at once.
 
 ### Milestone 2 — frontend rollback (Pages → GCS)
 
@@ -1027,16 +1224,18 @@ the production queue at once.
 
 | Workstream | Estimated active effort |
 |---|---|
-| Phase 0 Cloud Run recovery release (quiz reaper + admin rerun) | 0.5–1 day |
-| Port the OpenRouter client, prompts, and queries to Kotlin (drop Gemini) | 1–1.5 days |
-| Photo + quiz as Kotlin Cloud Run Jobs with direct-to-Postgres writes; delete callbacks/keys | 0.5–1 day |
-| Inline word discovery; remove Python source; retain the deployed service for rollback | 0.25–0.5 day |
+| Phase 0 recovery verification + complete bounded quiz redispatch | 0.5–1 day |
+| Additive claim/result/cost idempotency migration and integration tests | 0.5–1 day |
+| Port the OpenRouter client, prompts, models, and queries to Kotlin (drop Gemini) | 1.5–2.5 days |
+| Kotlin launcher + photo/quiz Cloud Run Jobs + bounded leased batch runner | 1–2 days |
+| Fenced direct-to-Postgres terminal writes; remove result callbacks | 0.5–1 day |
+| Kotlin word discovery with parity tests; remove Python source | 0.5–1 day |
+| Preserve separate Python rollback targets and update Cloud Scheduler/deploy commands | 0.5–1 day |
 | Production soak with retained rollback target; decommission after DoD sign-off | 24–48 hours elapsed |
-| Port pytest suites to Kotlin/Testcontainers | 0.5–1 day |
-| Cloud Run deploy commands and parity verification | 0.5 day |
 
-**Milestone 1 total: roughly three to five active engineering days**, after which this is a
-durable, feature-ready state with one language and one image. It can sit here indefinitely.
+**Milestone 1 total: roughly five to eight active engineering days**, after which this is a
+durable, feature-ready state with one language and one image. The range includes the retry and
+idempotency work required for the Kotlin Job topology; the 24–48-hour soak is elapsed time.
 
 ### Milestone 2 — Fly.io + Cloudflare Pages (only if undertaken)
 
@@ -1060,6 +1259,23 @@ surface, it is smaller than the original two-app Fly plan.
 
 ## 14. Decisions required before implementation
 
+### 14.1 Milestone 1 decisions — resolved
+
+- [x] Allow a small additive, backward-compatible schema migration; no production-data move
+- [x] Use a bounded batch quiz Job with `FOR UPDATE SKIP LOCKED`, lease, and claim token
+- [x] Fence terminal writes by active claim token and deduplicate quiz results/cost by attempt
+- [x] Keep word discovery in Kotlin with its database-backed model, without activating a new
+  automatic product trigger during the migration
+- [x] Keep `INTERNAL_API_KEY` temporarily only for scheduled stale cleanup
+- [x] Deploy Kotlin Jobs under new names and retain the Python worker + photo Job for rollback
+- [x] Use one Kotlin fat JAR/image with `web`, `photo-job`, and `quiz-job` launcher roles
+
+No product or architecture decision remains before Milestone 1 implementation. The documented
+batch size, concurrency, and lease are initial defaults; later tuning and class/package names
+are implementation details validated by tests and observation.
+
+### 14.2 Milestone 2 decisions — open
+
 - [ ] Final Fly organization and app name
 - [ ] Confirm Supabase AWS region and matching Fly region (`nrt` for `ap-northeast-1`)
 - [ ] Confirm `web` starts at 1 GB; choose the `worker` starting size (512 MB vs 1 GB)
@@ -1074,7 +1290,7 @@ surface, it is smaller than the original two-app Fly plan.
 - [ ] Better Stack uptime-check account and alert recipients
 - [ ] Length of production soak before legacy decommissioning
 
-Recommended defaults:
+Recommended Milestone 2 defaults:
 
 - one Fly app, two process groups, one always-on `web` (1 GB) and one always-on `worker`
 - `DRAINER_CONCURRENCY=4`, `NOTIFY` + short poll backstop, database-lease claims via
@@ -1085,6 +1301,8 @@ Recommended defaults:
 - one in-process Ktor scheduler (enqueuer) protected by transaction-scoped advisory locks and
   durable execution claims; `SCHEDULER_ENABLED=false` until Google Cloud Scheduler is disabled
   in Phase D
+- `DRAINER_ENABLED=false` through staging, enabled only after Cloud Run/Python execution has
+  stopped owning production claims
 - Fly managed Prometheus/Grafana plus Better Stack; 48-hour soak
 
 ---
@@ -1093,21 +1311,30 @@ Recommended defaults:
 
 ### Milestone 1 — Kotlin consolidation on Cloud Run
 
-- [ ] Python worker source and Dockerfile are removed from the repo and no longer built or
-  deployed; all AI logic (the OpenRouter client, prompts, queries) lives in Kotlin with
-  Testcontainers coverage equivalent to the retired pytest suites; `gemini.py` and the
-  `AI_PROVIDER` path are gone
-- [ ] The previously deployed Python worker Cloud Run service is retained at zero traffic as a
-  rollback target and is deleted only after this Definition of Done is signed off
-- [ ] One Kotlin image runs the Cloud Run service plus the `photo-analysis` and
-  `quiz-generation` Jobs via distinct entrypoints
-- [ ] Word discovery is an inline service call
+- [ ] Python worker source and Dockerfile are removed from the repo and are no longer built or
+  newly deployed; all maintained AI logic (the OpenRouter client, prompts, queries) lives in
+  Kotlin with Testcontainers coverage equivalent to the retired pytest suites; `gemini.py` and
+  the `AI_PROVIDER` path are gone
+- [ ] The previously deployed Python worker Cloud Run service remains idle as a rollback
+  target; the original Python photo Job remains unchanged; both are deleted only after this
+  Definition of Done is signed off
+- [ ] One Kotlin image runs the Cloud Run service plus the `photo-analysis-kotlin` and
+  `quiz-generation-kotlin` Jobs via distinct entrypoints
+- [ ] The fat JAR/image launcher runs `web`, `photo-job`, and `quiz-job`; Kotlin Jobs use new
+  names rather than replacing the Python photo Job in place
+- [ ] Word discovery is a tested inline Kotlin service using the active database model; no new
+  automatic product trigger is introduced during migration
+- [ ] The additive schema provides leases/claim tokens, stable quiz-result identity, supporting
+  indexes, and attempt-level cost deduplication while remaining compatible with rollback code
+- [ ] New photo and quiz source rows create their initial pending `job_attempt` atomically
+  before Jobs-API dispatch; legacy pending rows remain claimable through reconciliation
 - [ ] Both Jobs write terminal results directly to Postgres through shared Ktorm code; writes
-  are idempotent
-- [ ] The worker→backend callback is removed; `WORKER_API_KEY` and `INTERNAL_API_KEY` are no
-  longer used; Cloud Run metadata-server identity-token auth is removed
+  require the active claim token, duplicate quiz results are ignored, and cost is recorded
+  once per attempt
+- [ ] The worker→backend result callback and backend→Python-worker identity-token flow are
+  removed; `INTERNAL_API_KEY` remains only for scheduled stale cleanup and is not sent to Jobs
 - [ ] Photo and quiz reapers mark stale rows actionable; the admin Jobs page shows stale/failed
-  photo and quiz work and can rerun it without direct database edits
+  photo and quiz work and can rerun it to `DONE` without direct database edits
 - [ ] Deploy commands build the one image and deploy the service and both Jobs; parity with
   pre-consolidation behavior is verified and the stack has soaked in production
 - [ ] README and architecture docs describe the single-Kotlin-image Cloud Run topology
@@ -1126,6 +1353,8 @@ This is the durable resting state. Feature work may proceed here indefinitely.
 - [ ] Drain concurrency, lease, and poll interval are configurable
 - [ ] Scheduler defaults disabled, enqueues via transaction-scoped advisory locks + durable
   execution claims, and creates no tasks when `SCHEDULER_ENABLED=false`
+- [ ] Drainer defaults disabled during staging and claims no work when
+  `DRAINER_ENABLED=false`; cutover and rollback prove only one platform owns valid claims
 - [ ] Both JVM processes have reviewed `MaxRAMPercentage` and direct-memory limits; pools are
   configurable; image downloads have time and size limits
 - [ ] Fly custom queue-lag/drain metrics are exposed and scraped; Makefile/deploy-state are

@@ -2,7 +2,7 @@ FROM eclipse-temurin:21-jdk AS build
 WORKDIR /app
 COPY gradle gradle
 COPY gradlew build.gradle.kts settings.gradle.kts gradle.properties ./
-RUN ./gradlew dependencies --no-daemon || true
+RUN ./gradlew dependencies --configuration runtimeClasspath --no-daemon
 COPY src src
 RUN ./gradlew buildFatJar --no-daemon
 
@@ -11,3 +11,4 @@ WORKDIR /app
 COPY --from=build /app/build/libs/kanji-masta.jar app.jar
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]
+CMD ["web"]

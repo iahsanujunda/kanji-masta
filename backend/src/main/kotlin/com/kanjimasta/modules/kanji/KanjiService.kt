@@ -1,11 +1,9 @@
 package com.kanjimasta.modules.kanji
 
-import com.kanjimasta.core.auth.getIdentityToken
 import com.kanjimasta.core.db.PhotoSessionStatus
+import com.kanjimasta.core.jobs.CloudRunJobDispatcher
 import com.kanjimasta.modules.photo.PhotoRepository
 import io.ktor.client.*
-import io.ktor.client.request.*
-import io.ktor.http.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -19,9 +17,8 @@ class KanjiService(
     private val kanjiRepository: KanjiRepository,
     private val photoRepository: PhotoRepository,
     private val httpClient: HttpClient,
-    private val aiWorkerUrl: String,
-    private val selfUrl: String = "",
-    private val internalKey: String = "",
+    private val quizGenerationJobName: String = "",
+    private val localQuizRunner: (suspend () -> Unit)? = null,
 ) {
     private val scope = CoroutineScope(Dispatchers.IO)
 
@@ -196,26 +193,23 @@ class KanjiService(
     }
 
     private fun triggerQuizGeneration() {
-        val url = "$aiWorkerUrl/generate-quizzes"
-        logger.info("Triggering quiz generation: {}", url)
         scope.launch {
-            try {
-                val idToken = getIdentityToken(httpClient, aiWorkerUrl)
-                httpClient.post(url) {
-                    contentType(ContentType.Application.Json)
-                    if (idToken != null) header("Authorization", "Bearer $idToken")
-                    header("X-Call-Id", org.slf4j.MDC.get("callId") ?: "no-call")
-                    setBody(kotlinx.serialization.json.buildJsonObject {
-                        if (selfUrl.isNotBlank()) {
-                            put("callbackUrl", "$selfUrl/api/internal/quiz-result")
-                            put("callbackStatusUrl", "$selfUrl/api/internal/job-status")
-                            put("callbackKey", internalKey)
-                        }
-                    }.toString())
-                }
-            } catch (e: Exception) {
-                logger.warn("Quiz generation trigger failed (will retry via schedule): {}", e.message)
+            val dispatched = dispatchPendingQuizGeneration()
+            if (!dispatched) {
+                logger.warn("Quiz generation dispatch failed; pending rows remain recoverable")
             }
+        }
+    }
+
+    suspend fun dispatchPendingQuizGeneration(): Boolean = if (quizGenerationJobName.isNotBlank()) {
+        CloudRunJobDispatcher(httpClient, quizGenerationJobName).dispatch(emptyMap())
+    } else {
+        val runner = localQuizRunner
+        if (runner == null) {
+            logger.info("Quiz work queued; run the quiz-job role to process it")
+            true
+        } else {
+            runCatching { runner() }.isSuccess
         }
     }
 }

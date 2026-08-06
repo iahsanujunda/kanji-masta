@@ -1,7 +1,6 @@
 [versions]
 kotlin = "2.3.0"
 ktor = "3.1.1"
-koog = "0.7.1"
 logback = "1.5.16"
 ktorm = "4.1.1"
 postgresql = "42.7.4"
@@ -9,7 +8,6 @@ hikari = "6.2.1"
 testcontainers = "1.21.4"
 
 [libraries]
-koog-agents = { module = "ai.koog:koog-agents", version.ref = "koog" }
 ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
 ktor-server-netty = { module = "io.ktor:ktor-server-netty", version.ref = "ktor" }
 ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation", version.ref = "ktor" }

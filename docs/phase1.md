@@ -1,6 +1,19 @@
 # Kanji Learning App — Iteration Plan
 
-_Photo-Driven Kanji Acquisition · Stack: React · Ktor · Firebase (Auth + Data Connect + Functions + Storage) · Gemini API_
+_Photo-Driven Kanji Acquisition · Original design stack: React · Ktor · Firebase (Auth + Data Connect + Functions + Storage) · Gemini API_
+
+---
+
+## Document Status & Reading Guide
+
+> This document began as a forward-looking **iteration plan**. Much of it has since shipped — but on a **different stack** than originally designed. The project migrated off Firebase to **Supabase (Postgres + Auth + Storage)** and one modular **Ktor/Kotlin** codebase. The API and durable AI Jobs use the same fat JAR, OpenRouter is the sole runtime AI provider, and all production persistence uses Ktorm. See `docs/architecture.md` and `docs/infra-migration.md`.
+>
+> To keep both the original intent and the current reality, each iteration below carries a status banner:
+>
+> - ✅ **Delivered** — shipped and in production. Read the **As-built** note for how it was actually implemented and where the real source lives. The design prose beneath it is retained as historical context and may reference Firebase / Data Connect / GraphQL constructs that no longer exist.
+> - 📋 **Planned** — design only, not yet implemented. Treat as a design document.
+>
+> As-built notes point to source files rather than duplicating code, since the code is the source of truth and will keep evolving.
 
 ---
 
@@ -89,6 +102,10 @@ All other types: always multiple choice, 3 distractors (4 options total).
 ---
 
 # Iteration 1 — Data Connect Schema + kanjidic2 Seed
+
+> ✅ **Delivered** — shipped as-built on Supabase Postgres, not Firebase Data Connect.
+>
+> **As-built:** The schema is defined as SQL DDL migrations under `supabase/migrations/` (single source of truth), starting with `20260325002957_initial_schema.sql` and evolved through ~20 later migrations (RLS, invite codes, onboarding, cost tracking, photo-session resilience, admin control plane, learning sessions, worker claim fencing, etc.). The GraphQL schema below is historical — the equivalent tables now live as Ktorm `Table<Nothing>` objects in `backend/.../core/db/Tables.kt` with custom PG types in `core/db/PgTypes.kt`. Seed data (kanji/words/quizzes) is `supabase/seed.sql`.
 
 Establishes the data foundation. No UI, no API — just schema and seed data.
 
@@ -288,6 +305,10 @@ python scripts/seed.py --file scripts/data/kanjidic2.xml --freq-limit 1500 --cle
 ---
 
 # Iteration 2 — Photo Analysis: Firebase Function + React UI
+
+> ✅ **Delivered** — shipped as-built, and since evolved into an asynchronous, resilient capture pipeline.
+>
+> **As-built:** Photo analysis runs as the `photo-job` role of the backend Kotlin artifact. `PhotoService` atomically creates `photo_session` + `job_attempt`, then dispatches the `photo-analysis-kotlin` Cloud Run Job. `PhotoAnalysisExecutor` claims with a lease/token, calls OpenRouter through `core/ai/OpenRouterClient.kt`, enriches through Ktorm, and writes the terminal result directly—there is no callback for Kotlin work. Uploads use the private Supabase Storage `photos` bucket. The React flow spans `Capture.tsx`, `CaptureQueue.tsx`, `LocalCaptureDetail.tsx`, and `ScanDetail.tsx`, with resilience/retry handling.
 
 Full capture-to-selection flow. Frontend uploads image to Cloud Storage, sends URL to Ktor. Ktor creates a PhotoSession, fires a Firebase Function async, and returns a session ID. Frontend polls for results. The Function calls Gemini 3.1 Pro for vision analysis.
 
@@ -497,6 +518,10 @@ Each card displays the enriched data:
 
 # Iteration 3 — Background Quiz Generation (Firebase Function)
 
+> ✅ **Delivered** — shipped as-built, with a more robust job model than originally designed.
+>
+> **As-built:** Quiz generation is queued via `quiz_generation_job` with per-attempt tracking in `job_attempt`. The `quiz-job drain` role runs `QuizGenerationWorker`, claims rows with `FOR UPDATE SKIP LOCKED` plus a lease/fence, and calls OpenRouter through `core/ai/OpenRouterClient.kt`. Prompts live in `core/ai/AiPrompts.kt`; active models resolve through `AiModelConfigRepository`. `quiz-job check-regen` performs the distractor-regeneration eligibility pass. Results and per-attempt costs are written directly through Ktorm.
+
 Async, decoupled from photo flow. User never waits for this. Triggered by new `QuizGenerationJob` rows.
 
 ### 3.1 Trigger
@@ -638,6 +663,12 @@ Rules:
 ---
 
 # Iteration 3.5 — Schema Migration + Word-Centric Model
+
+> ✅ **Delivered (except §3.5.3)** — the word-centric model shipped as-built.
+>
+> **As-built:** The word-centric refactor landed — `WordMaster` is the shared word table and `UserWords` holds per-user familiarity/progress referencing it; `QuizBank` carries a word reference (global rows have `user_id IS NULL`, personal overrides set `user_id`); `QuizGenerationJob` references the word; familiarity attribution on answer and the resurfacing/type-gating logic are implemented in `backend/.../modules/quiz/` and `modules/kanji/`. This covers §3.5.1, §3.5.2, §3.5.4, §3.5.5, and §3.5.6.
+>
+> **Capability delivered, trigger intentionally not delivered — §3.5.3 (Word Discovery):** `WordDiscoveryService` and `WordDiscoveryRepository` now live in the Kotlin `kanji` module, use the active database model, and write words plus quiz jobs through Ktorm. They are composed in `AiRuntime`. No manual-add or public-HTTP trigger invokes discovery; that product behavior remains an unimplemented design.
 
 Migrates quiz tracking from kanji-level to word-level. No new UI. After this iteration, quizzes are generated and tracked per word, and kanji familiarity is computed from word familiarities.
 
@@ -1108,6 +1139,10 @@ mutation SaveKanjiSession(
 
 # Iteration 4 — React: Slot-Based Quiz UI
 
+> ✅ **Delivered** — shipped as-built, with a session-based API that diverges from the `slot`/`result` endpoints below.
+>
+> **As-built:** The quiz loop is a stateful **session** flow, not the single `GET /api/quiz/slot` + `POST /api/quiz/result` pair. Backend routes (`backend/.../modules/quiz/QuizRoutes.kt`) are `GET /api/quiz/availability`, `POST /api/quiz/session/start`, `GET /api/quiz/session/{slotId}`, `POST /api/quiz/session/{slotId}/introduction`, `POST /api/quiz/session/{slotId}/answer`, and `POST /api/quiz/session/{slotId}/exit`, backed by `QuizService`/`QuizRepository`. The React UI is `frontend/src/pages/Quiz.tsx` (see `Quiz.test.tsx`). Quiz-selection priority and per-type cards are implemented as described, but map onto the session endpoints above.
+
 The daily habit side of the loop. Rolling session windows, no score pressure, no rollover backlog. Builds on word-centric quiz model from iteration 3.5.
 
 ### 4.1 Slot System (Ktor: GET /api/quiz/slot)
@@ -1268,6 +1303,10 @@ fun nextReview(familiarity: Int, correct: Boolean): Instant {
 ---
 
 # Iteration 5 — Tuning + Personal Kanji List + Settings
+
+> ✅ **Delivered** — shipped as-built.
+>
+> **As-built:** Personal kanji list (`frontend/src/pages/KanjiList.tsx`), word list / word detail (`WordDetail.tsx`, `Dictionary.tsx`, `Collection.tsx`), manual kanji add (`AddKanji.tsx`), and the settings screen (`Settings.tsx`, backed by `backend/.../modules/settings/`). SM-2 style interval review is implemented in the quiz/kanji services (`modules/quiz/QuizRepository.kt`, `QuizService.kt`, `modules/kanji/`) using the `next_review`/interval fields from the schema. Beyond this iteration, the shipped app also added net-new surfaces not in this plan — admin control plane (`modules/admin/`, `pages/Admin.tsx`), invites & onboarding (`modules/invite/`, `Onboarding.tsx`), AI model-config management, and per-user cost tracking.
 
 Adds visibility and manual control. By now there's real usage data to inform SM-2 tuning.
 

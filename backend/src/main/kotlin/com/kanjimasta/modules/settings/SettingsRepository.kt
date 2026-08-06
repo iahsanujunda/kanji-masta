@@ -1,8 +1,11 @@
 package com.kanjimasta.modules.settings
 
+import com.kanjimasta.core.db.InviteStatus
+import com.kanjimasta.core.db.UserInviteTable
 import com.kanjimasta.core.db.UserSettingsTable
 import org.ktorm.database.Database
 import org.ktorm.dsl.*
+import org.ktorm.support.postgresql.insertOrUpdate
 import org.slf4j.LoggerFactory
 import java.time.LocalDate
 
@@ -30,14 +33,20 @@ class SettingsRepository(private val db: Database) {
     fun ensureUserInitialized(email: String?, userId: String) {
         if (hasSettings(userId)) return
         if (email.isNullOrBlank()) return
-        db.useConnection { conn ->
-            conn.prepareStatement("SELECT accept_invite_for_user(?, ?)").use { stmt ->
-                stmt.setString(1, email)
-                stmt.setString(2, userId)
-                stmt.execute()
+        db.useTransaction {
+            db.update(UserInviteTable) {
+                set(it.status, InviteStatus.ACCEPTED)
+                set(it.acceptedAt, java.time.Instant.now())
+                where { (it.email eq email) and (it.status eq InviteStatus.PENDING) }
+            }
+            db.insertOrUpdate(UserSettingsTable) {
+                set(it.userId, userId)
+                onConflict(it.userId) {
+                    set(it.userId, userId)
+                }
             }
         }
-        logger.info("Initialized user via RPC: userId={} email={}", userId, email)
+        logger.info("Initialized invited user: userId={} email={}", userId, email)
     }
 
     fun hasSettings(userId: String): Boolean {

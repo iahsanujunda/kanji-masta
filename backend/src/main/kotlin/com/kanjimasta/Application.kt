@@ -24,9 +24,6 @@ import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
 import io.ktor.server.application.*
-import io.ktor.server.netty.*
-
-fun main(args: Array<String>) = EngineMain.main(args)
 
 fun Application.module() {
     configureSerialization()
@@ -37,8 +34,6 @@ fun Application.module() {
     // Database (Ktorm + Supabase PostgreSQL)
     val database = connectDatabase(environment)
 
-    // AI Worker (Cloud Run service replacing Firebase Functions)
-    val aiWorkerUrl = environment.config.property("aiWorker.baseUrl").getString()
     val photoAnalysisJobName = environment.config.propertyOrNull("photoAnalysis.jobName")?.getString() ?: ""
 
     val httpClient = HttpClient(CIO) {
@@ -47,9 +42,24 @@ fun Application.module() {
             connectTimeoutMillis = 10_000
         }
     }
+    val aiRuntime = AiRuntime(
+        database = database,
+        httpClient = httpClient,
+        settings = AiRuntimeSettings(
+            openRouterApiKey = environment.config.propertyOrNull("openrouter.apiKey")?.getString() ?: "",
+            openRouterBaseUrl = environment.config.propertyOrNull("openrouter.baseUrl")?.getString()
+                ?: "https://openrouter.ai",
+            openRouterSiteUrl = environment.config.propertyOrNull("openrouter.siteUrl")?.getString() ?: "",
+            openRouterAppName = environment.config.propertyOrNull("openrouter.appName")?.getString() ?: "Kanji Masta",
+            reasoningEffort = environment.config.propertyOrNull("openrouter.reasoningEffort")?.getString() ?: "medium",
+            jobLeaseSeconds = environment.config.propertyOrNull("jobs.leaseSeconds")?.getString()?.toLongOrNull() ?: 300,
+            quizBatchSize = environment.config.propertyOrNull("jobs.quizBatchSize")?.getString()?.toIntOrNull() ?: 10,
+            maxImageBytes = environment.config.propertyOrNull("jobs.maxImageBytes")?.getString()?.toLongOrNull()
+                ?: 10 * 1024 * 1024,
+        ),
+    )
 
     val internalKey = environment.config.propertyOrNull("internal.key")?.getString() ?: ""
-    val selfUrl = environment.config.propertyOrNull("self.url")?.getString() ?: ""
     val supabaseUrl = environment.config.propertyOrNull("supabase.url")?.getString() ?: ""
     val supabaseServiceRoleKey = environment.config.propertyOrNull("supabase.serviceRoleKey")?.getString() ?: ""
     val storageSigner = SupabaseStorageSigner(httpClient, supabaseUrl, supabaseServiceRoleKey)
@@ -58,15 +68,20 @@ fun Application.module() {
     val photoService = PhotoService(
         photoRepository,
         httpClient,
-        aiWorkerUrl,
-        selfUrl,
-        internalKey,
         photoAnalysisJobName,
         storageSigner,
+        localPhotoRunner = { aiRuntime.photoExecutor.run(it) },
     )
 
     val kanjiRepository = KanjiRepository(database)
-    val kanjiService = KanjiService(kanjiRepository, photoRepository, httpClient, aiWorkerUrl, selfUrl, internalKey)
+    val quizGenerationJobName = environment.config.propertyOrNull("quizGeneration.jobName")?.getString() ?: ""
+    val kanjiService = KanjiService(
+        kanjiRepository,
+        photoRepository,
+        httpClient,
+        quizGenerationJobName,
+        localQuizRunner = { aiRuntime.quizWorker.drain() },
+    )
 
     val quizRepository = QuizRepository(database)
     val quizService = QuizService(quizRepository)
@@ -91,7 +106,7 @@ fun Application.module() {
         jobDispatcher = { type, id, userId ->
             when (type) {
                 "photo_analysis" -> photoService.rerunAnalysis(id, userId)
-                "quiz_generation" -> true // Existing quiz drainer claims the new pending attempt.
+                "quiz_generation" -> kanjiService.dispatchPendingQuizGeneration()
                 else -> false
             }
         },
@@ -99,5 +114,9 @@ fun Application.module() {
     )
     val internalService = InternalService(database)
 
-    configureRouting(photoService, kanjiService, quizService, userService, settingsRepository, inviteService, adminService, internalService, adminUserId, internalKey, selfUrl)
+    monitor.subscribe(ApplicationStopped) {
+        httpClient.close()
+    }
+
+    configureRouting(photoService, kanjiService, quizService, userService, settingsRepository, inviteService, adminService, internalService, adminUserId, internalKey)
 }

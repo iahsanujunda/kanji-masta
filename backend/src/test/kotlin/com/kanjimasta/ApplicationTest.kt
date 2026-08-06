@@ -74,8 +74,8 @@ fun Application.testModule(
             }
         }
     }
-    val photoService = PhotoService(PhotoRepository(db), httpClient, "http://localhost:5001")
-    val kanjiService = KanjiService(KanjiRepository(db), PhotoRepository(db), httpClient, "http://localhost:5001")
+    val photoService = PhotoService(PhotoRepository(db), httpClient)
+    val kanjiService = KanjiService(KanjiRepository(db), PhotoRepository(db), httpClient)
     val quizRepository = com.kanjimasta.modules.quiz.QuizRepository(db)
     val quizService = com.kanjimasta.modules.quiz.QuizService(quizRepository)
     val settingsRepository = com.kanjimasta.modules.settings.SettingsRepository(db)
@@ -94,7 +94,7 @@ fun Application.testModule(
     // Seed settings for test user so tests that depend on settings work
     settingsRepository.upsertSettings(TEST_USER_ID, 5, 6, null)
 
-    configureRouting(photoService, kanjiService, quizService, userService, settingsRepository, inviteService, adminService, internalService, TEST_USER_ID, "test-internal-key", "http://localhost:8080")
+    configureRouting(photoService, kanjiService, quizService, userService, settingsRepository, inviteService, adminService, internalService, TEST_USER_ID, "test-internal-key")
 }
 
 fun ApplicationTestBuilder.jsonClient() = createClient {

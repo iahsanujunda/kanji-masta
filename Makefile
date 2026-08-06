@@ -5,7 +5,11 @@ OPENROUTER_SITE_URL ?= https://shuukanhq.com
 OPENROUTER_APP_NAME ?= Kanji Masta
 OPENROUTER_REASONING_EFFORT ?= medium
 
-.PHONY: dev up down backend frontend seed clean build check deploy-db
+.PHONY: dev up down backend frontend seed clean build check \
+	deploy deploy-db deploy-backend deploy-photo-job deploy-quiz-job deploy-kotlin-jobs \
+	deploy-frontend deploy-all deploy-status publish-kotlin-image stage-kotlin-runtime \
+	smoke smoke-production promote promote-kotlin-backend scheduler \
+	pause-kotlin-schedulers deploy-scheduler-targets resume-kotlin-schedulers
 
 # --- Local Development ---
 
@@ -113,9 +117,9 @@ BACKEND_IMAGE_REPOSITORY = $(ARTIFACT_REGISTRY)/kanji-masta-backend/backend
 BACKEND_IMAGE = $(BACKEND_IMAGE_REPOSITORY):$(COMMIT)
 KOTLIN_CANDIDATE_TAG ?= kotlin-candidate
 SCHEDULER_LOCATION ?= asia-east1
-GENERATE_QUIZZES_SCHEDULER ?=
-CHECK_REGEN_SCHEDULER ?=
-SCHEDULER_SERVICE_ACCOUNT ?=
+GENERATE_QUIZZES_SCHEDULER ?= kanji-masta-generate-quizzes
+CHECK_REGEN_SCHEDULER ?= kanji-masta-check-regen
+SCHEDULER_SERVICE_ACCOUNT ?= 414186780678-compute@developer.gserviceaccount.com
 
 _mark-deploy = python3 -c "import json; f=open('$(DEPLOY_STATE)'); d=json.load(f); f.close(); d['$(1)']={'commit':'$(COMMIT)','deployedAt':'$(TIMESTAMP)'}; f=open('$(DEPLOY_STATE)','w'); json.dump(d,f,indent=2); f.close(); print('  Marked $(1) deployed at $(COMMIT)')"
 
@@ -134,7 +138,7 @@ publish-kotlin-image: ## Test, build, and push the shared Kotlin image under an 
 	docker build -t $(BACKEND_IMAGE) ./backend
 	docker push $(BACKEND_IMAGE)
 
-deploy-kotlin-jobs: publish-kotlin-image ## Deploy the new Kotlin Cloud Run Jobs without changing schedulers
+deploy-photo-job: publish-kotlin-image ## Deploy only the Kotlin photo-analysis Cloud Run Job
 	$(eval BACKEND_SERVICE_ACCOUNT := $(shell gcloud run services describe kanji-masta-backend --region $(CLOUD_RUN_REGION) --format='value(spec.template.spec.serviceAccountName)'))
 	test -n "$(BACKEND_SERVICE_ACCOUNT)"
 	@image_digest=$$(gcloud artifacts docker images describe $(BACKEND_IMAGE) --format='value(image_summary.digest)'); \
@@ -147,7 +151,16 @@ deploy-kotlin-jobs: publish-kotlin-image ## Deploy the new Kotlin Cloud Run Jobs
 		--task-timeout=24h \
 		--max-retries=1 \
 		--memory=1Gi \
-		--set-env-vars "DATABASE_URL=$(PROD_SUPABASE_DB_URI),OPENROUTER_API_KEY=$(OPENROUTER_API_KEY),OPENROUTER_REASONING_EFFORT=$(OPENROUTER_REASONING_EFFORT),OPENROUTER_SITE_URL=$(OPENROUTER_SITE_URL),OPENROUTER_APP_NAME=$(OPENROUTER_APP_NAME),HIKARI_MAX_POOL_SIZE=5,JOB_LEASE_SECONDS=300,PHOTO_MAX_IMAGE_BYTES=10485760,JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=55 -XX:MaxDirectMemorySize=128m -XX:+ExitOnOutOfMemoryError"; \
+		--set-env-vars "DATABASE_URL=$(PROD_SUPABASE_DB_URI),OPENROUTER_API_KEY=$(OPENROUTER_API_KEY),OPENROUTER_REASONING_EFFORT=$(OPENROUTER_REASONING_EFFORT),OPENROUTER_SITE_URL=$(OPENROUTER_SITE_URL),OPENROUTER_APP_NAME=$(OPENROUTER_APP_NAME),HIKARI_MAX_POOL_SIZE=5,JOB_LEASE_SECONDS=300,PHOTO_MAX_IMAGE_BYTES=10485760,JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=55 -XX:MaxDirectMemorySize=128m -XX:+ExitOnOutOfMemoryError"
+	gcloud run jobs add-iam-policy-binding $(PHOTO_ANALYSIS_JOB) --region $(CLOUD_RUN_REGION) --member serviceAccount:$(BACKEND_SERVICE_ACCOUNT) --role roles/run.developer
+	@$(call _mark-deploy,photo-job)
+
+deploy-quiz-job: publish-kotlin-image ## Deploy only the Kotlin quiz-generation Cloud Run Job
+	$(eval BACKEND_SERVICE_ACCOUNT := $(shell gcloud run services describe kanji-masta-backend --region $(CLOUD_RUN_REGION) --format='value(spec.template.spec.serviceAccountName)'))
+	test -n "$(BACKEND_SERVICE_ACCOUNT)"
+	@image_digest=$$(gcloud artifacts docker images describe $(BACKEND_IMAGE) --format='value(image_summary.digest)'); \
+		test -n "$$image_digest"; \
+		image_ref="$(BACKEND_IMAGE_REPOSITORY)@$$image_digest"; \
 		gcloud run jobs deploy $(QUIZ_GENERATION_JOB) \
 		--image "$$image_ref" \
 		--region $(CLOUD_RUN_REGION) \
@@ -156,8 +169,10 @@ deploy-kotlin-jobs: publish-kotlin-image ## Deploy the new Kotlin Cloud Run Jobs
 		--max-retries=1 \
 		--memory=512Mi \
 		--set-env-vars "DATABASE_URL=$(PROD_SUPABASE_DB_URI),OPENROUTER_API_KEY=$(OPENROUTER_API_KEY),OPENROUTER_REASONING_EFFORT=$(OPENROUTER_REASONING_EFFORT),OPENROUTER_SITE_URL=$(OPENROUTER_SITE_URL),OPENROUTER_APP_NAME=$(OPENROUTER_APP_NAME),HIKARI_MAX_POOL_SIZE=5,JOB_LEASE_SECONDS=300,QUIZ_JOB_BATCH_SIZE=10,JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=55 -XX:MaxDirectMemorySize=64m -XX:+ExitOnOutOfMemoryError"
-	gcloud run jobs add-iam-policy-binding $(PHOTO_ANALYSIS_JOB) --region $(CLOUD_RUN_REGION) --member serviceAccount:$(BACKEND_SERVICE_ACCOUNT) --role roles/run.developer
 	gcloud run jobs add-iam-policy-binding $(QUIZ_GENERATION_JOB) --region $(CLOUD_RUN_REGION) --member serviceAccount:$(BACKEND_SERVICE_ACCOUNT) --role roles/run.developer
+	@$(call _mark-deploy,quiz-job)
+
+deploy-kotlin-jobs: deploy-photo-job deploy-quiz-job ## Deploy both Kotlin Cloud Run Jobs without changing schedulers
 	@$(call _mark-deploy,kotlin-jobs)
 
 deploy-backend: publish-kotlin-image ## Deploy a tagged Kotlin backend revision with no production traffic
@@ -181,12 +196,12 @@ promote-kotlin-backend: ## Route production traffic to the verified tagged Kotli
 		--to-tags=$(KOTLIN_CANDIDATE_TAG)=100
 	@$(call _mark-deploy,backend)
 
-deploy-scheduler-targets: ## Pause and retarget quiz schedulers to the Kotlin Job; leaves them paused
-	test -n "$(GENERATE_QUIZZES_SCHEDULER)"
-	test -n "$(CHECK_REGEN_SCHEDULER)"
-	test -n "$(SCHEDULER_SERVICE_ACCOUNT)"
+pause-kotlin-schedulers: ## Pause both Kotlin quiz scheduler triggers
 	gcloud scheduler jobs pause $(GENERATE_QUIZZES_SCHEDULER) --location $(SCHEDULER_LOCATION)
 	gcloud scheduler jobs pause $(CHECK_REGEN_SCHEDULER) --location $(SCHEDULER_LOCATION)
+
+deploy-scheduler-targets: ## Pause and retarget quiz schedulers to the Kotlin Job; leaves them paused
+	$(MAKE) pause-kotlin-schedulers
 	gcloud scheduler jobs update http $(GENERATE_QUIZZES_SCHEDULER) \
 		--location $(SCHEDULER_LOCATION) \
 		--uri "https://run.googleapis.com/v2/$(QUIZ_GENERATION_JOB_RESOURCE):run" \
@@ -203,14 +218,52 @@ deploy-scheduler-targets: ## Pause and retarget quiz schedulers to the Kotlin Jo
 		--message-body '{"overrides":{"containerOverrides":[{"args":["quiz-job","check-regen"]}]}}'
 
 resume-kotlin-schedulers: ## Resume both verified Kotlin quiz scheduler targets
-	test -n "$(GENERATE_QUIZZES_SCHEDULER)"
-	test -n "$(CHECK_REGEN_SCHEDULER)"
 	gcloud scheduler jobs resume $(GENERATE_QUIZZES_SCHEDULER) --location $(SCHEDULER_LOCATION)
 	gcloud scheduler jobs resume $(CHECK_REGEN_SCHEDULER) --location $(SCHEDULER_LOCATION)
 
-smoke-production: ## Check the tagged backend health endpoint (set BACKEND_CANDIDATE_URL)
-	test -n "$(BACKEND_CANDIDATE_URL)"
-	curl --fail --silent --show-error "$(BACKEND_CANDIDATE_URL)/health"
+smoke-production: ## Check the tagged backend health endpoint; candidate URL is discovered automatically
+	@candidate_url="$(BACKEND_CANDIDATE_URL)"; \
+		if [ -z "$$candidate_url" ]; then \
+			candidate_url=$$(gcloud run services describe kanji-masta-backend --region $(CLOUD_RUN_REGION) --format='value(status.traffic.url)'); \
+		fi; \
+		test -n "$$candidate_url"; \
+		echo "Checking $$candidate_url/health"; \
+		curl --fail --silent --show-error "$$candidate_url/health"; \
+		echo
+
+# Unified action + component interface. The explicit targets above remain available for
+# scripts and rollback procedures.
+deploy: ## Deploy one component (COMPONENT=db|backend|photo-job|quiz-job|workers|frontend|all)
+	@case "$(COMPONENT)" in \
+		db) $(MAKE) deploy-db ;; \
+		backend) $(MAKE) deploy-backend ;; \
+		photo-job) $(MAKE) deploy-photo-job ;; \
+		quiz-job) $(MAKE) deploy-quiz-job ;; \
+		workers) $(MAKE) deploy-kotlin-jobs ;; \
+		frontend) $(MAKE) deploy-frontend ;; \
+		all) $(MAKE) deploy-all ;; \
+		*) echo "COMPONENT must be one of: db, backend, photo-job, quiz-job, workers, frontend, all"; exit 2 ;; \
+	esac
+
+smoke: ## Smoke-test one component (currently COMPONENT=backend)
+	@case "$(COMPONENT)" in \
+		backend) $(MAKE) smoke-production ;; \
+		*) echo "COMPONENT must be: backend"; exit 2 ;; \
+	esac
+
+promote: ## Promote one staged component (currently COMPONENT=backend)
+	@case "$(COMPONENT)" in \
+		backend) $(MAKE) promote-kotlin-backend ;; \
+		*) echo "COMPONENT must be: backend"; exit 2 ;; \
+	esac
+
+scheduler: ## Operate quiz schedules (ACTION=pause|retarget|resume)
+	@case "$(ACTION)" in \
+		pause) $(MAKE) pause-kotlin-schedulers ;; \
+		retarget) $(MAKE) deploy-scheduler-targets ;; \
+		resume) $(MAKE) resume-kotlin-schedulers ;; \
+		*) echo "ACTION must be one of: pause, retarget, resume"; exit 2 ;; \
+	esac
 
 stage-kotlin-runtime: deploy-kotlin-jobs deploy-backend ## Build once and stage Jobs plus a no-traffic API revision
 

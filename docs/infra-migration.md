@@ -689,13 +689,32 @@ the reaper is the guarantee.
 Milestone 1 Cloud Run targets:
 
 ```text
-make deploy-db
-make deploy-kotlin-jobs       # deploy new names; never overwrites Python photo Job
-make deploy-backend           # one Kotlin image/revision, initially tagged with no traffic
-make deploy-scheduler-targets # only after API cutover and legacy drain
-make smoke-production
+make deploy COMPONENT=db
+make deploy COMPONENT=photo-job
+make deploy COMPONENT=quiz-job
+make deploy COMPONENT=workers   # both Jobs; never overwrites the Python photo Job
+make deploy COMPONENT=backend   # one image/revision, tagged with no traffic
+make deploy COMPONENT=frontend
+make deploy COMPONENT=all
+
+make smoke COMPONENT=backend
+make promote COMPONENT=backend
+make scheduler ACTION=pause
+make scheduler ACTION=retarget  # only after API cutover and legacy drain
+make scheduler ACTION=resume    # only after the updated targets are exercised
 ```
 
+- `make deploy COMPONENT=...` is the single deployment entrypoint. Each logical runtime can
+  be deployed independently even though the backend and Jobs share one Kotlin image. `workers`
+  deploys both Jobs; `all` applies the database migration and stages workers, backend, and
+  frontend without promoting backend traffic or resuming schedules.
+- Project, region, scheduler names, scheduler service account, Job names, and candidate tag
+  are stable Makefile configuration; operators do not supply them on each invocation.
+- `smoke` discovers the tagged backend URL automatically. Deployment and production traffic
+  promotion remain separate operations during the rollback window.
+- The original explicit targets (`deploy-db`, `deploy-photo-job`, `deploy-quiz-job`,
+  `deploy-kotlin-jobs`, `deploy-backend`, `smoke-production`, `promote-kotlin-backend`, and the
+  scheduler targets) remain compatibility aliases for scripts and rollback procedures.
 - Build and push the Kotlin image once by immutable digest; deploy the API and both Kotlin Jobs
   from that digest.
 - Record the retained Python service revision, Python image digest, original photo Job export,
@@ -709,17 +728,17 @@ make smoke-production
 Milestone 2 provider-neutral targets:
 
 ```text
-make deploy-db
-make deploy-app         # fly deploy (builds one image, deploys web + worker)
-make deploy-frontend    # Cloudflare Pages (Wrangler or Git integration)
-make deploy-all
+make deploy COMPONENT=db
+make deploy COMPONENT=app       # fly deploy (one image; web + worker)
+make deploy COMPONENT=frontend  # Cloudflare Pages (Wrangler or Git integration)
+make deploy COMPONENT=all
 make deploy-status
-make smoke-production
+make smoke COMPONENT=app
 ```
 
-- `deploy-app` runs backend tests/build and then `fly deploy`; there is no separate worker
+- The Milestone 2 `app` component runs backend tests/build and then `fly deploy`; there is no separate worker
   deploy — the one image runs both process groups.
-- `deploy-all` order: database, app, frontend.
+- `all` order: database, app, frontend.
 - `scripts/check_deploy.py` maps paths to the new components; deploy-state recording stays
   provider-neutral.
 - Old `gcloud`/GCS targets remain as `deploy-legacy-*` during the rollback window, removed

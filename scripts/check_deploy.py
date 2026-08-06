@@ -8,9 +8,11 @@ from pathlib import Path
 STATE_FILE = Path(__file__).parent.parent / "deploy-state.json"
 
 MAPPING = {
-    "frontend":  (("frontend/",), "make deploy-frontend"),
-    "database":  (("supabase/migrations/",), "make deploy-db"),
-    "backend":   (("backend/", "Makefile", "docker-compose.yml"), "make stage-kotlin-runtime"),
+    "frontend":  (("frontend/",), "make deploy COMPONENT=frontend", ()),
+    "database":  (("supabase/migrations/",), "make deploy COMPONENT=db", ()),
+    "backend":   (("backend/", "Makefile", "docker-compose.yml"), "make deploy COMPONENT=backend", ()),
+    "photo-job": (("backend/", "Makefile", "docker-compose.yml"), "make deploy COMPONENT=photo-job", ("kotlin-jobs",)),
+    "quiz-job":  (("backend/", "Makefile", "docker-compose.yml"), "make deploy COMPONENT=quiz-job", ("kotlin-jobs",)),
 }
 
 def main():
@@ -20,8 +22,11 @@ def main():
     print(f"\n  HEAD: {head}\n")
 
     any_needed = False
-    for name, (paths, cmd) in MAPPING.items():
-        last = state.get(name, {}).get("commit", "")
+    for name, (paths, cmd, fallback_names) in MAPPING.items():
+        record = state.get(name, {})
+        if not record:
+            record = next((state.get(fallback, {}) for fallback in fallback_names if state.get(fallback)), {})
+        last = record.get("commit", "")
 
         if not last:
             print(f"  \033[33m{name:<14}\033[0m never deployed → {cmd}")

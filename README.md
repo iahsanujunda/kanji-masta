@@ -97,21 +97,29 @@ make test-frontend-e2e
 ## Deployment
 
 ```bash
-make deploy-db               # apply the additive Supabase migration first
-make deploy-kotlin-jobs      # deploy new, unscheduled Kotlin Jobs
-make deploy-backend          # deploy a tagged backend revision with no traffic
-make smoke-production BACKEND_CANDIDATE_URL=https://...
-make promote-kotlin-backend  # explicit production traffic switch after verification
-make deploy-scheduler-targets GENERATE_QUIZZES_SCHEDULER=... CHECK_REGEN_SCHEDULER=... SCHEDULER_SERVICE_ACCOUNT=...
-make resume-kotlin-schedulers # only after both updated targets have been exercised
-make deploy-frontend
+make deploy COMPONENT=db
+make deploy COMPONENT=photo-job
+make deploy COMPONENT=quiz-job
+make deploy COMPONENT=workers   # both Kotlin Jobs
+make deploy COMPONENT=backend   # tagged revision with no production traffic
+make deploy COMPONENT=frontend
+make deploy COMPONENT=all
+
+make smoke COMPONENT=backend
+make promote COMPONENT=backend  # explicit production traffic switch after verification
+make scheduler ACTION=pause
+make scheduler ACTION=retarget
+make scheduler ACTION=resume    # only after both updated targets have been exercised
 ```
 
 `make stage-kotlin-runtime` builds the commit-tagged image once and stages both the Jobs and
 the no-traffic backend revision. The image is resolved to a digest before each Cloud Run
 deployment. `make deploy-all` also stops before API traffic promotion; scheduler changes and
 traffic promotion remain explicit cutover operations. Scheduler retargeting pauses both jobs
-and intentionally leaves them paused until `resume-kotlin-schedulers` is invoked.
+and intentionally leaves them paused until `make scheduler ACTION=resume` is invoked. Project,
+region, scheduler names, scheduler service account, Job names, and candidate tag are stable
+Makefile configuration and do not need to be supplied per invocation. The original explicit
+targets remain available for rollback scripts and operational compatibility.
 
 The shared image uses distinct runtime arguments:
 

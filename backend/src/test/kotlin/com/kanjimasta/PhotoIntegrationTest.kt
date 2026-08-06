@@ -1,7 +1,7 @@
 package com.kanjimasta
 
 import com.kanjimasta.auth.AuthUser
-import com.kanjimasta.db.PhotoSessionTable
+import com.kanjimasta.photo.PhotoSessionTable
 import com.kanjimasta.photo.PhotoSessionStatus
 import com.kanjimasta.jobs.CloudRunJobDispatcher
 import com.kanjimasta.photo.PhotoService

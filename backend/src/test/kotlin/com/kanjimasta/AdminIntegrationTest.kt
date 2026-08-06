@@ -1,9 +1,9 @@
 package com.kanjimasta
 
-import com.kanjimasta.db.KanjiMasterTable
-import com.kanjimasta.db.PhotoSessionTable
-import com.kanjimasta.db.QuizGenerationJobTable
-import com.kanjimasta.db.UserCostTable
+import com.kanjimasta.kanji.KanjiMasterTable
+import com.kanjimasta.photo.PhotoSessionTable
+import com.kanjimasta.quiz.generation.QuizGenerationJobTable
+import com.kanjimasta.ai.UserCostTable
 import com.kanjimasta.ai.CatalogModel
 import com.kanjimasta.ai.ModelCatalogGateway
 import com.kanjimasta.ai.ModelValidationResult

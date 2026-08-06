@@ -1,7 +1,11 @@
 package com.kanjimasta.kanji
 
 import com.kanjimasta.ai.AiModelConfigRepository
-import com.kanjimasta.db.*
+import com.kanjimasta.jobs.JobAttemptTable
+import com.kanjimasta.quiz.QuizBankTable
+import com.kanjimasta.quiz.QuizType
+import com.kanjimasta.quiz.generation.JobStatus
+import com.kanjimasta.quiz.generation.QuizGenerationJobTable
 import org.ktorm.database.Database
 import org.ktorm.dsl.*
 import org.slf4j.LoggerFactory

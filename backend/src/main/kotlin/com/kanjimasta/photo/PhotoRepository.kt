@@ -1,10 +1,10 @@
 package com.kanjimasta.photo
 
 import com.kanjimasta.ai.AiModelConfigRepository
-import com.kanjimasta.db.JobAttemptTable
-import com.kanjimasta.db.PhotoSessionTable
+import com.kanjimasta.jobs.JobAttemptTable
+import com.kanjimasta.photo.PhotoSessionTable
 import com.kanjimasta.photo.PhotoSessionStatus
-import com.kanjimasta.db.UserPhotoActivityStateTable
+import com.kanjimasta.photo.UserPhotoActivityStateTable
 import org.ktorm.database.Database
 import org.ktorm.dsl.*
 import org.ktorm.support.postgresql.insertOrUpdateReturning

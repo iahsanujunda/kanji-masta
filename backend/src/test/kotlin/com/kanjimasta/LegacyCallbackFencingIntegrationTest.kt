@@ -1,7 +1,7 @@
 package com.kanjimasta
 
-import com.kanjimasta.db.JobAttemptTable
-import com.kanjimasta.db.PhotoSessionTable
+import com.kanjimasta.jobs.JobAttemptTable
+import com.kanjimasta.photo.PhotoSessionTable
 import com.kanjimasta.internal.InternalService
 import com.kanjimasta.internal.KotlinClaimConflictException
 import com.kanjimasta.internal.PhotoResultRequest

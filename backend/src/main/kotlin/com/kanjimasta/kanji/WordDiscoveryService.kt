@@ -3,7 +3,9 @@ package com.kanjimasta.kanji
 import com.kanjimasta.ai.AiModelConfigRepository
 import com.kanjimasta.ai.AiPrompts
 import com.kanjimasta.ai.OpenRouterClient
-import com.kanjimasta.db.*
+import com.kanjimasta.jobs.JobAttemptTable
+import com.kanjimasta.quiz.QuizBankTable
+import com.kanjimasta.quiz.generation.QuizGenerationJobTable
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive

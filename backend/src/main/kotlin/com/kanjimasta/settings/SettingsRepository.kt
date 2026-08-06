@@ -1,8 +1,8 @@
 package com.kanjimasta.settings
 
-import com.kanjimasta.db.InviteStatus
-import com.kanjimasta.db.UserInviteTable
-import com.kanjimasta.db.UserSettingsTable
+import com.kanjimasta.invite.InviteStatus
+import com.kanjimasta.invite.UserInviteTable
+import com.kanjimasta.settings.UserSettingsTable
 import org.ktorm.database.Database
 import org.ktorm.dsl.*
 import org.ktorm.support.postgresql.insertOrUpdate

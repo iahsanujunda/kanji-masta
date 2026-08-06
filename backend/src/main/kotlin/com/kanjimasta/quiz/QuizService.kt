@@ -1,8 +1,8 @@
 package com.kanjimasta.quiz
 
-import com.kanjimasta.db.IntroductionKind
-import com.kanjimasta.db.QuizSlotStatus
-import com.kanjimasta.db.SessionCardType
+import com.kanjimasta.quiz.IntroductionKind
+import com.kanjimasta.quiz.QuizSlotStatus
+import com.kanjimasta.quiz.SessionCardType
 import org.slf4j.LoggerFactory
 import java.sql.SQLException
 import java.time.Instant

@@ -1,7 +1,7 @@
 package com.kanjimasta.invite
 
-import com.kanjimasta.db.InviteStatus
-import com.kanjimasta.db.UserInviteTable
+import com.kanjimasta.invite.InviteStatus
+import com.kanjimasta.invite.UserInviteTable
 import org.ktorm.database.Database
 import org.ktorm.dsl.*
 import java.time.Instant

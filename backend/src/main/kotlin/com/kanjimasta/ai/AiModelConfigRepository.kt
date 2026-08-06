@@ -1,6 +1,6 @@
 package com.kanjimasta.ai
 
-import com.kanjimasta.db.AiModelConfigTable
+import com.kanjimasta.ai.AiModelConfigTable
 import org.ktorm.database.Database
 import org.ktorm.dsl.*
 

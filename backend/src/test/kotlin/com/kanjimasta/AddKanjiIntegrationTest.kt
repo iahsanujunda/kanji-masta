@@ -1,6 +1,13 @@
 package com.kanjimasta
 
-import com.kanjimasta.db.*
+import com.kanjimasta.kanji.KanjiMasterTable
+import com.kanjimasta.kanji.UserKanjiTable
+import com.kanjimasta.kanji.UserWordsTable
+import com.kanjimasta.kanji.WordMasterTable
+import com.kanjimasta.quiz.QuizBankTable
+import com.kanjimasta.quiz.QuizType
+import com.kanjimasta.quiz.generation.JobStatus
+import com.kanjimasta.quiz.generation.QuizGenerationJobTable
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*

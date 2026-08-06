@@ -1,6 +1,6 @@
 package com.kanjimasta.invite
 
-import com.kanjimasta.db.InviteStatus
+import com.kanjimasta.invite.InviteStatus
 import com.kanjimasta.invite.ResendClient
 import org.slf4j.LoggerFactory
 import java.util.UUID

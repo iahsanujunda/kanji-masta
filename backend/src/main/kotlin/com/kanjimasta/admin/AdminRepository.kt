@@ -1,6 +1,15 @@
 package com.kanjimasta.admin
 
-import com.kanjimasta.db.*
+import com.kanjimasta.ai.AiModelConfigTable
+import com.kanjimasta.ai.UserCostTable
+import com.kanjimasta.jobs.JobAttemptTable
+import com.kanjimasta.kanji.KanjiMasterTable
+import com.kanjimasta.kanji.WordMasterTable
+import com.kanjimasta.photo.PhotoSessionTable
+import com.kanjimasta.quiz.QuizBankTable
+import com.kanjimasta.quiz.QuizDistractorTable
+import com.kanjimasta.quiz.generation.JobStatus
+import com.kanjimasta.quiz.generation.QuizGenerationJobTable
 import org.ktorm.database.Database
 import org.ktorm.dsl.*
 import org.ktorm.support.postgresql.insertReturning

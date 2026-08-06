@@ -2,7 +2,11 @@ package com.kanjimasta
 
 import com.kanjimasta.ai.AiModelConfigRepository
 import com.kanjimasta.ai.OpenRouterClient
-import com.kanjimasta.db.*
+import com.kanjimasta.ai.AiModelConfigTable
+import com.kanjimasta.ai.UserCostTable
+import com.kanjimasta.jobs.JobAttemptTable
+import com.kanjimasta.kanji.KanjiMasterTable
+import com.kanjimasta.photo.PhotoSessionTable
 import com.kanjimasta.photo.PhotoAnalysisExecutor
 import com.kanjimasta.photo.PhotoAnalysisRepository
 import com.kanjimasta.photo.PhotoRepository

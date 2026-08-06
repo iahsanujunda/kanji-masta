@@ -1,7 +1,17 @@
 package com.kanjimasta
 
-import com.kanjimasta.db.*
+import com.kanjimasta.ai.UserCostTable
+import com.kanjimasta.jobs.JobAttemptTable
+import com.kanjimasta.kanji.KanjiMasterTable
+import com.kanjimasta.kanji.WordMasterTable
 import com.kanjimasta.photo.PhotoFailureCode
+import com.kanjimasta.photo.PhotoSessionTable
+import com.kanjimasta.quiz.DistractorTrigger
+import com.kanjimasta.quiz.QuizBankTable
+import com.kanjimasta.quiz.QuizDistractorTable
+import com.kanjimasta.quiz.QuizType
+import com.kanjimasta.quiz.generation.JobStatus
+import com.kanjimasta.quiz.generation.QuizGenerationJobTable
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*

@@ -1,13 +1,13 @@
 package com.kanjimasta.photo
 
 import com.kanjimasta.ai.AiModelConfigRepository
-import com.kanjimasta.db.JobAttemptTable
-import com.kanjimasta.db.KanjiMasterTable
+import com.kanjimasta.jobs.JobAttemptTable
+import com.kanjimasta.kanji.KanjiMasterTable
 import com.kanjimasta.photo.PhotoFailureCode
 import com.kanjimasta.photo.PhotoSessionStatus
-import com.kanjimasta.db.PhotoSessionTable
-import com.kanjimasta.db.UserCostTable
-import com.kanjimasta.db.UserKanjiTable
+import com.kanjimasta.photo.PhotoSessionTable
+import com.kanjimasta.ai.UserCostTable
+import com.kanjimasta.kanji.UserKanjiTable
 import org.ktorm.database.Database
 import org.ktorm.dsl.*
 import org.ktorm.support.postgresql.LockingMode

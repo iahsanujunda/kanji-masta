@@ -1,9 +1,9 @@
 package com.kanjimasta.user
 
-import com.kanjimasta.db.QuizSlotTable
-import com.kanjimasta.db.UserKanjiTable
-import com.kanjimasta.db.UserKanjiStatus
-import com.kanjimasta.db.UserWordsTable
+import com.kanjimasta.quiz.QuizSlotTable
+import com.kanjimasta.kanji.UserKanjiTable
+import com.kanjimasta.kanji.UserKanjiStatus
+import com.kanjimasta.kanji.UserWordsTable
 import org.ktorm.database.Database
 import org.ktorm.dsl.*
 import java.time.Instant

@@ -3,7 +3,7 @@ package com.kanjimasta.quiz.generation
 import com.kanjimasta.ai.AiPrompts
 import com.kanjimasta.ai.AiProviderException
 import com.kanjimasta.ai.OpenRouterClient
-import com.kanjimasta.db.QuizType
+import com.kanjimasta.quiz.QuizType
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
@@ -31,7 +31,7 @@ class QuizGenerationWorker(
 
     private suspend fun process(claim: QuizGenerationClaim) {
         try {
-            if (claim.jobType == com.kanjimasta.db.JobType.REGEN) {
+            if (claim.jobType == com.kanjimasta.quiz.generation.JobType.REGEN) {
                 processRegeneration(claim)
             } else {
                 processInitial(claim)

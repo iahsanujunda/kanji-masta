@@ -2,7 +2,12 @@ package com.kanjimasta
 
 import com.kanjimasta.ai.AiModelConfigRepository
 import com.kanjimasta.ai.OpenRouterClient
-import com.kanjimasta.db.*
+import com.kanjimasta.ai.AiModelConfigTable
+import com.kanjimasta.jobs.JobAttemptTable
+import com.kanjimasta.kanji.KanjiMasterTable
+import com.kanjimasta.kanji.UserWordsTable
+import com.kanjimasta.kanji.WordMasterTable
+import com.kanjimasta.quiz.generation.QuizGenerationJobTable
 import com.kanjimasta.kanji.WordDiscoveryRepository
 import com.kanjimasta.kanji.WordDiscoveryRequest
 import com.kanjimasta.kanji.WordDiscoveryService

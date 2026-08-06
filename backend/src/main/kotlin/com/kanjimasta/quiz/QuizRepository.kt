@@ -1,6 +1,10 @@
 package com.kanjimasta.quiz
 
-import com.kanjimasta.db.*
+import com.kanjimasta.kanji.KanjiMasterTable
+import com.kanjimasta.kanji.UserKanjiTable
+import com.kanjimasta.kanji.UserWordsTable
+import com.kanjimasta.kanji.WordMasterTable
+import com.kanjimasta.settings.UserSettingsTable
 import org.ktorm.database.Database
 import org.ktorm.dsl.*
 import org.ktorm.support.postgresql.LockingMode

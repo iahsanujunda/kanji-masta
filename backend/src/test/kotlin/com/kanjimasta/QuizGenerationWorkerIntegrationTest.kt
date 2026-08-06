@@ -1,7 +1,16 @@
 package com.kanjimasta
 
 import com.kanjimasta.ai.AiModelConfigRepository
-import com.kanjimasta.db.*
+import com.kanjimasta.ai.AiModelConfigTable
+import com.kanjimasta.ai.UserCostTable
+import com.kanjimasta.jobs.JobAttemptTable
+import com.kanjimasta.kanji.KanjiMasterTable
+import com.kanjimasta.kanji.WordMasterTable
+import com.kanjimasta.quiz.QuizBankTable
+import com.kanjimasta.quiz.QuizDistractorTable
+import com.kanjimasta.quiz.QuizType
+import com.kanjimasta.quiz.generation.JobStatus
+import com.kanjimasta.quiz.generation.QuizGenerationJobTable
 import com.kanjimasta.kanji.KanjiRepository
 import com.kanjimasta.quiz.generation.GeneratedQuiz
 import com.kanjimasta.quiz.generation.QuizGenerationRepository

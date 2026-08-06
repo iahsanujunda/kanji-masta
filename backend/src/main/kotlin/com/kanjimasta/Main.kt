@@ -1,6 +1,7 @@
 package com.kanjimasta
 
 import com.kanjimasta.core.db.connectDatabase
+import com.kanjimasta.core.jobs.runLocalJobProcessServer
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
@@ -13,7 +14,8 @@ fun main(args: Array<String>) {
         "web" -> EngineMain.main(args.drop(1).toTypedArray())
         "photo-job" -> runPhotoJob()
         "quiz-job" -> runQuizJob(args.getOrNull(1) ?: "drain")
-        else -> error("Unknown runtime role '$role'; expected web, photo-job, or quiz-job")
+        "local-dispatcher" -> runLocalJobProcessServer()
+        else -> error("Unknown runtime role '$role'; expected web, photo-job, quiz-job, or local-dispatcher")
     }
 }
 

@@ -19,13 +19,17 @@ dev: ## Start everything (Supabase + app stack via Docker Compose)
 	@echo "  make frontend        (React dev server)"
 
 up: ## Start app services via Docker Compose (run supabase-start first)
-	docker compose up --build
+	docker compose up --build --remove-orphans
 
 down: ## Stop app services
-	docker compose down
+	docker compose down --remove-orphans
 
 supabase-start: ## Start local Supabase (PostgreSQL on port 54322)
 	npx supabase start
+	npx supabase migration up --local
+
+supabase-migrate: ## Apply pending migrations to the running local Supabase database
+	npx supabase migration up --local
 
 supabase-stop: ## Stop local Supabase
 	npx supabase stop
@@ -33,15 +37,8 @@ supabase-stop: ## Stop local Supabase
 supabase-reset: ## Reset Supabase DB (reapply migrations + seed)
 	npx supabase db reset
 
-backend: ## Start the Ktor API; local durable jobs execute in the same Kotlin process
-	cd backend && \
-	DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
-	SUPABASE_URL=http://127.0.0.1:54321 \
-	OPENROUTER_API_KEY=$(OPENROUTER_API_KEY) \
-	OPENROUTER_REASONING_EFFORT=$(OPENROUTER_REASONING_EFFORT) \
-	OPENROUTER_SITE_URL=$(OPENROUTER_SITE_URL) \
-	OPENROUTER_APP_NAME='$(OPENROUTER_APP_NAME)' \
-	./gradlew run --args=web
+backend: ## Start the Ktor API and mandatory local Job dispatcher as separate processes
+	docker compose up --build --remove-orphans backend job-dispatcher
 
 photo-job: ## Run one pending photo by PHOTO_SESSION_ID using the shared Kotlin artifact
 	cd backend && \

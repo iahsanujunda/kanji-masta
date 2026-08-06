@@ -22,6 +22,10 @@ photoAnalysis:
 quizGeneration:
   jobName: "$QUIZ_GENERATION_JOB:"
 
+localJobs:
+  dispatchUrl: "$LOCAL_JOB_DISPATCH_URL:"
+  dispatchKey: "$LOCAL_JOB_DISPATCH_KEY:"
+
 resend:
   apiKey: "$RESEND_API_KEY:"
 

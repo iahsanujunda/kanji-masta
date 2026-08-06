@@ -3,6 +3,9 @@ package com.kanjimasta
 import com.kanjimasta.core.auth.configureAuth
 import com.kanjimasta.core.db.connectDatabase
 import com.kanjimasta.core.email.ResendClient
+import com.kanjimasta.core.jobs.CloudRunJobDispatcher
+import com.kanjimasta.core.jobs.JobDispatcher
+import com.kanjimasta.core.jobs.LocalJobDispatcher
 import com.kanjimasta.core.storage.SupabaseStorageSigner
 import com.kanjimasta.modules.admin.AdminRepository
 import com.kanjimasta.modules.admin.AdminService
@@ -34,30 +37,30 @@ fun Application.module() {
     // Database (Ktorm + Supabase PostgreSQL)
     val database = connectDatabase(environment)
 
-    val photoAnalysisJobName = environment.config.propertyOrNull("photoAnalysis.jobName")?.getString() ?: ""
-
     val httpClient = HttpClient(CIO) {
         install(HttpTimeout) {
             requestTimeoutMillis = 120_000
             connectTimeoutMillis = 10_000
         }
     }
-    val aiRuntime = AiRuntime(
-        database = database,
-        httpClient = httpClient,
-        settings = AiRuntimeSettings(
-            openRouterApiKey = environment.config.propertyOrNull("openrouter.apiKey")?.getString() ?: "",
-            openRouterBaseUrl = environment.config.propertyOrNull("openrouter.baseUrl")?.getString()
-                ?: "https://openrouter.ai",
-            openRouterSiteUrl = environment.config.propertyOrNull("openrouter.siteUrl")?.getString() ?: "",
-            openRouterAppName = environment.config.propertyOrNull("openrouter.appName")?.getString() ?: "Kanji Masta",
-            reasoningEffort = environment.config.propertyOrNull("openrouter.reasoningEffort")?.getString() ?: "medium",
-            jobLeaseSeconds = environment.config.propertyOrNull("jobs.leaseSeconds")?.getString()?.toLongOrNull() ?: 300,
-            quizBatchSize = environment.config.propertyOrNull("jobs.quizBatchSize")?.getString()?.toIntOrNull() ?: 10,
-            maxImageBytes = environment.config.propertyOrNull("jobs.maxImageBytes")?.getString()?.toLongOrNull()
-                ?: 10 * 1024 * 1024,
-        ),
-    )
+    val photoAnalysisJobName = environment.config.propertyOrNull("photoAnalysis.jobName")?.getString().orEmpty()
+    val quizGenerationJobName = environment.config.propertyOrNull("quizGeneration.jobName")?.getString().orEmpty()
+    val localDispatchUrl = environment.config.propertyOrNull("localJobs.dispatchUrl")?.getString().orEmpty()
+    val localDispatchKey = environment.config.propertyOrNull("localJobs.dispatchKey")?.getString().orEmpty()
+    val cloudJobsConfigured = photoAnalysisJobName.isNotBlank() || quizGenerationJobName.isNotBlank()
+    require(!cloudJobsConfigured || (photoAnalysisJobName.isNotBlank() && quizGenerationJobName.isNotBlank())) {
+        "PHOTO_ANALYSIS_JOB and QUIZ_GENERATION_JOB must be configured together"
+    }
+    require(cloudJobsConfigured || localDispatchUrl.isNotBlank()) {
+        "Configure Cloud Run Job names or LOCAL_JOB_DISPATCH_URL; inline job execution is not supported"
+    }
+    require(!cloudJobsConfigured || localDispatchUrl.isBlank()) {
+        "Configure either Cloud Run Jobs or the local dispatcher, not both"
+    }
+
+    fun dispatcher(cloudJobName: String, localRole: String): JobDispatcher =
+        if (cloudJobsConfigured) CloudRunJobDispatcher(httpClient, cloudJobName)
+        else LocalJobDispatcher(httpClient, localDispatchUrl, localRole, localDispatchKey)
 
     val internalKey = environment.config.propertyOrNull("internal.key")?.getString() ?: ""
     val supabaseUrl = environment.config.propertyOrNull("supabase.url")?.getString() ?: ""
@@ -67,20 +70,15 @@ fun Application.module() {
     val photoRepository = PhotoRepository(database)
     val photoService = PhotoService(
         photoRepository,
-        httpClient,
-        photoAnalysisJobName,
+        dispatcher(photoAnalysisJobName, "photo-job"),
         storageSigner,
-        localPhotoRunner = { aiRuntime.photoExecutor.run(it) },
     )
 
     val kanjiRepository = KanjiRepository(database)
-    val quizGenerationJobName = environment.config.propertyOrNull("quizGeneration.jobName")?.getString() ?: ""
     val kanjiService = KanjiService(
         kanjiRepository,
         photoRepository,
-        httpClient,
-        quizGenerationJobName,
-        localQuizRunner = { aiRuntime.quizWorker.drain() },
+        dispatcher(quizGenerationJobName, "quiz-job"),
     )
 
     val quizRepository = QuizRepository(database)

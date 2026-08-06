@@ -1,12 +1,8 @@
 package com.kanjimasta.modules.kanji
 
 import com.kanjimasta.core.db.PhotoSessionStatus
-import com.kanjimasta.core.jobs.CloudRunJobDispatcher
+import com.kanjimasta.core.jobs.JobDispatcher
 import com.kanjimasta.modules.photo.PhotoRepository
-import io.ktor.client.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
 import java.util.UUID
@@ -16,12 +12,8 @@ private val logger = LoggerFactory.getLogger("com.kanjimasta.modules.kanji.Kanji
 class KanjiService(
     private val kanjiRepository: KanjiRepository,
     private val photoRepository: PhotoRepository,
-    private val httpClient: HttpClient,
-    private val quizGenerationJobName: String = "",
-    private val localQuizRunner: (suspend () -> Unit)? = null,
+    private val jobDispatcher: JobDispatcher,
 ) {
-    private val scope = CoroutineScope(Dispatchers.IO)
-
     suspend fun saveSession(userId: String, request: SaveSessionRequest) {
         val learningKanjiIds = mutableListOf<String>()
 
@@ -192,24 +184,12 @@ class KanjiService(
         }
     }
 
-    private fun triggerQuizGeneration() {
-        scope.launch {
-            val dispatched = dispatchPendingQuizGeneration()
-            if (!dispatched) {
-                logger.warn("Quiz generation dispatch failed; pending rows remain recoverable")
-            }
+    private suspend fun triggerQuizGeneration() {
+        val dispatched = dispatchPendingQuizGeneration()
+        if (!dispatched) {
+            logger.warn("Quiz generation dispatch failed; pending rows remain recoverable")
         }
     }
 
-    suspend fun dispatchPendingQuizGeneration(): Boolean = if (quizGenerationJobName.isNotBlank()) {
-        CloudRunJobDispatcher(httpClient, quizGenerationJobName).dispatch(emptyMap())
-    } else {
-        val runner = localQuizRunner
-        if (runner == null) {
-            logger.info("Quiz work queued; run the quiz-job role to process it")
-            true
-        } else {
-            runCatching { runner() }.isSuccess
-        }
-    }
+    suspend fun dispatchPendingQuizGeneration(): Boolean = jobDispatcher.dispatch(emptyMap())
 }

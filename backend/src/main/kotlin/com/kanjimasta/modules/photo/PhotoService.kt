@@ -2,12 +2,8 @@ package com.kanjimasta.modules.photo
 
 import com.kanjimasta.core.db.PhotoFailureCode
 import com.kanjimasta.core.db.PhotoSessionStatus
-import com.kanjimasta.core.jobs.CloudRunJobDispatcher
+import com.kanjimasta.core.jobs.JobDispatcher
 import com.kanjimasta.core.storage.SupabaseStorageSigner
-import io.ktor.client.*
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.json.*
 import org.slf4j.LoggerFactory
 import java.util.UUID
@@ -18,13 +14,9 @@ private val logger = LoggerFactory.getLogger("com.kanjimasta.modules.photo.Photo
 
 class PhotoService(
     private val photoRepository: PhotoRepository,
-    private val httpClient: HttpClient,
-    private val photoAnalysisJobName: String = "",
+    private val jobDispatcher: JobDispatcher,
     private val storageSigner: SupabaseStorageSigner? = null,
-    private val localPhotoRunner: (suspend (UUID) -> Boolean)? = null,
 ) {
-    private val scope = CoroutineScope(Dispatchers.IO)
-
     suspend fun startAnalysis(
         userId: String,
         imageUrl: String,
@@ -37,18 +29,13 @@ class PhotoService(
         if (!creation.created) {
             logger.info("Reusing photo session={} for clientCaptureId={}", sessionId, clientCaptureId)
             if (creation.shouldDispatch) {
-                if (photoAnalysisJobName.isNotBlank()) dispatchCloudRunJob(sessionId, userId)
-                else dispatchLocalJob(sessionId)
+                dispatchJob(sessionId, userId)
             }
             return AnalyzePhotoResponse(sessionId = sessionId, status = PhotoSessionStatus.PROCESSING.apiValue)
         }
         logger.info("Created photo session={}, dispatching photo analysis", sessionId)
 
-        if (photoAnalysisJobName.isNotBlank()) {
-            dispatchCloudRunJob(sessionId, userId)
-        } else {
-            dispatchLocalJob(sessionId)
-        }
+        dispatchJob(sessionId, userId)
 
         return AnalyzePhotoResponse(sessionId = sessionId, status = PhotoSessionStatus.PROCESSING.apiValue)
     }
@@ -64,35 +51,15 @@ class PhotoService(
             session.imageUrl
         }
         photoRepository.updateImageUrl(sessionId, userId, imageUrl)
-        return if (photoAnalysisJobName.isNotBlank()) {
-            dispatchCloudRunJob(sessionId.toString(), userId)
-        } else {
-            dispatchLocalJob(sessionId.toString())
-        }
+        return dispatchJob(sessionId.toString(), userId)
     }
 
-    private suspend fun dispatchCloudRunJob(sessionId: String, userId: String): Boolean {
-        val accepted = CloudRunJobDispatcher(httpClient, photoAnalysisJobName)
-            .dispatch(mapOf("PHOTO_SESSION_ID" to sessionId))
+    private suspend fun dispatchJob(sessionId: String, userId: String): Boolean {
+        val accepted = jobDispatcher.dispatch(mapOf("PHOTO_SESSION_ID" to sessionId))
         if (!accepted) {
             photoRepository.markFailed(sessionId, userId, PhotoFailureCode.DISPATCH_FAILED)
         }
         return accepted
-    }
-
-    private fun dispatchLocalJob(sessionId: String): Boolean {
-        val runner = localPhotoRunner
-        if (runner == null) {
-            logger.info("Photo session={} queued; run the photo-job role to process it", sessionId)
-            return true
-        }
-        scope.launch {
-            val succeeded = runCatching { runner(UUID.fromString(sessionId)) }.getOrDefault(false)
-            if (!succeeded) {
-                logger.warn("Local photo job did not complete session={}", sessionId)
-            }
-        }
-        return true
     }
 
     suspend fun getSessionResult(userId: String, sessionId: UUID): PhotoSessionResult? {

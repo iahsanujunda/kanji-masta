@@ -583,6 +583,9 @@ This is the prerequisite (Phase A). Port, then delete Python:
 - Add a small JVM launcher with explicit `web`, `photo-job`, and `quiz-job` roles. The
   `quiz-job` role supports `drain` and `check-regen` modes; the same fat JAR and image run all
   roles through Cloud Run command/argument overrides.
+- Keep the execution boundary in local development: Compose always starts a Kotlin
+  `local-dispatcher` service, the backend sends it an authenticated dispatch, and it starts a
+  fresh JVM with the same `photo-job` or `quiz-job` role. Do not provide an inline fallback.
 - Keep word discovery in Kotlin with its existing prompt, model configuration, Ktorm writes,
   and tests. Do not automatically call it from manual kanji addition during this migration.
 - Port the pytest suites (`test_openrouter.py`, `test_db.py`, `test_routes.py`,

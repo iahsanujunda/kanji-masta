@@ -18,6 +18,7 @@ One Gradle project produces one fat JAR and one Docker image. The launcher selec
 | `photo-job` | `photo-analysis-kotlin` Job | Claim one photo attempt, analyze it, enrich kanji, write its terminal result |
 | `quiz-job drain` | `quiz-generation-kotlin` Job | Claim and execute a bounded quiz-generation batch |
 | `quiz-job check-regen` | execution override of the quiz Job | Enqueue eligible distractor-regeneration work |
+| `local-dispatcher` | local Compose only | Accept a dispatch and start a fresh JVM with the matching Job role |
 
 The frontend is a React SPA. Supabase owns authentication, PostgreSQL, and photo storage.
 OpenRouter is the only runtime AI provider. Model IDs are not environment variables: the
@@ -36,6 +37,21 @@ Ktor web role ──────────────── Supabase PostgreS
 
 The Jobs do not call the backend with their results. They use the same Ktorm repositories and
 terminal-write services as the web artifact and write directly to PostgreSQL.
+
+### Local execution parity
+
+Docker Compose always starts `backend` and `job-dispatcher` as separate processes. There is no
+inline execution fallback and no feature flag that bypasses dispatching:
+
+```text
+backend → HTTP dispatch → job-dispatcher → fresh java -jar process → Ktorm/OpenRouter
+```
+
+The dispatcher validates a local-only shared key and a narrow per-role environment contract,
+then returns `202` only after the child JVM starts. Stopping the dispatcher exercises a failed
+handoff; stopping a child JVM exercises interruption after acceptance. Production replaces the
+local HTTP/process-launch adapter with the Cloud Run Jobs API while preserving the service,
+repository, launcher role, durable claim, and terminal-write paths.
 
 ## Code organization
 

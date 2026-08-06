@@ -47,10 +47,11 @@ Max header: 100 chars.
 
 ### AI Runtime (Ktor + Kotlin)
 - Lives in the backend Gradle project and ships in the same fat JAR/image as the API.
-- `Main.kt` roles: `web`, `photo-job`, `quiz-job drain`, `quiz-job check-regen`.
+- `Main.kt` roles: `web`, `photo-job`, `quiz-job drain`, `quiz-job check-regen`, and local-only `local-dispatcher`.
 - OpenRouter client and prompts live in `core/ai/`; model IDs come from active `ai_model_config`.
 - Photo execution lives in `modules/photo/`; quiz execution in `modules/worker/`; word discovery in `modules/kanji/`.
 - Durable jobs use `job_attempt` leases/claim tokens and write results directly through Ktorm.
+- Local development always dispatches through the Compose `job-dispatcher`, which starts fresh JVM Job processes; there is no inline fallback.
 - Word discovery remains an inline callable Kotlin service with no automatic product trigger.
 
 ### Schema
@@ -62,7 +63,7 @@ Max header: 100 chars.
 ## Build & Run
 
 ```
-make supabase-start   # Terminal 1 (or: make up for Docker Compose)
+make supabase-start   # Terminal 1; starts Supabase and applies pending local migrations
 make backend          # Terminal 2
 make frontend         # Terminal 3
 ```

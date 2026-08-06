@@ -83,6 +83,10 @@ covers provider request/response behavior with Ktor `MockEngine`.
 and [`WordDiscoveryIntegrationTest.kt`](../backend/src/test/kotlin/com/kanjimasta/WordDiscoveryIntegrationTest.kt)
 exercise the shared Ktorm persistence layer against migrated PostgreSQL.
 
+[`LocalJobDispatchTest.kt`](../backend/src/test/kotlin/com/kanjimasta/core/jobs/LocalJobDispatchTest.kt)
+proves the mandatory local dispatch boundary: authenticated request construction, role/environment
+forwarding, accepted process starts, and explicit rejection when no worker process starts.
+
 Use pure tests for JSON parsing, cost calculations, and request construction. Use migrated
 PostgreSQL when claim fencing, direct result writes, attempt-level cost, or transactional
 enqueueing is part of the behavior. MockEngine must terminate every OpenRouter or image request.

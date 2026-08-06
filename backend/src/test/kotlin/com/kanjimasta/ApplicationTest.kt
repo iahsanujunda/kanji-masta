@@ -5,6 +5,7 @@ import com.kanjimasta.core.ai.ModelCatalogGateway
 import com.kanjimasta.core.ai.UnavailableModelCatalogGateway
 import com.kanjimasta.core.plugins.configureRouting
 import com.kanjimasta.core.plugins.configureSerialization
+import com.kanjimasta.core.jobs.JobDispatcher
 import com.kanjimasta.support.TestPostgres
 import com.kanjimasta.modules.kanji.KanjiRepository
 import com.kanjimasta.modules.kanji.KanjiService
@@ -74,8 +75,9 @@ fun Application.testModule(
             }
         }
     }
-    val photoService = PhotoService(PhotoRepository(db), httpClient)
-    val kanjiService = KanjiService(KanjiRepository(db), PhotoRepository(db), httpClient)
+    val acceptedDispatcher = JobDispatcher { true }
+    val photoService = PhotoService(PhotoRepository(db), acceptedDispatcher)
+    val kanjiService = KanjiService(KanjiRepository(db), PhotoRepository(db), acceptedDispatcher)
     val quizRepository = com.kanjimasta.modules.quiz.QuizRepository(db)
     val quizService = com.kanjimasta.modules.quiz.QuizService(quizRepository)
     val settingsRepository = com.kanjimasta.modules.settings.SettingsRepository(db)

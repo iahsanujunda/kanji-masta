@@ -22,6 +22,7 @@ web                    Ktor API and inline word-discovery capability
 photo-job              one durable photo-analysis execution
 quiz-job drain         bounded quiz-generation batch
 quiz-job check-regen   scheduled regeneration eligibility pass
+local-dispatcher       development-only process launcher for the two Job roles
 ```
 
 Photo and quiz Jobs claim durable PostgreSQL attempts with leases and claim tokens, call
@@ -36,8 +37,8 @@ the Admin model-settings UI and stored in the active `ai_model_config` row.
 Run the stack in three terminals:
 
 ```bash
-make supabase-start   # local database, auth, and storage
-make backend          # Ktor API; local jobs run in the same process
+make supabase-start   # local database/auth/storage + pending migrations
+make backend          # Ktor API + mandatory local Job dispatcher
 make frontend         # Vite development server
 ```
 
@@ -63,8 +64,22 @@ make reset-all
 make check-deploy
 ```
 
-The `photo-job` and `quiz-job` commands run the same Gradle project and main class as `web`;
-they do not start another service or require another language toolchain.
+Local requests never execute AI work inside the backend process. The backend sends the same
+logical dispatch operation to the `job-dispatcher` Compose service, which starts a fresh JVM
+from the same fat JAR using `photo-job` or `quiz-job drain`. Production swaps only this
+dispatcher adapter for the Cloud Run Jobs API. A missing dispatcher, rejected request, failed
+child-process start, or child-process crash is therefore observable locally.
+
+The `photo-job` and `quiz-job` commands remain useful for manually running the same entrypoints;
+they do not require another project or language toolchain.
+
+To exercise dispatch failure locally, stop the dispatcher before making a request:
+
+```bash
+docker compose stop job-dispatcher
+# submit a photo: its durable attempt becomes failed with dispatch_failed
+docker compose start job-dispatcher
+```
 
 ## Testing
 
@@ -133,7 +148,7 @@ backend/src/main/kotlin/com/kanjimasta/
 ├── AiRuntime.kt             # shared AI execution composition
 ├── core/ai/                 # OpenRouter client, models, and prompts
 ├── core/db/                 # Ktorm table definitions and database setup
-├── core/jobs/               # Cloud Run Job dispatch
+├── core/jobs/               # Cloud Run and local process dispatch adapters
 └── modules/
     ├── photo/               # photo API, claim, execution, and result persistence
     ├── kanji/               # kanji flows and inline word discovery

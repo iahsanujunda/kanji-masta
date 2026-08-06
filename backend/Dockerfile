@@ -9,6 +9,6 @@ RUN ./gradlew buildFatJar --no-daemon
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=build /app/build/libs/kanji-masta.jar app.jar
-EXPOSE 8080
+EXPOSE 8080 8081
 ENTRYPOINT ["java", "-jar", "app.jar"]
 CMD ["web"]

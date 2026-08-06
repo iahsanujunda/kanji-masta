@@ -15,7 +15,8 @@ fun ApplicationTestBuilder.configureWithTestDb() {
             "resend.apiKey" to "test-resend-key",
             "admin.userId" to "test-admin",
             "internal.key" to "test-internal-key",
-            "self.url" to "http://127.0.0.1:3",
+            "localJobs.dispatchUrl" to "http://127.0.0.1:3",
+            "localJobs.dispatchKey" to "test-local-dispatch-key",
         )
     }
     application { module() }

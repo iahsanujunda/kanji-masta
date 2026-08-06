@@ -3,6 +3,7 @@ package com.kanjimasta
 import com.kanjimasta.core.auth.AuthUser
 import com.kanjimasta.core.db.PhotoSessionTable
 import com.kanjimasta.core.db.PhotoSessionStatus
+import com.kanjimasta.core.jobs.CloudRunJobDispatcher
 import com.kanjimasta.modules.photo.PhotoService
 import com.kanjimasta.modules.photo.PhotoRepository
 import io.ktor.client.HttpClient
@@ -53,8 +54,7 @@ class PhotoIntegrationTest : com.kanjimasta.support.PersistenceTest() {
             val repository = PhotoRepository(TestDatabase.db)
             val service = PhotoService(
                 repository,
-                httpClient,
-                photoAnalysisJobName = "projects/test/locations/test/jobs/photo-analysis",
+                CloudRunJobDispatcher(httpClient, "projects/test/locations/test/jobs/photo-analysis"),
             )
 
             val response = service.startAnalysis(
@@ -96,8 +96,7 @@ class PhotoIntegrationTest : com.kanjimasta.support.PersistenceTest() {
             val repository = PhotoRepository(TestDatabase.db)
             val service = PhotoService(
                 repository,
-                httpClient,
-                photoAnalysisJobName = "projects/test/locations/test/jobs/photo-analysis",
+                CloudRunJobDispatcher(httpClient, "projects/test/locations/test/jobs/photo-analysis"),
             )
 
             val response = service.startAnalysis(
@@ -141,8 +140,7 @@ class PhotoIntegrationTest : com.kanjimasta.support.PersistenceTest() {
             )
             val service = PhotoService(
                 repository,
-                httpClient,
-                photoAnalysisJobName = "projects/test/locations/test/jobs/photo-analysis",
+                CloudRunJobDispatcher(httpClient, "projects/test/locations/test/jobs/photo-analysis"),
             )
 
             val retried = service.startAnalysis(

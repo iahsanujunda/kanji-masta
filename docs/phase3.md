@@ -676,7 +676,7 @@ A capture must answer two different questions:
 
 These are deliberately separate. A learner can know 100% of the individual kanji in a poster while still not knowing a compound used by the poster. Calling both states "readability" would overstate what the app knows.
 
-The translation is available immediately after processing and hidden by default on revisit. Revisiting is primarily a self-test and a way to choose the next small batch of kanji, not a familiarity-changing quiz.
+The translation is available from the first moment processing reaches `READY`, before the learner selects any kanji. It is collapsed by default so the original text remains primary, but **Reveal translation** is always visible on the ready capture page. Revisiting remains primarily a self-test and a way to choose the next small batch of kanji, not a familiarity-changing quiz.
 
 ---
 
@@ -1067,7 +1067,7 @@ Ordering is server-authoritative and stable:
 
 Processing and `NEEDS_ATTENTION` cards remain discoverable in every tab. Because their familiarity is `N/A`, they sort after ready captures in the Familiarity tab.
 
-On revisit, translation is hidden by default. The learner first attempts to read the original, then reveals the translation to check understanding. Kanji and word state are informational; simply revisiting never changes familiarity.
+On the first ready result and every revisit, translation is collapsed by default and **Reveal translation** remains directly accessible. Translation is never gated by initial kanji selection, batch completion, familiarity, or word discovery. The learner can attempt to read the original first or immediately reveal the translation to understand what they captured. Kanji and word state are informational; simply viewing the translation or revisiting never changes familiarity.
 
 Opening the page does not mutate `last_revisited_at`. The client sends an explicit revisit command after the page is successfully displayed.
 
@@ -1128,6 +1128,7 @@ Settled:
 - Add exactly one starter word per newly selected learning kanji.
 - Compute kanji coverage from live `user_kanji` familiarity, with mastery at 5.
 - Keep kanji coverage separate from word understanding.
+- Make **Reveal translation** available as soon as the capture is `READY`, including before the first kanji selection.
 - Use separate visual-analysis and translation models.
 - Make word discovery an optional asynchronous task triggered after 100% kanji coverage.
 - Extract only words actually present in canonical capture text.
@@ -1215,6 +1216,7 @@ Automated integration tests must cover these boundaries:
 - [ ] Each gallery direction uses stable cursor pagination without duplicates or omissions
 - [ ] Familiarity `N/A` and never-visited ordering follow the documented tab rules
 - [ ] Revisit hides translation initially and never alters familiarity
+- [ ] First-ready and revisit pages always expose Reveal translation without a kanji-selection or familiarity gate
 - [ ] Explicit revisit command records `last_revisited_at`; `GET` remains read-only
 - [ ] Home provides one Captures navigation card and no capture-processing or milestone cards
 - [ ] Activity is the only Home surface for capture processing, completion, failure, and revisit milestones

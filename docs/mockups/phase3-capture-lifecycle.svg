@@ -101,7 +101,7 @@
     <text x="26" y="439" class="text h2">Continue this capture</text>
     <use href="#kanji-chip-electric" x="26" y="456"/><use href="#kanji-chip-operate" x="145" y="456"/><use href="#kanji-chip-turn" x="263" y="456"/>
     <rect x="26" y="596" width="338" height="52" rx="14" fill="#10b981"/><text x="195" y="628" text-anchor="middle" class="darkText button">Add next 3</text>
-    <text x="195" y="682" text-anchor="middle" class="muted small">First visit uses this same page with the first 3</text>
+    <rect x="26" y="660" width="338" height="46" rx="13" class="raised"/><path d="M48 683h18m-9-9v18" stroke="#818cf8" stroke-width="1.8"/><text x="78" y="688" class="text body" font-weight="750">Reveal translation</text><text x="342" y="688" text-anchor="end" class="quiet tiny">Available when ready</text>
   </g>
 
   <!-- ROW TRANSITION -->

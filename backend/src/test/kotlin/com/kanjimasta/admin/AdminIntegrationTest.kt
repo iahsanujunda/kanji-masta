@@ -1,4 +1,6 @@
-package com.kanjimasta
+package com.kanjimasta.admin
+
+import com.kanjimasta.support.*
 
 import com.kanjimasta.kanji.KanjiMasterTable
 import com.kanjimasta.photo.PhotoSessionTable

@@ -1,0 +1,98 @@
+package com.kanjimasta.support
+
+import com.kanjimasta.ai.ModelCatalogGateway
+import com.kanjimasta.ai.UnavailableModelCatalogGateway
+import com.kanjimasta.auth.AuthUser
+import com.kanjimasta.configureRouting
+import com.kanjimasta.configureSerialization
+import com.kanjimasta.jobs.JobDispatcher
+import com.kanjimasta.kanji.KanjiRepository
+import com.kanjimasta.kanji.KanjiService
+import com.kanjimasta.photo.PhotoRepository
+import com.kanjimasta.photo.PhotoService
+import io.ktor.client.*
+import io.ktor.client.engine.mock.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.http.*
+import io.ktor.serialization.kotlinx.json.*
+import io.ktor.server.application.*
+import io.ktor.server.auth.*
+import io.ktor.server.plugins.statuspages.*
+import io.ktor.server.response.*
+import io.ktor.server.testing.*
+import org.ktorm.database.Database
+import org.slf4j.LoggerFactory
+
+const val TEST_USER_ID = "test-user-integration"
+const val TEST_USER_EMAIL = "test@example.com"
+
+/**
+ * Test database using Testcontainers — spins up a fresh PostgreSQL container.
+ * No external dependencies required (no `supabase start` needed).
+ */
+object TestDatabase {
+    val db: Database get() = TestPostgres.database
+}
+
+private val testLogger = LoggerFactory.getLogger("TestModule")
+
+fun Application.testModule(
+    db: Database,
+    authUser: AuthUser = AuthUser(uid = TEST_USER_ID, email = TEST_USER_EMAIL),
+    adminJobDispatcher: suspend (String, java.util.UUID, String) -> Boolean = { _, _, _ -> true },
+    modelCatalogGateway: ModelCatalogGateway = UnavailableModelCatalogGateway,
+) {
+    configureSerialization()
+    install(StatusPages) {
+        exception<Throwable> { call, cause ->
+            testLogger.error("Unhandled exception in test", cause)
+            call.respondText("Error: ${cause.message}", status = HttpStatusCode.InternalServerError)
+        }
+    }
+    install(Authentication) {
+        bearer("supabase") {
+            authenticate {
+                authUser
+            }
+        }
+    }
+    // This harness must never escape to the network. Worker triggers, Cloud
+    // metadata token requests, and email calls all terminate in memory.
+    val httpClient = HttpClient(MockEngine) {
+        engine {
+            addHandler {
+                respond(
+                    content = "ok",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, ContentType.Text.Plain.toString()),
+                )
+            }
+        }
+    }
+    val acceptedDispatcher = JobDispatcher { true }
+    val photoService = PhotoService(PhotoRepository(db), acceptedDispatcher)
+    val kanjiService = KanjiService(KanjiRepository(db), PhotoRepository(db), acceptedDispatcher)
+    val quizRepository = com.kanjimasta.quiz.QuizRepository(db)
+    val quizService = com.kanjimasta.quiz.QuizService(quizRepository)
+    val settingsRepository = com.kanjimasta.settings.SettingsRepository(db)
+    val userService = com.kanjimasta.user.UserService(com.kanjimasta.user.UserRepository(db), quizRepository, settingsRepository)
+    val resendClient = com.kanjimasta.invite.ResendClient(httpClient, "")
+    val inviteRepository = com.kanjimasta.invite.InviteRepository(db)
+    val inviteService = com.kanjimasta.invite.InviteService(inviteRepository, resendClient)
+    val adminRepository = com.kanjimasta.admin.AdminRepository(db)
+    val adminService = com.kanjimasta.admin.AdminService(
+        adminRepository,
+        adminJobDispatcher,
+        modelCatalogGateway,
+    )
+    val internalService = com.kanjimasta.internal.InternalService(db)
+
+    // Seed settings for test user so tests that depend on settings work
+    settingsRepository.upsertSettings(TEST_USER_ID, 5, 6, null)
+
+    configureRouting(photoService, kanjiService, quizService, userService, settingsRepository, inviteService, adminService, internalService, TEST_USER_ID, "test-internal-key")
+}
+
+fun ApplicationTestBuilder.jsonClient() = createClient {
+    install(ContentNegotiation) { json() }
+}

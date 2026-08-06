@@ -1,4 +1,6 @@
-package com.kanjimasta
+package com.kanjimasta.photo
+
+import com.kanjimasta.support.*
 
 import com.kanjimasta.auth.AuthUser
 import com.kanjimasta.photo.PhotoSessionTable

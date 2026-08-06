@@ -1,4 +1,4 @@
-package com.kanjimasta
+package com.kanjimasta.internal
 
 import com.kanjimasta.jobs.JobAttemptTable
 import com.kanjimasta.photo.PhotoSessionTable

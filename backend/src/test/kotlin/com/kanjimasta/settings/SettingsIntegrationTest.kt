@@ -1,4 +1,6 @@
-package com.kanjimasta
+package com.kanjimasta.settings
+
+import com.kanjimasta.support.*
 
 import io.ktor.client.request.*
 import io.ktor.client.statement.*

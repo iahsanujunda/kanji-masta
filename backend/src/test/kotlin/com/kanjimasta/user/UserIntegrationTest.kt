@@ -1,4 +1,6 @@
-package com.kanjimasta
+package com.kanjimasta.user
+
+import com.kanjimasta.support.*
 
 import com.kanjimasta.kanji.KanjiMasterTable
 import com.kanjimasta.quiz.QuizType

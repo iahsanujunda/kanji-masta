@@ -1,6 +1,6 @@
 package com.kanjimasta.quiz
 
-import com.kanjimasta.jsonClient
+import com.kanjimasta.support.jsonClient
 import com.kanjimasta.support.configureIsolatedKtor
 import io.ktor.client.call.body
 import io.ktor.client.request.get

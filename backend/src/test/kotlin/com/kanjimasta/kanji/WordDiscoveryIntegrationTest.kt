@@ -1,4 +1,4 @@
-package com.kanjimasta
+package com.kanjimasta.kanji
 
 import com.kanjimasta.ai.AiModelConfigRepository
 import com.kanjimasta.ai.OpenRouterClient

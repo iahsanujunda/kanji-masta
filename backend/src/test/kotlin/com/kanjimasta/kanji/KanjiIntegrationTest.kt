@@ -1,4 +1,6 @@
-package com.kanjimasta
+package com.kanjimasta.kanji
+
+import com.kanjimasta.support.*
 
 import com.kanjimasta.kanji.KanjiMasterTable
 import io.ktor.client.request.*

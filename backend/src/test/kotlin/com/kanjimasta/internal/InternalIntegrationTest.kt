@@ -1,4 +1,6 @@
-package com.kanjimasta
+package com.kanjimasta.internal
+
+import com.kanjimasta.support.*
 
 import com.kanjimasta.ai.UserCostTable
 import com.kanjimasta.jobs.JobAttemptTable

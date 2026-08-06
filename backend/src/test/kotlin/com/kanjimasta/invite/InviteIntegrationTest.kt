@@ -1,4 +1,6 @@
-package com.kanjimasta
+package com.kanjimasta.invite
+
+import com.kanjimasta.support.*
 
 import com.kanjimasta.invite.UserInviteTable
 import io.ktor.client.request.*

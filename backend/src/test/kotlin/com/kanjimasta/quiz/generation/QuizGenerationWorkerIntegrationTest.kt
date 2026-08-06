@@ -1,4 +1,4 @@
-package com.kanjimasta
+package com.kanjimasta.quiz.generation
 
 import com.kanjimasta.ai.AiModelConfigRepository
 import com.kanjimasta.ai.AiModelConfigTable

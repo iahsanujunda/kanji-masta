@@ -1,5 +1,7 @@
 package com.kanjimasta
 
+import com.kanjimasta.support.*
+
 import com.kanjimasta.kanji.KanjiMasterTable
 import com.kanjimasta.kanji.UserKanjiTable
 import com.kanjimasta.quiz.generation.QuizGenerationJobTable

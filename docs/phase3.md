@@ -680,6 +680,17 @@ The translation is available immediately after processing and hidden by default 
 
 ---
 
+## Phase 3.2 mockups
+
+The capture contract is represented by two SVG storyboards using the current frontend theme, mobile-first 390 px phone frames, and the repository's established mockup format:
+
+- [Capture product flow](mockups/phase3-capture-lifecycle.svg) — the Home entry, Activity-owned status, the reusable capture detail page, false-positive correction, 100% kanji coverage, and explicit word enrollment
+- [Capture gallery sorting](mockups/phase3-capture-gallery-sorting.svg) — the three reversible sort tabs, derived text labels, and explicit `N/A` and never-visited ordering
+
+These boards define page composition, hierarchy, state communication, and interaction labels. The persistence, API, eligibility, and sorting contracts below remain authoritative if a visual simplification appears ambiguous.
+
+---
+
 ## 3.2.1 Product concept
 
 Every successfully uploaded photo becomes a permanent **capture**. The existing kanji selector is replaced by the capture detail page rather than followed by a separate disposable flow.
@@ -718,7 +729,6 @@ Visual analysis and translation use separate model workloads so each can be sele
 **`VISUAL_ANALYSIS`** receives the image and returns:
 
 - complete Japanese text with line breaks;
-- a short title;
 - kanji character observations and their first-seen order;
 - a content-based learning priority for each character;
 - the existing kanji explanation and starter-word data needed by the learning flow.
@@ -780,7 +790,6 @@ Continue using the existing row as the aggregate to avoid an unnecessary rename 
 
 - `processing_status`: `PROCESSING | READY | NEEDS_ATTENTION`
 - `pipeline_version`
-- `title`
 - `full_text`
 - `translation`
 - `translation_language`, initially `en`
@@ -789,7 +798,6 @@ Continue using the existing row as the aggregate to avoid an unnecessary rename 
 - `ready_at`
 - `selection_completed_at`
 - `last_revisited_at`
-- `archived`
 
 Processing status and selection completion are separate. The current `INGESTED` state conflates them and must not hide a permanent capture.
 
@@ -858,9 +866,9 @@ Word identity must use at least normalized `(lemma, reading)`, not spelling alon
 
 This normalized capture-to-word relation also avoids pretending that a `UserWords` row has only one source photo.
 
-### `capture_revisit_prompt`: prompt delivery
+### `capture_revisit_activity`: Activity-drawer delivery
 
-Use a separate row with threshold, status, fired/seen/dismissed timestamps, and a unique capture-plus-threshold key. A `firedThresholds` array on the capture cannot safely enforce one pending prompt and a weekly cross-capture rate limit.
+Use a separate row with threshold, status, fired/seen/dismissed timestamps, and a unique capture-plus-threshold key. A `firedThresholds` array on the capture cannot safely enforce one pending update and a weekly cross-capture rate limit. These rows are projected into the existing photo Activity feed; they are not rendered as Home-page cards.
 
 ---
 
@@ -920,7 +928,8 @@ This is different from an AI omission: the learner can remove an incorrectly rep
 
 ```
 ┌────────────────────────────────────┐
-│  ← Station notice                  │
+│  ← Capture                         │
+│    Jun 12, 08:35                   │
 │  [original image]                  │
 │                                    │
 │  Kanji coverage       4 / 18       │
@@ -1034,7 +1043,13 @@ The existing `WordDiscoveryService` is infrastructure to reuse, not a compatible
 
 `/captures` becomes the permanent server-backed gallery. The device-local upload queue moves to `/capture-queue`, with `/capture-queue/{clientCaptureId}` for local recovery. Once the server owns an upload, the local route redirects to `/captures/{captureId}`.
 
-Gallery cards show `PROCESSING`, `READY`, and `NEEDS_ATTENTION` distinctly. Ready cards show title, date, thumbnail, captured kanji coverage when available, and current kanji coverage.
+Home adds one ordinary **Captures** navigation card alongside **Your Kanji** and **Dictionary**. It opens `/captures` and contains no processing status, milestone update, or capture-specific progress. The existing Activity control in the Home header remains the only Home surface for ongoing and completed capture work.
+
+Gallery and capture-detail pages use the existing `PageHeader` pattern with a back button and no camera or overflow actions in the gallery header. Starting another capture remains the fixed **Capture Japanese** action on Home.
+
+The learner never names photos. A capture's display label is derived from the first non-empty line of canonical `full_text`, whitespace-normalized and truncated for the current surface. Before text exists, or when no usable text was extracted, use the localized capture date and time. This is display-only: there is no AI-generated title, editable title field, or title column.
+
+Gallery cards show `PROCESSING`, `READY`, and `NEEDS_ATTENTION` distinctly. Ready cards show the derived text preview, date, thumbnail, captured kanji coverage when available, and current kanji coverage.
 
 The gallery has three sorting tabs:
 
@@ -1050,20 +1065,20 @@ Ordering is server-authoritative and stable:
 - **Familiarity:** `(current_kanji_coverage, familiar_kanji_count, created_at, id)` in the selected direction. `N/A` coverage always appears after numeric coverage in both directions.
 - **Recently visited:** `(last_revisited_at, created_at, id)` in the selected direction. In descending order, never-visited captures appear last; in ascending order, they appear first.
 
-Processing and `NEEDS_ATTENTION` cards remain discoverable in every tab. Because their familiarity is `N/A`, they sort after ready captures in the Familiarity tab. Archived captures are excluded from the three main tabs and opened through a separate archived view.
+Processing and `NEEDS_ATTENTION` cards remain discoverable in every tab. Because their familiarity is `N/A`, they sort after ready captures in the Familiarity tab.
 
 On revisit, translation is hidden by default. The learner first attempts to read the original, then reveals the translation to check understanding. Kanji and word state are informational; simply revisiting never changes familiarity.
 
 Opening the page does not mutate `last_revisited_at`. The client sends an explicit revisit command after the page is successfully displayed.
 
-Revisit prompts use exactly two kanji-coverage milestones:
+Revisit Activity updates use exactly two kanji-coverage milestones:
 
 - **60%:** enough of the material is familiar to make a revisit meaningfully different.
 - **100%:** every active detected kanji is familiar and capture word discovery is unlocked.
 
-A capture must be at least 14 days old. It fires only when live familiarity moves it from below to at-or-above a milestone; starting above a milestone does not fire it. A false-positive exclusion by itself does not create a learning celebration. If a pending 60% prompt reaches 100%, update the existing prompt to 100% instead of creating another.
+A capture must be at least 14 days old. It fires only when live familiarity moves it from below to at-or-above a milestone; starting above a milestone does not fire it. A false-positive exclusion by itself does not create a learning celebration. If a pending 60% update reaches 100%, update the existing Activity item to 100% instead of creating another.
 
-There is at most one pending revisit prompt for the user and no more than one newly surfaced prompt per week. If several captures are eligible, priority is: 100% before 60%, then greatest improvement from captured coverage, least recently revisited, oldest capture, and capture ID as the final stable tie-breaker. The prompt stays below consolidation and maturity work on the home screen.
+There is at most one pending revisit Activity update for the user and no more than one newly surfaced update per week. If several captures are eligible, priority is: 100% before 60%, then greatest improvement from captured coverage, least recently revisited, oldest capture, and capture ID as the final stable tie-breaker. Opening the Activity item deep-links to the same `/captures/{captureId}` page used by the gallery; Home never renders a second capture-status card.
 
 ---
 
@@ -1073,11 +1088,11 @@ The private `storage_path` is the durable image pointer. API responses resolve s
 
 Generate a deterministic private thumbnail path during the client-side upload preparation already used for image optimization. Gallery rendering must not download full-resolution images.
 
-Archiving hides a capture without affecting learned kanji, learned words, or source associations. The initial implementation provides archive and restore only. It does not expose a capture-level hard-delete API or label archive as delete.
+The initial implementation provides no capture-management actions: no rename, archive, or capture-level delete. Every capture is retained automatically and remains reachable through the gallery.
 
 Pre-feature photo sessions are not reprocessed or backfilled. Only sessions created under the capture pipeline version appear in the permanent gallery. Existing photo activity may remain in operational history, but opening it does not enqueue new visual, translation, or word-discovery jobs.
 
-Capture-level hard delete is deferred rather than rejected permanently. Photographs can contain addresses, government correspondence, medical information, or other sensitive text, so deletion should be designed before a broad public launch. Account-level data removal is a separate retention requirement and is not replaced by archive.
+Capture-level hard delete is deferred rather than rejected permanently. Photographs can contain addresses, government correspondence, medical information, or other sensitive text, so deletion should be designed before a broad public launch. Account-level data removal remains a separate retention requirement.
 
 ---
 
@@ -1087,13 +1102,12 @@ Capture-level hard delete is deferred rather than rejected permanently. Photogra
 |--------|------|-------------|
 | `GET` | `/api/captures?tab={recent\|familiarity\|recentlyVisited}&direction={asc\|desc}` | Cursor-paginated gallery using the selected reversible tab order |
 | `GET` | `/api/captures/{id}` | Canonical capture, task stages, normalized kanji with backend-derived eligibility, and word candidates |
-| `PUT` | `/api/captures/{id}` | Update user-owned metadata such as title and archived state |
 | `PUT` | `/api/captures/{id}/kanji-decisions` | Validate membership and idempotently record exact initial or revisit selections |
 | `POST` | `/api/captures/{id}/revisited` | Explicitly record a successful revisit |
 | `POST` | `/api/captures/{id}/word-discovery` | Idempotently enqueue optional capture word discovery |
 | `PUT` | `/api/captures/{id}/word-decisions` | Accept selected new words and enqueue missing quiz generation |
 | `POST` | `/api/captures/{id}/tasks/{taskType}/retry` | Retry one failed task |
-| `GET` | `/api/captures/revisit-prompt` | Return the one pending prompt or null |
+| `GET` | `/api/photo/activity` | Existing Activity feed extended with capture task and revisit-milestone items |
 
 All write endpoints verify capture ownership. Selection, discovery, retry, and acceptance commands are idempotent. Each gallery tab uses its documented compound cursor and matching index; reversing direction must not duplicate or skip captures between pages.
 
@@ -1124,8 +1138,10 @@ Settled:
 - Generate or reuse quizzes only for newly accepted capture words.
 - Use the database queue plus Cloud Run Jobs, without another broker.
 - Do not backfill or reprocess pre-feature photo sessions.
-- Provide archive and restore only; defer capture-level hard delete.
-- Use only 60% and 100% revisit-prompt milestones.
+- Provide no rename, archive, or capture-level delete actions in the initial implementation.
+- Keep Home limited to a Captures navigation entry; surface processing and revisit milestones only through Activity.
+- Derive capture labels from canonical extracted text with a capture-date fallback; do not ask AI or the learner to name photos.
+- Use only 60% and 100% revisit-activity milestones.
 - Use reversible Recent, Familiarity, and Recently visited gallery tabs.
 
 No product-contract decision remains open for the initial implementation. Mockup validation may refine labels, placement, and explanatory copy without changing these behaviors.
@@ -1142,9 +1158,9 @@ Automated integration tests must cover these boundaries:
 - a learner can exclude and restore a false-positive kanji without changing global kanji progress;
 - excluded false positives do not count toward coverage or block word discovery;
 - a no-kanji capture reports `N/A`, remains ready, and permits word discovery;
-- only familiarity-driven crossings at 60% and 100% create revisit prompts;
-- a pending 60% prompt upgrades in place when the same capture reaches 100%;
-- false-positive exclusion alone does not create a revisit prompt;
+- only familiarity-driven crossings at 60% and 100% create revisit Activity items;
+- a pending 60% Activity item upgrades in place when the same capture reaches 100%;
+- false-positive exclusion alone does not create a revisit Activity item;
 - a model result that gives highest priority to a familiar kanji is overridden by the backend;
 - a kanji already at familiarity 5 is returned as `FAMILIAR`, visible, and not selectable;
 - a kanji already at familiarity 0–4 is returned as `LEARNING`, visible, and not selectable;
@@ -1200,10 +1216,13 @@ Automated integration tests must cover these boundaries:
 - [ ] Familiarity `N/A` and never-visited ordering follow the documented tab rules
 - [ ] Revisit hides translation initially and never alters familiarity
 - [ ] Explicit revisit command records `last_revisited_at`; `GET` remains read-only
-- [ ] Revisit prompts fire only at familiarity-driven 60% and 100% crossings after the 14-day minimum
-- [ ] At most one prompt is pending and at most one is newly surfaced per week
-- [ ] A pending 60% prompt upgrades to 100% rather than duplicating
-- [ ] Archive and restore are available without presenting archive as deletion
+- [ ] Home provides one Captures navigation card and no capture-processing or milestone cards
+- [ ] Activity is the only Home surface for capture processing, completion, failure, and revisit milestones
+- [ ] Capture labels derive from canonical text or capture date; no naming field or title-generation task exists
+- [ ] Revisit Activity items fire only at familiarity-driven 60% and 100% crossings after the 14-day minimum
+- [ ] At most one revisit Activity item is pending and at most one is newly surfaced per week
+- [ ] A pending 60% Activity item upgrades to 100% rather than duplicating
+- [ ] No rename, archive, or capture-level delete action appears in the initial API or UI
 - [ ] Capture-level hard delete is absent from the initial API and UI
 - [ ] Immediate dispatch and scheduled draining recover stranded database work
 - [ ] Claim-token fencing prevents stale workers from publishing results

@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1960" viewBox="0 0 1800 1960" role="img" aria-labelledby="title desc">
+  <title id="title">Kanji Masta Phase 3 capture product flow</title>
+  <desc id="desc">Six dark mobile mockups showing the Home entry point, Activity-owned processing and revisit updates, the reusable capture detail page, false-positive correction, one-hundred-percent kanji coverage, and explicit word enrollment.</desc>
+  <defs>
+    <linearGradient id="brand-gradient" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#4338ca"/></linearGradient>
+    <linearGradient id="photo-gradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#263747"/><stop offset="1" stop-color="#111827"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="14" stdDeviation="20" flood-color="#020204" flood-opacity="0.48"/></filter>
+    <style>
+      .canvas{fill:#050508}.app{fill:#0a0a0f}.card{fill:#0f0f16}.raised{fill:#1a1a24}.line{stroke:rgba(255,255,255,.08);stroke-width:1}
+      .text{fill:#f5f5f7;font-family:"Noto Sans JP",system-ui,-apple-system,"Segoe UI",sans-serif}.muted{fill:#a1a1aa;font-family:"Noto Sans JP",system-ui,-apple-system,"Segoe UI",sans-serif}.quiet{fill:#71717a;font-family:"Noto Sans JP",system-ui,-apple-system,"Segoe UI",sans-serif}
+      .emerald{fill:#34d399;font-family:"Noto Sans JP",system-ui,sans-serif}.emeraldPale{fill:#6ee7b7;font-family:"Noto Sans JP",system-ui,sans-serif}.indigo{fill:#818cf8;font-family:"Noto Sans JP",system-ui,sans-serif}.indigoPale{fill:#a5b4fc;font-family:"Noto Sans JP",system-ui,sans-serif}.danger{fill:#f87171;font-family:"Noto Sans JP",system-ui,sans-serif}
+      .darkText{fill:#031b13;font-family:"Noto Sans JP",system-ui,sans-serif}.title{font-size:28px;font-weight:800;letter-spacing:-.6px}.h1{font-size:24px;font-weight:800;letter-spacing:-.4px}.h2{font-size:18px;font-weight:750}.kanji{font-size:31px;font-weight:700}.body{font-size:14px}.small{font-size:12px}.tiny{font-size:10px}.label{font-size:11px;font-weight:800;letter-spacing:1.15px}.button{font-size:14px;font-weight:800}.metric{font-size:30px;font-weight:850;letter-spacing:-.8px}
+    </style>
+    <g id="phone-shell"><rect width="390" height="760" rx="30" class="app" filter="url(#shadow)"/><rect x="1" y="1" width="388" height="758" rx="29" fill="none" stroke="rgba(255,255,255,.09)"/></g>
+    <g id="home-header">
+      <text x="26" y="54" class="text h1">Good evening</text><text x="26" y="77" fill="#ff9800" font-family="system-ui" font-size="13" font-weight="700">You are on a 12 day streak</text>
+      <circle cx="309" cy="44" r="21" fill="rgba(255,255,255,.035)"/><path d="M302 52h14c-2-2-3-4-3-8a4 4 0 0 0-8 0c0 4-1 6-3 8Zm6 3h2" fill="none" stroke="#a1a1aa" stroke-width="1.8" stroke-linecap="round"/><circle cx="321" cy="32" r="5" fill="#10b981" stroke="#0a0a0f" stroke-width="2"/>
+      <circle cx="355" cy="44" r="21" fill="rgba(255,255,255,.035)"/><circle cx="355" cy="44" r="4" fill="none" stroke="#a1a1aa" stroke-width="1.7"/><path d="M355 34v4m0 12v4m10-10h-4m-12 0h-4" stroke="#a1a1aa" stroke-width="1.7" stroke-linecap="round"/>
+    </g>
+    <g id="home-content">
+      <rect x="26" y="104" width="338" height="166" rx="20" fill="url(#brand-gradient)" opacity=".55" stroke="rgba(255,255,255,.10)"/><text x="52" y="142" class="emeraldPale body" font-weight="750">Ready to quiz</text><text x="52" y="198" class="text metric">5</text><text x="82" y="198" class="text h2" opacity=".72">quizzes</text><rect x="52" y="216" width="286" height="38" rx="11" fill="#10b981"/><text x="195" y="241" text-anchor="middle" class="darkText small" font-weight="800">Start session</text>
+      <rect x="26" y="292" width="338" height="82" rx="18" class="card"/><text x="48" y="327" class="text body" font-weight="800">Your Kanji</text><text x="48" y="351" class="emerald small">47 learning · 83 familiar</text><path d="m337 327 7 7-7 7" fill="none" stroke="#71717a" stroke-width="1.7"/>
+      <rect x="26" y="388" width="338" height="82" rx="18" class="card"/><text x="48" y="423" class="text body" font-weight="800">Dictionary</text><text x="48" y="447" class="muted small">126 saved words</text><path d="m337 423 7 7-7 7" fill="none" stroke="#71717a" stroke-width="1.7"/>
+      <rect x="26" y="484" width="338" height="98" rx="18" class="card" stroke="rgba(129,140,248,.22)"/><rect x="44" y="508" width="48" height="48" rx="13" fill="rgba(67,56,202,.15)"/><rect x="56" y="519" width="24" height="19" rx="3" fill="none" stroke="#818cf8" stroke-width="1.5"/><path d="m59 534 6-6 5 4 4-3 6 5" fill="none" stroke="#818cf8" stroke-width="1.5"/><text x="108" y="522" class="text body" font-weight="800">Captures</text><text x="108" y="546" class="muted small">Review saved Japanese photos</text><path d="m337 523 7 7-7 7" fill="none" stroke="#71717a" stroke-width="1.7"/>
+      <rect x="26" y="672" width="338" height="58" rx="29" fill="#f4f4f5"/><path d="M48 692h16l3 4h4v14H45v-14h4l3-4Zm9 6a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" fill="none" stroke="#18181b" stroke-width="1.6"/><text x="205" y="708" text-anchor="middle" fill="#18181b" font-family="system-ui" font-size="15" font-weight="800">Capture Japanese</text>
+    </g>
+    <g id="back-control"><circle cx="40" cy="47" r="20" class="raised"/><path d="m43 39-9 8 9 8M34 47h14" fill="none" stroke="#a1a1aa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <g id="station-photo">
+      <rect x="26" y="88" width="338" height="152" rx="17" fill="url(#photo-gradient)" stroke="rgba(255,255,255,.10)"/>
+      <path d="M26 190h338M62 240v-50m266 50v-50" stroke="#3f4650" stroke-width="4"/>
+      <rect x="68" y="119" width="254" height="64" rx="5" fill="#f4f1e9"/><rect x="68" y="119" width="9" height="64" fill="#10b981"/>
+      <text x="94" y="148" fill="#111827" font-family="Noto Sans JP,system-ui" font-size="17" font-weight="800">本日は運転を見合わせます</text>
+      <text x="95" y="169" fill="#4b5563" font-family="system-ui" font-size="9" font-weight="700" letter-spacing=".8">SERVICE NOTICE</text>
+    </g>
+    <g id="coverage-61">
+      <text x="26" y="278" class="muted small">Kanji coverage</text><text x="364" y="279" text-anchor="end" class="text h2">11 / 18</text>
+      <rect x="26" y="292" width="338" height="7" rx="3.5" class="raised"/><rect x="26" y="292" width="206" height="7" rx="3.5" fill="#10b981"/>
+      <text x="26" y="319" class="emerald small" font-weight="750">61% familiar</text><text x="364" y="319" text-anchor="end" class="quiet small">7 remaining</text>
+    </g>
+    <g id="coverage-100">
+      <text x="26" y="278" class="muted small">Kanji coverage</text><text x="364" y="279" text-anchor="end" class="text h2">18 / 18</text>
+      <rect x="26" y="292" width="338" height="7" rx="3.5" class="raised"/><rect x="26" y="292" width="338" height="7" rx="3.5" fill="#10b981"/>
+      <text x="26" y="319" class="emerald small" font-weight="750">100% familiar</text><text x="364" y="319" text-anchor="end" class="emerald small">Complete</text>
+    </g>
+    <g id="kanji-chip-electric">
+      <rect width="101" height="118" rx="15" class="card" stroke="rgba(129,140,248,.30)"/>
+      <text x="16" y="48" class="text kanji">電</text><text x="16" y="72" class="indigo small" font-weight="750">electricity</text>
+      <circle cx="18" cy="94" r="3" fill="#818cf8"/><circle cx="30" cy="94" r="3" fill="#818cf8"/><circle cx="42" cy="94" r="3" fill="#1a1a24"/><circle cx="54" cy="94" r="3" fill="#1a1a24"/><circle cx="66" cy="94" r="3" fill="#1a1a24"/>
+    </g>
+    <g id="kanji-chip-operate">
+      <rect width="101" height="118" rx="15" class="card" stroke="rgba(129,140,248,.30)"/>
+      <text x="16" y="48" class="text kanji">運</text><text x="16" y="72" class="indigo small" font-weight="750">carry</text>
+      <circle cx="18" cy="94" r="3" fill="#818cf8"/><circle cx="30" cy="94" r="3" fill="#1a1a24"/><circle cx="42" cy="94" r="3" fill="#1a1a24"/><circle cx="54" cy="94" r="3" fill="#1a1a24"/><circle cx="66" cy="94" r="3" fill="#1a1a24"/>
+    </g>
+    <g id="kanji-chip-turn">
+      <rect width="101" height="118" rx="15" class="card" stroke="rgba(129,140,248,.30)"/>
+      <text x="16" y="48" class="text kanji">転</text><text x="16" y="72" class="indigo small" font-weight="750">turn</text>
+      <circle cx="18" cy="94" r="3" fill="#818cf8"/><circle cx="30" cy="94" r="3" fill="#1a1a24"/><circle cx="42" cy="94" r="3" fill="#1a1a24"/><circle cx="54" cy="94" r="3" fill="#1a1a24"/><circle cx="66" cy="94" r="3" fill="#1a1a24"/>
+    </g>
+    <g id="check"><circle cx="10" cy="10" r="10" fill="rgba(52,211,153,.14)"/><path d="m5 10 3 3 7-7" fill="none" stroke="#34d399" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <g id="spinner"><circle cx="10" cy="10" r="8" fill="none" stroke="#818cf8" stroke-width="2" stroke-dasharray="14 8"/></g>
+  </defs>
+
+  <rect width="1800" height="1960" class="canvas"/>
+  <rect x="60" y="32" width="38" height="38" rx="10" fill="url(#brand-gradient)"/><path d="M72 58c10-2 15-8 16-17-9 1-15 6-16 17Zm0 0c-2-7-1-13 2-18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+  <text x="112" y="55" class="text title">Phase 3.2 — capture product flow</text>
+  <text x="112" y="80" class="muted body">One Home entry, one Activity surface, and one capture page reused on every visit.</text>
+  <rect x="1500" y="36" width="240" height="30" rx="15" fill="rgba(129,140,248,.12)" stroke="rgba(129,140,248,.28)"/><text x="1620" y="56" text-anchor="middle" class="indigoPale label">PRIMARY STORYBOARD</text>
+
+  <!-- 01 HOME ENTRY -->
+  <text x="60" y="128" class="indigoPale label">01 · HOME · CAPTURES ENTRY</text>
+  <g transform="translate(60 150)">
+    <use href="#phone-shell"/><use href="#home-header"/><use href="#home-content"/>
+    <text x="195" y="624" text-anchor="middle" class="quiet tiny">The entry is navigation only; status stays in Activity</text>
+  </g>
+
+  <!-- ARROW 1 -->
+  <path d="M492 525h120" fill="none" stroke="#4338ca" stroke-width="2" stroke-dasharray="5 7"/><path d="m602 516 12 9-12 9" fill="none" stroke="#818cf8" stroke-width="2"/>
+
+  <!-- 02 ACTIVITY -->
+  <text x="705" y="128" class="indigoPale label">02 · ACTIVITY · ALL CAPTURE UPDATES</text>
+  <g transform="translate(705 150)">
+    <use href="#phone-shell"/><use href="#home-header"/><rect width="390" height="760" rx="30" fill="rgba(0,0,0,.58)"/>
+    <rect y="176" width="390" height="584" rx="28" fill="#0f0f16" stroke="rgba(255,255,255,.12)"/><rect x="165" y="189" width="60" height="5" rx="3" fill="#52525b"/><text x="24" y="239" class="text h2">Activity</text><circle cx="344" cy="231" r="20" class="raised"/><path d="m337 224 14 14m0-14-14 14" stroke="#a1a1aa" stroke-width="1.8"/>
+    <text x="24" y="286" class="indigoPale label">NOW</text><rect x="24" y="304" width="342" height="94" rx="15" class="raised"/><use href="#spinner" x="42" y="329"/><text x="78" y="336" class="text body" font-weight="750">Translation in progress</text><text x="78" y="359" class="indigo small">Visual analysis complete · 18 kanji</text><text x="78" y="380" class="quiet tiny">Captured today at 18:42</text>
+    <text x="24" y="438" class="indigoPale label">RECENT</text><rect x="24" y="456" width="342" height="104" rx="15" class="raised" stroke="rgba(129,140,248,.22)"/><circle cx="52" cy="498" r="16" fill="rgba(129,140,248,.12)"/><path d="M45 502a10 10 0 1 1 5 5m-5 0v-9h9" fill="none" stroke="#818cf8" stroke-width="1.7"/><text x="78" y="488" class="text body" font-weight="750">Ready to revisit</text><text x="78" y="512" class="indigo small">11 of 18 kanji familiar · 61%</text><text x="78" y="534" class="quiet tiny">Tap to open the capture</text><path d="m339 494 7 7-7 7" fill="none" stroke="#71717a" stroke-width="1.7"/>
+    <rect x="24" y="574" width="342" height="84" rx="15" class="raised"/><use href="#check" x="42" y="600"/><text x="78" y="607" class="text body" font-weight="750">Capture ready</text><text x="78" y="630" class="emerald small">Translation and kanji are ready</text><path d="m339 604 7 7-7 7" fill="none" stroke="#71717a" stroke-width="1.7"/>
+    <text x="195" y="704" text-anchor="middle" class="quiet small">Processing and milestones use this drawer</text>
+  </g>
+
+  <!-- ARROW 2 -->
+  <path d="M1137 525h120" fill="none" stroke="#4338ca" stroke-width="2" stroke-dasharray="5 7"/><path d="m1247 516 12 9-12 9" fill="none" stroke="#818cf8" stroke-width="2"/>
+
+  <!-- 03 SIXTY PERCENT REVISIT -->
+  <text x="1350" y="128" class="indigoPale label">03 · CAPTURE DETAIL · EVERY VISIT</text>
+  <g transform="translate(1350 150)">
+    <use href="#phone-shell"/><use href="#back-control"/>
+    <text x="72" y="43" class="text h2">Capture</text><text x="72" y="63" class="muted tiny">Jun 12, 08:35 · visited today</text>
+    <use href="#station-photo"/><use href="#coverage-61"/>
+    <rect x="26" y="346" width="338" height="56" rx="14" fill="rgba(52,211,153,.08)" stroke="rgba(52,211,153,.22)"/><use href="#check" x="44" y="364"/><text x="78" y="371" class="emerald body" font-weight="750">Previous batch is familiar</text><text x="78" y="390" class="muted tiny">Your next three are ready</text>
+    <text x="26" y="439" class="text h2">Continue this capture</text>
+    <use href="#kanji-chip-electric" x="26" y="456"/><use href="#kanji-chip-operate" x="145" y="456"/><use href="#kanji-chip-turn" x="263" y="456"/>
+    <rect x="26" y="596" width="338" height="52" rx="14" fill="#10b981"/><text x="195" y="628" text-anchor="middle" class="darkText button">Add next 3</text>
+    <text x="195" y="682" text-anchor="middle" class="muted small">First visit uses this same page with the first 3</text>
+  </g>
+
+  <!-- ROW TRANSITION -->
+  <path d="M1545 938v56H255v42" fill="none" stroke="#4338ca" stroke-width="2" stroke-dasharray="5 8"/><path d="m246 1025 9 12 9-12" fill="none" stroke="#818cf8" stroke-width="2"/>
+
+  <!-- 04 FALSE POSITIVE -->
+  <text x="60" y="1048" class="indigoPale label">04 · DETECTED KANJI · CORRECTION</text>
+  <g transform="translate(60 1070)">
+    <use href="#phone-shell"/><use href="#back-control"/>
+    <text x="72" y="43" class="text h2">All detected kanji</text><text x="72" y="63" class="muted tiny">18 active · 1 excluded</text>
+    <use href="#station-photo"/>
+    <rect x="26" y="270" width="338" height="82" rx="15" class="card"/><text x="47" y="309" class="text kanji">米</text><text x="96" y="298" class="text body" font-weight="750">rice</text><text x="96" y="320" class="muted small">Not started · detected once</text><circle cx="337" cy="310" r="19" class="raised"/><circle cx="331" cy="310" r="1.8" fill="#a1a1aa"/><circle cx="337" cy="310" r="1.8" fill="#a1a1aa"/><circle cx="343" cy="310" r="1.8" fill="#a1a1aa"/>
+    <rect x="0" y="0" width="390" height="760" rx="30" fill="rgba(0,0,0,.58)"/>
+    <rect x="0" y="398" width="390" height="362" rx="26 26 30 30" class="card" stroke="rgba(255,255,255,.10)"/><rect x="174" y="412" width="42" height="4" rx="2" fill="#52525b"/>
+    <text x="26" y="462" class="text h1">Not in this photo?</text><text x="26" y="493" class="muted body">Exclude 米 only from this capture.</text><text x="26" y="515" class="muted body">Your global kanji progress will not change.</text>
+    <rect x="26" y="542" width="338" height="70" rx="15" fill="rgba(129,140,248,.08)" stroke="rgba(129,140,248,.20)"/><text x="47" y="588" class="text kanji">米</text><text x="96" y="570" class="indigoPale small" font-weight="800">DETECTED CHARACTER</text><text x="96" y="594" class="text body">rice · コメ</text>
+    <rect x="26" y="632" width="338" height="52" rx="14" fill="#10b981"/><text x="195" y="664" text-anchor="middle" class="darkText button">Exclude from this capture</text>
+    <text x="195" y="719" text-anchor="middle" class="text body" font-weight="750">Keep it</text>
+  </g>
+
+  <!-- ARROW 4 -->
+  <path d="M492 1445h120" fill="none" stroke="#4338ca" stroke-width="2" stroke-dasharray="5 7"/><path d="m602 1436 12 9-12 9" fill="none" stroke="#818cf8" stroke-width="2"/>
+
+  <!-- 05 ONE HUNDRED PERCENT -->
+  <text x="705" y="1048" class="indigoPale label">05 · REVISIT · KANJI COMPLETE</text>
+  <g transform="translate(705 1070)">
+    <use href="#phone-shell"/><use href="#back-control"/>
+    <text x="72" y="43" class="text h2">Capture</text><text x="72" y="63" class="muted tiny">Apr 3, 17:20 · visited today</text>
+    <use href="#station-photo"/><use href="#coverage-100"/>
+    <rect x="26" y="348" width="338" height="126" rx="18" fill="rgba(52,211,153,.08)" stroke="rgba(52,211,153,.22)"/>
+    <circle cx="60" cy="382" r="18" fill="rgba(52,211,153,.14)"/><path d="m51 382 6 6 12-14" fill="none" stroke="#34d399" stroke-width="2.2"/>
+    <text x="90" y="382" class="text h2">Every kanji is familiar</text><text x="48" y="420" class="muted body">Now check the combinations used here.</text><text x="48" y="445" class="emerald small" font-weight="750">Word discovery is available</text>
+    <rect x="26" y="495" width="338" height="58" rx="14" class="raised"/><path d="M48 524h20m-10-10v20" stroke="#818cf8" stroke-width="1.8"/><text x="82" y="529" class="text body" font-weight="750">Reveal translation</text>
+    <rect x="26" y="574" width="338" height="52" rx="14" fill="#10b981"/><text x="195" y="606" text-anchor="middle" class="darkText button">Find new words</text>
+    <text x="195" y="666" text-anchor="middle" class="muted small">Runs once from the captured text</text>
+  </g>
+
+  <!-- ARROW 5 -->
+  <path d="M1137 1445h120" fill="none" stroke="#4338ca" stroke-width="2" stroke-dasharray="5 7"/><path d="m1247 1436 12 9-12 9" fill="none" stroke="#818cf8" stroke-width="2"/>
+
+  <!-- 06 WORD RESULTS -->
+  <text x="1350" y="1048" class="indigoPale label">06 · WORD DISCOVERY · CONFIRM</text>
+  <g transform="translate(1350 1070)">
+    <use href="#phone-shell"/><use href="#back-control"/>
+    <text x="72" y="43" class="text h2">Words in this capture</text><text x="72" y="63" class="muted tiny">Captured Apr 3, 17:20</text>
+    <rect x="26" y="94" width="338" height="70" rx="16" fill="rgba(52,211,153,.08)" stroke="rgba(52,211,153,.20)"/><use href="#check" x="44" y="118"/><text x="78" y="123" class="text body" font-weight="750">2 new combinations</text><text x="78" y="145" class="muted small">4 already in your collection</text>
+    <text x="26" y="202" class="text h2">Selected to learn</text><text x="364" y="202" text-anchor="end" class="indigo small" font-weight="750">2 selected</text>
+    <rect x="26" y="220" width="338" height="124" rx="16" class="card" stroke="rgba(129,140,248,.28)"/><rect x="44" y="242" width="24" height="24" rx="6" fill="#4338ca"/><path d="m50 254 4 4 8-10" fill="none" stroke="#fff" stroke-width="2"/><text x="82" y="251" class="text h2">運転見合わせ</text><text x="82" y="276" class="indigo small">うんてんみあわせ</text><text x="82" y="304" class="muted body">service suspended</text><text x="82" y="326" class="quiet tiny">Seen in line 1</text>
+    <rect x="26" y="358" width="338" height="124" rx="16" class="card" stroke="rgba(129,140,248,.28)"/><rect x="44" y="380" width="24" height="24" rx="6" fill="#4338ca"/><path d="m50 392 4 4 8-10" fill="none" stroke="#fff" stroke-width="2"/><text x="82" y="389" class="text h2">振替輸送</text><text x="82" y="414" class="indigo small">ふりかえゆそう</text><text x="82" y="442" class="muted body">alternative transportation</text><text x="82" y="464" class="quiet tiny">Seen in line 2</text>
+    <rect x="26" y="510" width="338" height="70" rx="15" fill="rgba(255,255,255,.035)"/><text x="48" y="540" class="muted small">Quizzes already exist for one word.</text><text x="48" y="563" class="text small">Only missing quiz content will be generated.</text>
+    <rect x="26" y="606" width="338" height="52" rx="14" fill="#10b981"/><text x="195" y="638" text-anchor="middle" class="darkText button">Learn these 2 words</text>
+    <text x="195" y="704" text-anchor="middle" class="muted small">Nothing is added before confirmation</text>
+  </g>
+</svg>

@@ -154,13 +154,15 @@ backend/src/main/kotlin/com/kanjimasta/
 ├── Main.kt                  # web/photo-job/quiz-job launcher
 ├── Application.kt           # Ktor composition root
 ├── AiRuntime.kt             # shared AI execution composition
-├── core/ai/                 # OpenRouter client, models, and prompts
-├── core/db/                 # Ktorm table definitions and database setup
-├── core/jobs/               # Cloud Run and local process dispatch adapters
-└── modules/
-    ├── photo/               # photo API, claim, execution, and result persistence
-    ├── kanji/               # kanji flows and inline word discovery
-    └── worker/              # bounded quiz execution and regeneration
+├── Routing.kt, Cors.kt, …   # app-wide Ktor plumbing (one file each)
+├── ai/                      # OpenRouter client mechanics, model config, cost ledger
+├── db/                      # Ktorm connection + custom PG types (no table defs)
+├── jobs/                    # Cloud Run and local process dispatch adapters
+├── auth/                    # Supabase JWT and Google Jobs API credentials
+├── photo/                   # photo API, claim, execution, persistence, prompts, tables
+├── kanji/                   # kanji flows, inline word discovery, prompts, tables
+└── quiz/                    # learning-session flows and tables
+    └── generation/          # bounded quiz execution, regeneration, prompts, tables
 ```
 
 See [architecture.md](docs/architecture.md), [test.md](docs/test.md), and

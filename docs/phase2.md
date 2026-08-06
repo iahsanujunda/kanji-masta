@@ -495,7 +495,7 @@ Firebase Console already covers table inspection, function logs, and Auth manage
 ### 2.5.1 Admin Guard (Ktor)
 
 ```kotlin
-// core/auth/AdminGuard.kt
+// auth/AdminGuard.kt
 fun ApplicationCall.requireAdmin() {
     val userId = principal<UserPrincipal>()?.uid
     if (userId != AppConfig.adminUserId) {

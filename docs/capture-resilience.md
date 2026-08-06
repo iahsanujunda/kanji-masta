@@ -230,7 +230,7 @@ Do not store exception messages or provider responses in `failure_code`. Use a b
 set such as `dispatch_failed`, `provider_failed`, `invalid_response`, `callback_failed`,
 `timed_out`, and `unknown`; map those codes to user-facing copy in the frontend.
 
-Update `core/db/Tables.kt` and the photo models for the new fields. Centralize status
+Update `photo/PhotoTables.kt` and the photo models for the new fields. Centralize status
 values in backend code instead of scattering string literals.
 
 Change session lookup to accept the authenticated user ID:
@@ -256,12 +256,12 @@ Update `/api/photo/recent` to include `PROCESSING`, `DONE`, and `FAILED`, while 
 
 - `supabase/migrations/<timestamp>_expand_photo_session_resilience.sql`
 - `supabase/migrations/<timestamp>_normalize_photo_session_status.sql`
-- `backend/src/main/kotlin/com/kanjimasta/core/db/Tables.kt`
-- `backend/src/main/kotlin/com/kanjimasta/modules/photo/PhotoModels.kt`
-- `backend/src/main/kotlin/com/kanjimasta/modules/photo/PhotoRepository.kt`
-- `backend/src/main/kotlin/com/kanjimasta/modules/photo/PhotoService.kt`
-- `backend/src/main/kotlin/com/kanjimasta/modules/photo/PhotoRoutes.kt`
-- `backend/src/main/kotlin/com/kanjimasta/modules/internal/InternalService.kt`
+- `backend/src/main/kotlin/com/kanjimasta/photo/PhotoTables.kt`
+- `backend/src/main/kotlin/com/kanjimasta/photo/PhotoModels.kt`
+- `backend/src/main/kotlin/com/kanjimasta/photo/PhotoRepository.kt`
+- `backend/src/main/kotlin/com/kanjimasta/photo/PhotoService.kt`
+- `backend/src/main/kotlin/com/kanjimasta/photo/PhotoRoutes.kt`
+- `backend/src/main/kotlin/com/kanjimasta/internal/InternalService.kt`
 - `services/ai-worker/app/db.py`
 - `services/ai-worker/app/main.py`
 
@@ -321,9 +321,9 @@ to the next signed-in user.
 - `frontend/src/lib/captureQueue.ts` (new)
 - `frontend/src/hooks/useCaptureQueue.ts` (new)
 - `frontend/src/pages/Capture.tsx`
-- `backend/src/main/kotlin/com/kanjimasta/modules/photo/PhotoModels.kt`
-- `backend/src/main/kotlin/com/kanjimasta/modules/photo/PhotoRepository.kt`
-- `backend/src/main/kotlin/com/kanjimasta/modules/photo/PhotoService.kt`
+- `backend/src/main/kotlin/com/kanjimasta/photo/PhotoModels.kt`
+- `backend/src/main/kotlin/com/kanjimasta/photo/PhotoRepository.kt`
+- `backend/src/main/kotlin/com/kanjimasta/photo/PhotoService.kt`
 
 #### 3. Add stable local-capture and server-scan routes
 

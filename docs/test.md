@@ -53,7 +53,7 @@ Do not add a hard-coded cleanup list when a migration introduces a table. Tests 
 
 [`IsolatedKtorTest.kt`](../backend/src/test/kotlin/com/kanjimasta/support/IsolatedKtorTest.kt) installs only serialization, deterministic bearer authentication, and the selected routes. Inject a mocked service and use it for path parsing, authentication, status, serialization, and command-result mapping. It does not start Docker.
 
-Use [`QuizRoutesTest.kt`](../backend/src/test/kotlin/com/kanjimasta/modules/quiz/QuizRoutesTest.kt) as the reference. Keep business rules out of route tests.
+Use [`QuizRoutesTest.kt`](../backend/src/test/kotlin/com/kanjimasta/quiz/QuizRoutesTest.kt) as the reference. Keep business rules out of route tests.
 
 ### Persistence behavior
 
@@ -65,7 +65,7 @@ Use a service plus its real repository and migrated Postgres when correctness de
 - transaction rollback and committed state;
 - database ordering or query selection.
 
-[`QuizSessionBehaviorTest.kt`](../backend/src/test/kotlin/com/kanjimasta/modules/quiz/QuizSessionBehaviorTest.kt) covers the Phase 3 selection cap, ordered summary semantics, simultaneous starts, and simultaneous answers.
+[`QuizSessionBehaviorTest.kt`](../backend/src/test/kotlin/com/kanjimasta/quiz/QuizSessionBehaviorTest.kt) covers the Phase 3 selection cap, ordered summary semantics, simultaneous starts, and simultaneous answers.
 
 ### Full production application
 
@@ -76,14 +76,14 @@ The older `testModule` harness is retained for broad integration coverage. Its H
 ### Kotlin AI-runtime coverage
 
 AI execution is part of the backend Gradle project and uses the same persistence harness.
-[`OpenRouterClientTest.kt`](../backend/src/test/kotlin/com/kanjimasta/core/ai/OpenRouterClientTest.kt)
+[`OpenRouterClientTest.kt`](../backend/src/test/kotlin/com/kanjimasta/ai/OpenRouterClientTest.kt)
 covers provider request/response behavior with Ktor `MockEngine`.
 [`PhotoAnalysisExecutorIntegrationTest.kt`](../backend/src/test/kotlin/com/kanjimasta/PhotoAnalysisExecutorIntegrationTest.kt),
 [`QuizGenerationWorkerIntegrationTest.kt`](../backend/src/test/kotlin/com/kanjimasta/QuizGenerationWorkerIntegrationTest.kt),
 and [`WordDiscoveryIntegrationTest.kt`](../backend/src/test/kotlin/com/kanjimasta/WordDiscoveryIntegrationTest.kt)
 exercise the shared Ktorm persistence layer against migrated PostgreSQL.
 
-[`LocalJobDispatchTest.kt`](../backend/src/test/kotlin/com/kanjimasta/core/jobs/LocalJobDispatchTest.kt)
+[`LocalJobDispatchTest.kt`](../backend/src/test/kotlin/com/kanjimasta/jobs/LocalJobDispatchTest.kt)
 proves the mandatory local dispatch boundary: authenticated request construction, role/environment
 forwarding, accepted process starts, and explicit rejection when no worker process starts.
 

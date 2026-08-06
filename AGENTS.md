@@ -10,13 +10,15 @@ Max header: 100 chars.
 ## Code Patterns
 
 ### Backend (Ktor + Kotlin)
-- Modules at `backend/src/main/kotlin/com/kanjimasta/modules/{name}/` — Routes, Service, Repository, Models
-- Modules import only from `core/`. Never from each other.
-- All DB access via Ktorm ORM (`org.ktorm.dsl.*`). No raw SQL strings in repositories.
-- Custom PG types in `core/db/PgTypes.kt`: `textArray()`, `uuidArray()`, `pgEnum<T>()`
-- Table definitions in `core/db/Tables.kt` — one `Table<Nothing>` object per table
+- Feature packages directly under `backend/src/main/kotlin/com/kanjimasta/{name}/` — Routes, Service, Repository, Models, Tables
+- Each Ktorm table mapping lives in the `*Tables.kt` of its primary domain/capability package for navigation. Placement does not imply exclusive data ownership; existing cross-feature reads and transactional writes are allowed until the dedicated data-asset modularization refactor.
+- Do not add new imports of another feature's Service/Repository/Routes. New cross-feature behaviour goes through a small interface (port) defined by the consumer and wired in `Application.kt`. Four existing exceptions are allowlisted in `arch/ArchitectureTest.kt` — shrink that list, never grow it.
+- Shared capability packages (each must have ≥2 consumers and zero domain logic): `db/` (DatabaseConfig, PgTypes), `ai/` (OpenRouter mechanics, model config, cost ledger), `jobs/` (dispatchers, job_attempt leases), `auth/`. Single-consumer helpers live inside their consumer (ResendClient → `invite/`, SupabaseStorageSigner → `photo/`).
+- App plumbing as single files at the package root: `Routing.kt`, `Cors.kt`, `Serialization.kt`, `Observability.kt`. `Application.kt` is the only composition root (plus `AiRuntime.kt` for job roles).
+- All DB access via Ktorm ORM (`org.ktorm.dsl.*`). No raw SQL strings in repositories. Custom PG types in `db/PgTypes.kt`: `textArray()`, `uuidArray()`, `pgEnum<T>()`
 - Auth via Supabase JWT (HS256). Provider name: `"supabase"`. Principal: `AuthUser(uid, email)`
 - Services take repository + config via constructor. Wired in `Application.kt`, passed to `configureRouting()`.
+- Tests live in the package of the unit they test; whole-app journey tests at the package root; shared harness in `support/`. Architecture rules enforced by `arch/ArchitectureTest.kt`.
 
 ### Frontend (React + MUI + TypeScript)
 - Import alias: `@/` maps to `src/` — always use `@/components/`, `@/pages/`, `@/lib/`
@@ -48,8 +50,8 @@ Max header: 100 chars.
 ### AI Runtime (Ktor + Kotlin)
 - Lives in the backend Gradle project and ships in the same fat JAR/image as the API.
 - `Main.kt` roles: `web`, `photo-job`, `quiz-job drain`, `quiz-job check-regen`, and local-only `local-dispatcher`.
-- OpenRouter client and prompts live in `core/ai/`; model IDs come from active `ai_model_config`.
-- Photo execution lives in `modules/photo/`; quiz execution in `modules/worker/`; word discovery in `modules/kanji/`.
+- OpenRouter mechanics live in `ai/`; prompts live with their feature (`photo/PhotoPrompts.kt`, `quiz/generation/QuizGenerationPrompts.kt`, `kanji/WordDiscoveryPrompts.kt`); model IDs come from active `ai_model_config`.
+- Photo execution lives in `photo/`; quiz execution in `quiz/generation/`; word discovery in `kanji/`.
 - Durable jobs use `job_attempt` leases/claim tokens and write results directly through Ktorm.
 - Local development always dispatches through the Compose `job-dispatcher`, which starts fresh JVM Job processes; there is no inline fallback.
 - Word discovery remains an inline callable Kotlin service with no automatic product trigger.

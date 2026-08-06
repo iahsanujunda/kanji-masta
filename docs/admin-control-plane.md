@@ -429,13 +429,13 @@ refresh the job when a `409` reports concurrent change.
 
 | File/area | Change |
 |-----------|--------|
-| `backend/.../core/db/Tables.kt` | Add `JobAttemptTable` and `AiModelConfigTable`; map new columns/enums |
-| `backend/.../modules/admin/AdminModels.kt` | Replace quiz-only job DTO with typed unified jobs, attempts, status, model catalog/config DTOs |
-| `backend/.../modules/admin/AdminRepository.kt` | Read photo + quiz jobs, merge/sort, query attempts/config versions; remove destructive retry reset |
-| `backend/.../modules/admin/AdminService.kt` | Add conditional fail/rerun, health, catalog search, and atomic configuration submission |
-| `backend/.../modules/admin/AdminRoutes.kt` | Add status, unified filters/detail/actions, models, and model-config endpoints |
+| `backend/.../jobs/JobTables.kt`, `backend/.../ai/AiTables.kt` | Add `JobAttemptTable` and `AiModelConfigTable`; map new columns/enums |
+| `backend/.../admin/AdminModels.kt` | Replace quiz-only job DTO with typed unified jobs, attempts, status, model catalog/config DTOs |
+| `backend/.../admin/AdminRepository.kt` | Read photo + quiz jobs, merge/sort, query attempts/config versions; remove destructive retry reset |
+| `backend/.../admin/AdminService.kt` | Add conditional fail/rerun, health, catalog search, and atomic configuration submission |
+| `backend/.../admin/AdminRoutes.kt` | Add status, unified filters/detail/actions, models, and model-config endpoints |
 | `backend/.../Application.kt` | Wire catalog/config/job-control dependencies and server-held OpenRouter configuration |
-| `backend/.../core/plugins/Routing.kt` | Pass the expanded Admin service without crossing module boundaries |
+| `backend/.../Routing.kt` | Pass the expanded Admin service without crossing module boundaries |
 | `services/ai-worker/app/ai_client.py` | Build clients from an explicit effective configuration rather than role models read only from env |
 | `services/ai-worker/app/openrouter.py` | Accept snapshotted model IDs; retain API key and runtime options from env |
 | `services/ai-worker/app/db.py` | Claim/finish attempts and load active configuration transactionally |
@@ -449,9 +449,9 @@ refresh the job when a `409` reports concurrent change.
 ### New files/areas
 
 - `supabase/migrations/<timestamp>_admin_control_plane.sql`
-- `backend/src/main/kotlin/com/kanjimasta/core/ai/OpenRouterCatalogClient.kt`
-- `backend/src/main/kotlin/com/kanjimasta/core/ai/AiModelConfigRepository.kt`
-- `backend/src/main/kotlin/com/kanjimasta/core/jobs/JobControlService.kt`
+- `backend/src/main/kotlin/com/kanjimasta/ai/OpenRouterCatalogClient.kt`
+- `backend/src/main/kotlin/com/kanjimasta/ai/AiModelConfigRepository.kt`
+- `backend/src/main/kotlin/com/kanjimasta/jobs/JobControlService.kt`
 - frontend Admin components listed in section 8.1
 - `frontend/src/pages/admin/__tests__/...`
 - `frontend/tests/e2e/admin-control-plane.spec.js`

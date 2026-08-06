@@ -475,7 +475,7 @@ the worker's `/generate-quizzes` HTTP endpoint. These change across the two mile
 - **Milestone 1:** the `/generate-quizzes` HTTP call is removed — quiz generation becomes a
   Kotlin Cloud Run Job dispatched the same way photo analysis already is. The
   metadata-server identity-token flow in
-  [`core/auth/CloudRunAuth.kt`](../backend/src/main/kotlin/com/kanjimasta/core/auth/CloudRunAuth.kt)
+  [`auth/CloudRunAuth.kt`](../backend/src/main/kotlin/com/kanjimasta/auth/CloudRunAuth.kt)
   authenticated calls to the *worker service*; it is removed with that service. Jobs-API
   dispatch still uses the backend's Google service-account credentials.
 - **Milestone 2:** the Jobs and their Jobs-API dispatch are replaced by queue rows drained by
@@ -575,7 +575,7 @@ This is the prerequisite (Phase A). Port, then delete Python:
   abstraction are dropped, not ported** — OpenRouter is the only provider (§1).
 - `prompts.py` → Kotlin string constants/objects.
 - pydantic models → Kotlin data classes / `kotlinx.serialization`.
-- worker queries in `db.py` → Ktorm against the existing `core/db/Tables.kt`.
+- worker queries in `db.py` → Ktorm against the per-feature `*Tables.kt` mappings.
 - `main.py` route handlers → an inline Kotlin word-discovery service plus photo- and
   quiz-execution services shared by Cloud Run Job entrypoints and the later Fly drainer.
 - `photo_job.py` / `callback.py` → claim/execute/direct-write entrypoints. Applying a result

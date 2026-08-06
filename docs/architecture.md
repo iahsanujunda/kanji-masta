@@ -60,25 +60,28 @@ backend/src/main/kotlin/com/kanjimasta/
 ├── Main.kt                    # role dispatch
 ├── Application.kt             # Ktor composition root
 ├── AiRuntime.kt               # shared AI component composition
-├── core/
-│   ├── ai/                    # OpenRouter transport, model config, prompts
-│   ├── auth/                  # Supabase JWT and Google Jobs API credentials
-│   ├── db/                    # Ktorm connection and table definitions
-│   ├── jobs/                  # Cloud Run Job dispatcher
-│   ├── plugins/               # Ktor plugins and route composition
-│   └── storage/               # Supabase signed-photo access
-└── modules/
-    ├── admin/                 # job recovery, costs, model control plane
-    ├── photo/                 # photo API, durable claim, executor, persistence
-    ├── kanji/                 # kanji/word flows and inline word discovery
-    ├── quiz/                  # learning-session selection and answers
-    ├── worker/                # quiz generation and regeneration executor
-    └── ...
+├── Routing.kt, Cors.kt, …     # app-wide Ktor plumbing (one file each at the root)
+├── ai/                        # OpenRouter transport, model config, cost ledger (AiTables.kt)
+├── auth/                      # Supabase JWT and Google Jobs API credentials
+├── db/                        # Ktorm connection and custom PG types (no table defs)
+├── jobs/                      # Cloud Run Job dispatcher + job_attempt table
+├── admin/                     # job recovery, costs, model control plane
+├── internal/                  # legacy callbacks and stale-job cleanup
+├── invite/                    # invites, ResendClient, invite tables
+├── settings/                  # user settings and table
+├── user/                      # user profile flows
+├── photo/                     # photo API, durable claim, executor, persistence, prompts, tables
+├── kanji/                     # kanji/word flows, inline word discovery, prompts, tables
+└── quiz/                      # learning-session selection and answers (QuizTables.kt)
+    └── generation/            # quiz generation and regeneration executor, prompts, tables
 ```
 
-Modules contain Routes, Service, Repository, and Models as appropriate. Modules import shared
-infrastructure from `core`; `Application.kt` and `AiRuntime.kt` are the composition roots.
-Production database access uses Ktorm table definitions from `core/db/Tables.kt`.
+Feature packages contain Routes, Service, Repository, Models, and their `*Tables.kt` as
+appropriate. Each Ktorm table mapping lives in the `*Tables.kt` of its primary domain/capability
+package (organizational placement, not exclusive write ownership); features may read another
+feature's tables/enums but must not import another feature's Service/Repository/Routes.
+`Application.kt` and `AiRuntime.kt` are the composition roots. Boundary rules are enforced by
+`backend/src/test/kotlin/com/kanjimasta/arch/ArchitectureTest.kt`.
 
 ## Photo flow
 
@@ -94,7 +97,8 @@ Production database access uses Ktorm table definitions from `core/db/Tables.kt`
 ```
 
 The browser request returns after durable enqueue and Job dispatch; it never waits for the AI
-call. A local backend with no Cloud Run Job name executes the same Kotlin executor in-process.
+call. Local development always dispatches through the Compose `job-dispatcher`, which starts a
+fresh JVM running the same Kotlin executor; there is no in-process fallback.
 
 ## Kanji, word, and quiz-generation flow
 

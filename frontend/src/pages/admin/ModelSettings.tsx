@@ -7,11 +7,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/lib/api";
 import type { CatalogModel, ModelConfig } from "@/pages/admin/types";
 
-type Workload = "photo_analysis" | "quiz_generation" | "word_discovery";
-type Draft = { photoAnalysisModel: string; quizGenerationModel: string; wordDiscoveryModel: string };
+type Workload = "photo_analysis" | "translation" | "quiz_generation" | "word_discovery";
+type Draft = { photoAnalysisModel: string; translationModel: string; quizGenerationModel: string; wordDiscoveryModel: string };
 
 const workloadCopy: Record<Workload, { label: string; key: keyof Draft }> = {
   photo_analysis: { label: "Photo analysis", key: "photoAnalysisModel" },
+  translation: { label: "Capture translation", key: "translationModel" },
   quiz_generation: { label: "Quiz generation", key: "quizGenerationModel" },
   word_discovery: { label: "Word discovery", key: "wordDiscoveryModel" },
 };
@@ -26,9 +27,10 @@ export default function ModelSettings() {
   const [draftOverride, setDraftOverride] = useState<Draft | null>(null);
   const draft: Draft = draftOverride ?? (source ? {
     photoAnalysisModel: source.photoAnalysisModel,
+    translationModel: source.translationModel ?? source.wordDiscoveryModel,
     quizGenerationModel: source.quizGenerationModel,
     wordDiscoveryModel: source.wordDiscoveryModel,
-  } : { photoAnalysisModel: "", quizGenerationModel: "", wordDiscoveryModel: "" });
+  } : { photoAnalysisModel: "", translationModel: "", quizGenerationModel: "", wordDiscoveryModel: "" });
   const [workload, setWorkload] = useState<Workload | null>(null);
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -99,7 +101,7 @@ export default function ModelSettings() {
         );
       })}
       {configs.isError && <Alert severity="error">Current model configuration is unavailable.</Alert>}
-      {configs.isSuccess && !source && <Alert severity="warning">No active model configuration. Choose all three models, then submit.</Alert>}
+      {configs.isSuccess && !source && <Alert severity="warning">No active model configuration. Choose all four models, then submit.</Alert>}
       {save.isError && <Alert severity="error">{save.error instanceof ApiError && save.error.status === 422 ? "The selected models are not valid." : "The model configuration could not be saved."}</Alert>}
       {save.isSuccess && <Alert severity="success">Model configuration saved.</Alert>}
       <Button

@@ -54,6 +54,16 @@ class PhotoService(
         return dispatchJob(sessionId.toString(), userId)
     }
 
+    suspend fun retryCapture(sessionId: UUID, userId: String): Boolean {
+        val session = photoRepository.getSession(sessionId, userId) ?: return false
+        val imageUrl = if (!session.storagePath.isNullOrBlank() && storageSigner != null) {
+            storageSigner.signPhoto(session.storagePath) ?: return false
+        } else session.imageUrl
+        if (!photoRepository.prepareUserRetry(sessionId, userId)) return false
+        photoRepository.updateImageUrl(sessionId, userId, imageUrl)
+        return dispatchJob(sessionId.toString(), userId)
+    }
+
     private suspend fun dispatchJob(sessionId: String, userId: String): Boolean {
         val accepted = jobDispatcher.dispatch(mapOf("PHOTO_SESSION_ID" to sessionId))
         if (!accepted) {
@@ -178,6 +188,111 @@ class PhotoService(
         photoRepository.markActivitySeen(userId, boundedWatermark)
     }
 
+    fun getCaptures(userId: String, sort: String, direction: String): CaptureListResponse {
+        require(sort in setOf("recent", "familiarity", "visited")) { "Invalid capture sort" }
+        require(direction in setOf("asc", "desc")) { "Invalid capture direction" }
+        val captures = photoRepository.getCaptureSessions(userId).map { session ->
+            val kanji = photoRepository.getCaptureKanji(UUID.fromString(session.id), userId).orEmpty()
+                .filter { it.excludedAt == null }
+            val familiar = kanji.count { (it.familiarity ?: 0) >= 5 }
+            CaptureSummary(
+                sessionId = session.id,
+                label = captureLabel(session),
+                storagePath = session.storagePath,
+                status = captureStatus(session),
+                createdAt = session.createdAt?.toString().orEmpty(),
+                readyAt = session.readyAt?.toString(),
+                lastRevisitedAt = session.lastRevisitedAt?.toString(),
+                familiarKanji = familiar,
+                totalKanji = kanji.size,
+                coveragePercent = coveragePercent(familiar, kanji.size),
+                translationAvailable = !session.translation.isNullOrBlank(),
+            )
+        }
+        val comparator = when (sort) {
+            "familiarity" -> compareBy<CaptureSummary> { it.coveragePercent == null }
+                .thenBy { it.coveragePercent ?: 0 }
+                .thenBy { it.createdAt }
+            "visited" -> compareBy<CaptureSummary> { it.lastRevisitedAt == null }
+                .thenBy { it.lastRevisitedAt ?: "" }
+                .thenBy { it.createdAt }
+            else -> compareBy<CaptureSummary> { it.createdAt }.thenBy { it.sessionId }
+        }
+        val ordered = if (direction == "asc") {
+            if (sort == "visited") captures.sortedWith(compareBy<CaptureSummary> { it.lastRevisitedAt != null }
+                .thenBy { it.lastRevisitedAt ?: "" }.thenBy { it.createdAt })
+            else captures.sortedWith(comparator)
+        } else {
+            when (sort) {
+                "familiarity" -> captures.sortedWith(compareBy<CaptureSummary> { it.coveragePercent == null }
+                    .thenByDescending { it.coveragePercent ?: 0 }.thenByDescending { it.createdAt })
+                "visited" -> captures.sortedWith(compareBy<CaptureSummary> { it.lastRevisitedAt == null }
+                    .thenByDescending { it.lastRevisitedAt ?: "" }.thenByDescending { it.createdAt })
+                else -> captures.sortedWith(comparator.reversed())
+            }
+        }
+        return CaptureListResponse(ordered)
+    }
+
+    fun getCapture(userId: String, sessionId: UUID): CaptureDetail? {
+        val session = photoRepository.getSession(sessionId, userId) ?: return null
+        val rows = photoRepository.getCaptureKanji(sessionId, userId) ?: return null
+        val active = rows.filter { it.excludedAt == null }
+        val familiar = active.count { (it.familiarity ?: 0) >= 5 }
+        val gateSatisfied = !photoRepository.hasIncompleteCaptureLearningBatch(sessionId, userId)
+        val recommended = if (gateSatisfied) {
+            active.filter { it.familiarity == null }.take(3).map { it.kanjiMasterId }.toSet()
+        } else emptySet()
+        return CaptureDetail(
+            sessionId = session.id,
+            label = captureLabel(session),
+            storagePath = session.storagePath,
+            status = captureStatus(session),
+            failureCode = session.failureCode,
+            createdAt = session.createdAt?.toString().orEmpty(),
+            fullText = session.fullText,
+            translation = session.translation,
+            translationLanguage = session.translationLanguage ?: "en",
+            familiarKanji = familiar,
+            totalKanji = active.size,
+            coveragePercent = coveragePercent(familiar, active.size),
+            batchGateSatisfied = gateSatisfied,
+            kanji = rows.map { row ->
+                val excluded = row.excludedAt != null
+                val state = when {
+                    excluded -> "EXCLUDED"
+                    (row.familiarity ?: 0) >= 5 -> "FAMILIAR"
+                    row.familiarity != null -> "LEARNING"
+                    else -> "NOT_STARTED"
+                }
+                CaptureKanjiItem(
+                    kanjiMasterId = row.kanjiMasterId.toString(),
+                    character = row.character,
+                    onyomi = row.onyomi,
+                    kunyomi = row.kunyomi,
+                    meanings = row.meanings,
+                    whyUseful = row.whyUseful,
+                    familiarity = row.familiarity,
+                    learningState = state,
+                    selectable = !excluded && row.familiarity == null,
+                    recommendedNext = row.kanjiMasterId in recommended,
+                    excluded = excluded,
+                )
+            },
+        )
+    }
+
+    fun setCaptureKanjiExcluded(userId: String, sessionId: UUID, kanjiId: UUID, excluded: Boolean): CaptureDetail? {
+        if (!photoRepository.setKanjiExcluded(sessionId, kanjiId, userId, excluded)) return null
+        return getCapture(userId, sessionId)
+    }
+
+    fun markCaptureRevisited(userId: String, sessionId: UUID): MarkCaptureRevisitedResponse? {
+        val now = Instant.now()
+        if (!photoRepository.markRevisited(sessionId, userId, now)) return null
+        return MarkCaptureRevisitedResponse(now.toString())
+    }
+
     private fun kanjiCount(session: PhotoSessionRow): Int? {
         if (session.status != PhotoSessionStatus.DONE || session.rawAiResponse == null) return null
         return try {
@@ -186,6 +301,22 @@ class PhotoService(
             null
         }
     }
+
+    private fun captureStatus(session: PhotoSessionRow): String = when {
+        session.processingStatus == "READY" || session.status in setOf(PhotoSessionStatus.DONE, PhotoSessionStatus.INGESTED) -> "ready"
+        session.processingStatus == "NEEDS_ATTENTION" || session.status == PhotoSessionStatus.FAILED -> "needs_attention"
+        else -> "processing"
+    }
+
+    private fun captureLabel(session: PhotoSessionRow): String = session.fullText
+        ?.lineSequence()
+        ?.map(String::trim)
+        ?.firstOrNull(String::isNotBlank)
+        ?.take(80)
+        ?: session.createdAt?.toString().orEmpty()
+
+    private fun coveragePercent(familiar: Int, total: Int): Int? =
+        if (total == 0) null else ((familiar * 100.0) / total).toInt()
 
     private fun encodeActivityCursor(createdAt: Instant, id: UUID): String =
         Base64.getUrlEncoder().withoutPadding()

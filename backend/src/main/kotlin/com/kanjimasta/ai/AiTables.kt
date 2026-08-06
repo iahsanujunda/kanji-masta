@@ -9,6 +9,7 @@ object AiModelConfigTable : Table<Nothing>("ai_model_config") {
     val photoAnalysisModel = text("photo_analysis_model")
     val quizGenerationModel = text("quiz_generation_model")
     val wordDiscoveryModel = text("word_discovery_model")
+    val translationModel = text("translation_model")
     val validationStatus = text("validation_status")
     val failureCode = text("failure_code")
     val createdBy = text("created_by")

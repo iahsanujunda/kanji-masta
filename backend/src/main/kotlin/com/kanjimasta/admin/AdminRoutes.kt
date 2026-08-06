@@ -45,7 +45,7 @@ fun Route.adminRoutes(adminService: AdminService, adminUserId: String) {
             requireAdmin(adminUserId) ?: return@get
             val workload = call.request.queryParameters["workload"]
                 ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing workload"))
-            if (workload !in setOf("photo_analysis", "quiz_generation", "word_discovery")) {
+            if (workload !in setOf("photo_analysis", "translation", "quiz_generation", "word_discovery")) {
                 return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid workload"))
             }
             val response = runCatching { adminService.searchModels(workload, call.request.queryParameters["q"]) }

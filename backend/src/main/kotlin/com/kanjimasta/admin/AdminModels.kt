@@ -11,11 +11,13 @@ data class ModelConfigRequest(
     val photoAnalysisModel: String,
     val quizGenerationModel: String,
     val wordDiscoveryModel: String,
+    val translationModel: String = wordDiscoveryModel,
 ) {
     fun asWorkloads(): Map<String, String> = mapOf(
         "photo_analysis" to photoAnalysisModel,
         "quiz_generation" to quizGenerationModel,
         "word_discovery" to wordDiscoveryModel,
+        "translation" to translationModel,
     )
 }
 
@@ -26,6 +28,7 @@ data class ModelConfigItem(
     val photoAnalysisModel: String,
     val quizGenerationModel: String,
     val wordDiscoveryModel: String,
+    val translationModel: String,
     val validationStatus: String,
     val failureCode: String? = null,
     val createdBy: String,

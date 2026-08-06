@@ -34,7 +34,7 @@ describe("CaptureQueue", () => {
     await saveLocalCapture(capture("needs-auth", 2));
     await saveLocalCapture(capture("failed", 3));
 
-    renderWithProviders(<CaptureQueue />, { route: "/captures" });
+    renderWithProviders(<CaptureQueue />, { route: "/capture-queue" });
 
     expect(await screen.findByText("4 photos saved")).toBeInTheDocument();
     expect(screen.getByText("Waiting")).toBeInTheDocument();
@@ -47,7 +47,7 @@ describe("CaptureQueue", () => {
 
   it("requires confirmation before deleting the only unowned photo", async () => {
     await saveLocalCapture(capture("pending", 0));
-    renderWithProviders(<CaptureQueue />, { route: "/captures" });
+    renderWithProviders(<CaptureQueue />, { route: "/capture-queue" });
     await screen.findByText("1 photo saved");
 
     await userEvent.click(screen.getByRole("button", { name: "Remove saved photo" }));

@@ -7,6 +7,7 @@ data class ActiveAiModelConfig(
     val photoAnalysisModel: String,
     val quizGenerationModel: String,
     val wordDiscoveryModel: String,
+    val translationModel: String,
 )
 
 data class AiResult(

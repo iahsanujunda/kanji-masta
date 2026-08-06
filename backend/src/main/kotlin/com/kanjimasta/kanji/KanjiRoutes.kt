@@ -13,7 +13,12 @@ fun Route.kanjiRoutes(kanjiService: KanjiService, settingsRepository: SettingsRe
         post("/session") {
             val user = call.principal<AuthUser>()!!
             val request = call.receive<SaveSessionRequest>()
-            kanjiService.saveSession(user.uid, request)
+            runCatching { kanjiService.saveSession(user.uid, request) }.getOrElse { error ->
+                if (error is IllegalArgumentException) {
+                    return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to (error.message ?: "Invalid capture selection")))
+                }
+                throw error
+            }
             call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
         }
 

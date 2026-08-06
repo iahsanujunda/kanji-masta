@@ -40,7 +40,7 @@ describe("capture resilience routes", () => {
     renderWithProviders(
       <Routes>
         <Route path="/capture" element={<><Capture /><LocationProbe /></>} />
-        <Route path="/captures/:clientCaptureId" element={<><div>You can close the app</div><LocationProbe /></>} />
+        <Route path="/capture-queue/:clientCaptureId" element={<><div>You can close the app</div><LocationProbe /></>} />
       </Routes>,
       { route: "/capture" },
     );
@@ -54,7 +54,7 @@ describe("capture resilience routes", () => {
     await waitFor(() => expect(saveLocalCapture).toHaveBeenCalledOnce());
     await act(async () => commit());
     expect(await screen.findByText("You can close the app")).toBeInTheDocument();
-    expect(screen.getByTestId("location").textContent).toMatch(/^\/captures\//);
+    expect(screen.getByTestId("location").textContent).toMatch(/^\/capture-queue\//);
   });
 
   it("keeps unsafe copy and offers Retry when IndexedDB rejects the photo", async () => {
@@ -75,7 +75,7 @@ describe("capture resilience routes", () => {
     renderWithProviders(
       <Routes>
         <Route path="/capture" element={<Capture />} />
-        <Route path="/captures" element={<div>Queue management</div>} />
+        <Route path="/capture-queue" element={<div>Queue management</div>} />
       </Routes>,
       { route: "/capture" },
     );
@@ -99,8 +99,8 @@ describe("capture resilience routes", () => {
     });
 
     renderWithProviders(
-      <Routes><Route path="/captures/:clientCaptureId" element={<LocalCaptureDetail />} /></Routes>,
-      { route: `/captures/${id}` },
+      <Routes><Route path="/capture-queue/:clientCaptureId" element={<LocalCaptureDetail />} /></Routes>,
+      { route: `/capture-queue/${id}` },
     );
 
     expect(await screen.findByText("Analysing")).toBeInTheDocument();
@@ -120,14 +120,14 @@ describe("capture resilience routes", () => {
     });
     renderWithProviders(
       <Routes>
-        <Route path="/captures/:clientCaptureId" element={<><LocalCaptureDetail /><LocationProbe /></>} />
-        <Route path="/scans/:sessionId" element={<><div>Server scan</div><LocationProbe /></>} />
+        <Route path="/capture-queue/:clientCaptureId" element={<><LocalCaptureDetail /><LocationProbe /></>} />
+        <Route path="/captures/:sessionId" element={<><div>Server capture</div><LocationProbe /></>} />
       </Routes>,
-      { route: `/captures/${id}` },
+      { route: `/capture-queue/${id}` },
     );
 
-    expect(await screen.findByText("Server scan")).toBeInTheDocument();
-    expect(screen.getByTestId("location")).toHaveTextContent("/scans/accepted-session");
+    expect(await screen.findByText("Server capture")).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/captures/accepted-session");
   });
 
   it("loads a completed scan from its URL without navigation state", async () => {

@@ -48,7 +48,7 @@ export default function CaptureQueue() {
 
   return (
     <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto" }}>
-      <PageHeader title="Saved photos" backTo="/home" />
+      <PageHeader title="Saved photos" subtitle="Waiting to reach the server" backTo="/home" />
       <Box sx={{ px: { xs: 2, sm: 3 }, pb: 6 }}>
         <Paper
           variant="outlined"
@@ -147,7 +147,7 @@ function QueueCaptureCard({ capture, onDelete }: { capture: LocalCapture; onDele
       <IconButton aria-label="Remove saved photo" onClick={onDelete} sx={{ width: 44, height: 44, color: "text.secondary" }}>
         <DeleteOutlineIcon />
       </IconButton>
-      <IconButton aria-label="Open saved photo" onClick={() => navigate(`/captures/${capture.id}`)} sx={{ width: 44, height: 44 }}>
+      <IconButton aria-label="Open saved photo" onClick={() => navigate(`/capture-queue/${capture.id}`)} sx={{ width: 44, height: 44 }}>
         <ChevronRightIcon />
       </IconButton>
     </Paper>

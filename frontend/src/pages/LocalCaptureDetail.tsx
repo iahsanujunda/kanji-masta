@@ -32,7 +32,7 @@ export default function LocalCaptureDetail() {
 
   useEffect(() => {
     if (!capture?.sessionId || capture.status !== "server-owned") return;
-    navigate(`/scans/${capture.sessionId}`, { replace: true });
+    navigate(`/captures/${capture.sessionId}`, { replace: true });
     void deleteLocalCapture(capture.id);
   }, [capture, navigate]);
 

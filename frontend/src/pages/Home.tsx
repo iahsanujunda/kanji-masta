@@ -16,6 +16,7 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CameraAltIcon from "@mui/icons-material/CameraAlt";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
 import TranslateIcon from "@mui/icons-material/Translate";
+import CollectionsOutlinedIcon from "@mui/icons-material/CollectionsOutlined";
 import LightbulbOutlinedIcon from "@mui/icons-material/LightbulbOutlined";
 import SpaIcon from "@mui/icons-material/Spa";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
@@ -388,6 +389,24 @@ export default function Home() {
               <Typography variant="body2" color="text.secondary">
                 {loading || summaryUnavailable ? "–" : wordCount} saved words
               </Typography>
+            </Box>
+          </Box>
+          <ChevronRightIcon sx={{ color: "text.disabled" }} />
+        </Paper>
+
+        {/* Permanent capture gallery entry. Processing remains in Activity. */}
+        <Paper
+          variant="outlined"
+          onClick={() => navigate("/captures")}
+          sx={{ borderRadius: 4, p: 2.5, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", "&:hover": { bgcolor: "action.hover" } }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <Box sx={{ bgcolor: "rgba(67,56,202,0.15)", p: 1.5, borderRadius: 3, display: "flex" }}>
+              <CollectionsOutlinedIcon sx={{ color: "#818cf8" }} />
+            </Box>
+            <Box>
+              <Typography fontWeight="bold">Captures</Typography>
+              <Typography variant="body2" color="text.secondary">Revisit photos, translations, and kanji</Typography>
             </Box>
           </Box>
           <ChevronRightIcon sx={{ color: "text.disabled" }} />

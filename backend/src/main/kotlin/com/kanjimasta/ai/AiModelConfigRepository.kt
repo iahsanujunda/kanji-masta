@@ -11,6 +11,7 @@ class AiModelConfigRepository(private val db: Database) {
             AiModelConfigTable.photoAnalysisModel,
             AiModelConfigTable.quizGenerationModel,
             AiModelConfigTable.wordDiscoveryModel,
+            AiModelConfigTable.translationModel,
         )
         .where {
             (AiModelConfigTable.status eq "active") and
@@ -23,6 +24,7 @@ class AiModelConfigRepository(private val db: Database) {
                 photoAnalysisModel = row[AiModelConfigTable.photoAnalysisModel].orEmpty(),
                 quizGenerationModel = row[AiModelConfigTable.quizGenerationModel].orEmpty(),
                 wordDiscoveryModel = row[AiModelConfigTable.wordDiscoveryModel].orEmpty(),
+                translationModel = row[AiModelConfigTable.translationModel].orEmpty(),
             )
         }
         .firstOrNull()

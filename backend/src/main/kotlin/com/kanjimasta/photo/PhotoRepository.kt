@@ -2,6 +2,8 @@ package com.kanjimasta.photo
 
 import com.kanjimasta.ai.AiModelConfigRepository
 import com.kanjimasta.jobs.JobAttemptTable
+import com.kanjimasta.kanji.KanjiMasterTable
+import com.kanjimasta.kanji.UserKanjiTable
 import com.kanjimasta.photo.PhotoSessionTable
 import com.kanjimasta.photo.PhotoSessionStatus
 import com.kanjimasta.photo.UserPhotoActivityStateTable
@@ -29,6 +31,7 @@ class PhotoRepository(private val db: Database) {
                 if (storagePath != null) set(it.storagePath, storagePath)
             }
             createInitialAttempt(checkNotNull(insertedId) { "Photo session insert did not return an id" })
+            createCaptureTasks(insertedId)
             return@useTransaction PhotoSessionCreation(insertedId.toString(), created = true, shouldDispatch = true)
         }
 
@@ -46,7 +49,10 @@ class PhotoRepository(private val db: Database) {
             }
         } ?: error("Photo session upsert did not return an id")
         val created = returnedId == id
-        if (created) createInitialAttempt(returnedId)
+        if (created) {
+            createInitialAttempt(returnedId)
+            createCaptureTasks(returnedId)
+        }
         val shouldDispatch = created || db.from(PhotoSessionTable)
             .select(PhotoSessionTable.status, PhotoSessionTable.attempts)
             .where { PhotoSessionTable.id eq returnedId }
@@ -73,6 +79,58 @@ class PhotoRepository(private val db: Database) {
         }
     }
 
+    private fun createCaptureTasks(sessionId: UUID) {
+        db.insert(PhotoSessionTaskTable) {
+            set(it.id, UUID.randomUUID())
+            set(it.photoSessionId, sessionId)
+            set(it.taskType, "VISUAL_ANALYSIS")
+            set(it.status, "PENDING")
+            set(it.requiredForReady, true)
+            set(it.pipelineVersion, 2)
+        }
+        db.insert(PhotoSessionTaskTable) {
+            set(it.id, UUID.randomUUID())
+            set(it.photoSessionId, sessionId)
+            set(it.taskType, "TRANSLATION")
+            set(it.status, "BLOCKED")
+            set(it.requiredForReady, true)
+            set(it.pipelineVersion, 2)
+        }
+    }
+
+    fun validateCaptureSelection(sessionId: UUID, userId: String, kanjiIds: Set<UUID>): Boolean {
+        if (kanjiIds.isEmpty()) return true
+        val matching = db.from(PhotoSessionKanjiTable)
+            .innerJoin(PhotoSessionTable, on = PhotoSessionKanjiTable.photoSessionId eq PhotoSessionTable.id)
+            .select(PhotoSessionKanjiTable.kanjiMasterId)
+            .where {
+                (PhotoSessionKanjiTable.photoSessionId eq sessionId) and
+                    (PhotoSessionTable.userId eq userId) and
+                    PhotoSessionKanjiTable.excludedAt.isNull() and
+                    (PhotoSessionKanjiTable.kanjiMasterId inList kanjiIds.toList())
+            }
+            .mapNotNull { it[PhotoSessionKanjiTable.kanjiMasterId] }
+            .toSet()
+        return matching == kanjiIds
+    }
+
+    fun appendSelectionDecision(
+        sessionId: UUID,
+        kanjiId: UUID,
+        batchId: UUID,
+        decision: String,
+        source: String,
+    ) {
+        db.insert(PhotoSessionKanjiDecisionTable) {
+            set(it.id, UUID.randomUUID())
+            set(it.photoSessionId, sessionId)
+            set(it.kanjiMasterId, kanjiId)
+            set(it.batchId, batchId)
+            set(it.decision, decision)
+            set(it.decisionSource, source)
+        }
+    }
+
     fun getSession(sessionId: UUID, userId: String): PhotoSessionRow? =
         db.from(PhotoSessionTable)
             .select()
@@ -90,6 +148,133 @@ class PhotoRepository(private val db: Database) {
             .orderBy(PhotoSessionTable.createdAt.desc())
             .limit(10)
             .map(::toPhotoSessionRow)
+
+    fun getCaptureSessions(userId: String): List<PhotoSessionRow> =
+        db.from(PhotoSessionTable)
+            .select()
+            .where { PhotoSessionTable.userId eq userId }
+            .orderBy(PhotoSessionTable.createdAt.desc(), PhotoSessionTable.id.desc())
+            .map(::toPhotoSessionRow)
+
+    fun getCaptureKanji(sessionId: UUID, userId: String): List<CaptureKanjiRow>? {
+        val owned = db.from(PhotoSessionTable)
+            .select(PhotoSessionTable.id)
+            .where { (PhotoSessionTable.id eq sessionId) and (PhotoSessionTable.userId eq userId) }
+            .limit(1)
+            .map { true }
+            .firstOrNull() == true
+        if (!owned) return null
+
+        return db.from(PhotoSessionKanjiTable)
+            .innerJoin(KanjiMasterTable, on = PhotoSessionKanjiTable.kanjiMasterId eq KanjiMasterTable.id)
+            .leftJoin(
+                UserKanjiTable,
+                on = (UserKanjiTable.kanjiId eq PhotoSessionKanjiTable.kanjiMasterId) and
+                    (UserKanjiTable.userId eq userId),
+            )
+            .select(
+                PhotoSessionKanjiTable.kanjiMasterId,
+                PhotoSessionKanjiTable.firstSeenOrder,
+                PhotoSessionKanjiTable.recommendationRank,
+                PhotoSessionKanjiTable.whyUseful,
+                PhotoSessionKanjiTable.excludedAt,
+                KanjiMasterTable.character,
+                KanjiMasterTable.onyomi,
+                KanjiMasterTable.kunyomi,
+                KanjiMasterTable.meanings,
+                KanjiMasterTable.frequency,
+                UserKanjiTable.familiarity,
+            )
+            .where { PhotoSessionKanjiTable.photoSessionId eq sessionId }
+            .orderBy(
+                PhotoSessionKanjiTable.recommendationRank.asc(),
+                KanjiMasterTable.frequency.asc(),
+                PhotoSessionKanjiTable.firstSeenOrder.asc(),
+                PhotoSessionKanjiTable.kanjiMasterId.asc(),
+            )
+            .map { row ->
+                CaptureKanjiRow(
+                    kanjiMasterId = row[PhotoSessionKanjiTable.kanjiMasterId]!!,
+                    character = row[KanjiMasterTable.character].orEmpty(),
+                    onyomi = row[KanjiMasterTable.onyomi].orEmpty(),
+                    kunyomi = row[KanjiMasterTable.kunyomi].orEmpty(),
+                    meanings = row[KanjiMasterTable.meanings].orEmpty(),
+                    whyUseful = row[PhotoSessionKanjiTable.whyUseful].orEmpty(),
+                    familiarity = row[UserKanjiTable.familiarity],
+                    excludedAt = row[PhotoSessionKanjiTable.excludedAt],
+                )
+            }
+    }
+
+    fun hasIncompleteCaptureLearningBatch(sessionId: UUID, userId: String): Boolean =
+        db.from(PhotoSessionKanjiDecisionTable)
+            .innerJoin(
+                PhotoSessionKanjiTable,
+                on = (PhotoSessionKanjiTable.photoSessionId eq PhotoSessionKanjiDecisionTable.photoSessionId) and
+                    (PhotoSessionKanjiTable.kanjiMasterId eq PhotoSessionKanjiDecisionTable.kanjiMasterId),
+            )
+            .leftJoin(
+                UserKanjiTable,
+                on = (UserKanjiTable.kanjiId eq PhotoSessionKanjiDecisionTable.kanjiMasterId) and
+                    (UserKanjiTable.userId eq userId),
+            )
+            .select(PhotoSessionKanjiDecisionTable.id)
+            .where {
+                (PhotoSessionKanjiDecisionTable.photoSessionId eq sessionId) and
+                    (PhotoSessionKanjiDecisionTable.decision eq "LEARNING") and
+                    PhotoSessionKanjiTable.excludedAt.isNull() and
+                    ((UserKanjiTable.familiarity.isNull()) or (UserKanjiTable.familiarity less 5))
+            }
+            .limit(1)
+            .map { true }
+            .firstOrNull() == true
+
+    fun hasCaptureSelectionDecisions(sessionId: UUID): Boolean =
+        db.from(PhotoSessionKanjiDecisionTable)
+            .select(PhotoSessionKanjiDecisionTable.id)
+            .where {
+                (PhotoSessionKanjiDecisionTable.photoSessionId eq sessionId) and
+                    (PhotoSessionKanjiDecisionTable.decision inList listOf("LEARNING", "FAMILIAR"))
+            }
+            .limit(1)
+            .map { true }
+            .firstOrNull() == true
+
+    fun setKanjiExcluded(sessionId: UUID, kanjiId: UUID, userId: String, excluded: Boolean): Boolean =
+        db.useTransaction {
+            val belongs = db.from(PhotoSessionKanjiTable)
+                .innerJoin(PhotoSessionTable, on = PhotoSessionKanjiTable.photoSessionId eq PhotoSessionTable.id)
+                .select(PhotoSessionKanjiTable.kanjiMasterId)
+                .where {
+                    (PhotoSessionKanjiTable.photoSessionId eq sessionId) and
+                        (PhotoSessionKanjiTable.kanjiMasterId eq kanjiId) and
+                        (PhotoSessionTable.userId eq userId)
+                }
+                .limit(1)
+                .map { true }
+                .firstOrNull() == true
+            if (!belongs) return@useTransaction false
+            val changedAt = Instant.now()
+            db.update(PhotoSessionKanjiTable) {
+                set(it.excludedAt, if (excluded) changedAt else null)
+                where { (it.photoSessionId eq sessionId) and (it.kanjiMasterId eq kanjiId) }
+            }
+            db.insert(PhotoSessionKanjiDecisionTable) {
+                set(it.id, UUID.randomUUID())
+                set(it.photoSessionId, sessionId)
+                set(it.kanjiMasterId, kanjiId)
+                set(it.batchId, UUID.randomUUID())
+                set(it.decision, if (excluded) "EXCLUDED_FALSE_POSITIVE" else "RESTORED")
+                set(it.decisionSource, "REVISIT")
+            }
+            true
+        }
+
+    fun markRevisited(sessionId: UUID, userId: String, revisitedAt: Instant): Boolean =
+        db.update(PhotoSessionTable) {
+            set(it.lastRevisitedAt, revisitedAt)
+            where { (it.id eq sessionId) and (it.userId eq userId) }
+        } == 1
 
     fun getActivitySessions(
         userId: String,
@@ -205,6 +390,58 @@ class PhotoRepository(private val db: Database) {
         }
     }
 
+    fun prepareUserRetry(sessionId: UUID, userId: String): Boolean = db.useTransaction {
+        val session = db.from(PhotoSessionTable)
+            .select(PhotoSessionTable.status, PhotoSessionTable.attempts)
+            .where { (PhotoSessionTable.id eq sessionId) and (PhotoSessionTable.userId eq userId) }
+            .map { (it[PhotoSessionTable.status].orEmpty()) to (it[PhotoSessionTable.attempts] ?: 0) }
+            .firstOrNull() ?: return@useTransaction false
+        if (session.first !in setOf("FAILED", "ERROR")) return@useTransaction false
+        val config = AiModelConfigRepository(db).requireActive()
+        val latestAttemptNumber = max(JobAttemptTable.attemptNumber).aliased("latest_photo_attempt")
+        val nextAttemptNumber = (db.from(JobAttemptTable)
+            .select(latestAttemptNumber)
+            .where { (JobAttemptTable.jobType eq "photo_analysis") and (JobAttemptTable.jobId eq sessionId) }
+            .map { it[latestAttemptNumber] }
+            .firstOrNull() ?: session.second) + 1
+        db.insert(JobAttemptTable) {
+            set(it.id, UUID.randomUUID())
+            set(it.jobType, "photo_analysis")
+            set(it.jobId, sessionId)
+            set(it.attemptNumber, nextAttemptNumber)
+            set(it.status, "pending")
+            set(it.trigger, "platform_retry")
+            set(it.modelConfigVersion, config.version)
+            set(it.modelId, config.photoAnalysisModel)
+            set(it.createdBy, userId)
+        }
+        db.update(PhotoSessionTable) {
+            set(it.status, PhotoSessionStatus.PROCESSING.name)
+            set(it.processingStatus, "PROCESSING")
+            set(it.failureCode, null)
+            where { it.id eq sessionId }
+        }
+        db.update(PhotoSessionTaskTable) {
+            set(it.status, "PENDING")
+            set(it.failureCode, null)
+            set(it.finishedAt, null)
+            where {
+                (it.photoSessionId eq sessionId) and
+                    (it.taskType eq "VISUAL_ANALYSIS")
+            }
+        }
+        db.update(PhotoSessionTaskTable) {
+            set(it.status, "BLOCKED")
+            set(it.failureCode, null)
+            set(it.finishedAt, null)
+            where {
+                (it.photoSessionId eq sessionId) and
+                    (it.taskType eq "TRANSLATION")
+            }
+        }
+        true
+    }
+
     private fun toPhotoSessionRow(row: QueryRowSet) = PhotoSessionRow(
         id = row[PhotoSessionTable.id].toString(),
         userId = row[PhotoSessionTable.userId] ?: "",
@@ -214,6 +451,13 @@ class PhotoRepository(private val db: Database) {
         costMicrodollars = row[PhotoSessionTable.costMicrodollars],
         storagePath = row[PhotoSessionTable.storagePath],
         failureCode = row[PhotoSessionTable.failureCode],
+        processingStatus = row[PhotoSessionTable.processingStatus],
+        pipelineVersion = row[PhotoSessionTable.pipelineVersion],
+        fullText = row[PhotoSessionTable.fullText],
+        translation = row[PhotoSessionTable.translation],
+        translationLanguage = row[PhotoSessionTable.translationLanguage],
+        readyAt = row[PhotoSessionTable.readyAt],
+        lastRevisitedAt = row[PhotoSessionTable.lastRevisitedAt],
         createdAt = row[PhotoSessionTable.createdAt],
         updatedAt = row[PhotoSessionTable.updatedAt],
     )
@@ -234,6 +478,24 @@ data class PhotoSessionRow(
     val costMicrodollars: Long?,
     val storagePath: String? = null,
     val failureCode: String? = null,
+    val processingStatus: String? = null,
+    val pipelineVersion: Int? = null,
+    val fullText: String? = null,
+    val translation: String? = null,
+    val translationLanguage: String? = null,
+    val readyAt: Instant? = null,
+    val lastRevisitedAt: Instant? = null,
     val createdAt: Instant? = null,
     val updatedAt: Instant? = null,
+)
+
+data class CaptureKanjiRow(
+    val kanjiMasterId: UUID,
+    val character: String,
+    val onyomi: List<String>,
+    val kunyomi: List<String>,
+    val meanings: List<String>,
+    val whyUseful: String,
+    val familiarity: Int?,
+    val excludedAt: Instant?,
 )

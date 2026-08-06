@@ -96,6 +96,7 @@ class OpenRouterCatalogClientTest {
         val result = client.validate(
             mapOf(
                 "photo_analysis" to "vision/model",
+                "translation" to "text/model",
                 "quiz_generation" to "text/model",
                 "word_discovery" to "text/model",
             ),

@@ -57,7 +57,7 @@ export default function Capture() {
         createdAt: new Date().toISOString(),
       });
       const saveDurationMs = performance.now() - saveStartedAt;
-      navigate(`/captures/${clientCaptureId}`, { replace: true });
+      navigate(`/capture-queue/${clientCaptureId}`, { replace: true });
       void recordCaptureSave(user.id, saveDurationMs).catch(() => undefined);
       void requestPersistentCaptureStorage().catch(() => undefined);
     } catch (cause) {
@@ -113,7 +113,7 @@ export default function Capture() {
               <Button
                 fullWidth
                 variant="contained"
-                onClick={() => navigate("/captures")}
+                onClick={() => navigate("/capture-queue")}
                 sx={{ minHeight: 48, bgcolor: "#10b981", color: "#050508", fontWeight: 700, "&:hover": { bgcolor: "#34d399" } }}
               >
                 Manage saved photos

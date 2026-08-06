@@ -9,6 +9,59 @@ import io.ktor.server.routing.*
 import java.util.UUID
 
 fun Route.photoRoutes(photoService: PhotoService) {
+    route("/api/captures") {
+        get {
+            val user = call.principal<AuthUser>()!!
+            val sort = call.request.queryParameters["sort"] ?: "recent"
+            val direction = call.request.queryParameters["direction"] ?: "desc"
+            val result = runCatching { photoService.getCaptures(user.uid, sort, direction) }
+                .getOrElse {
+                    return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid capture sort"))
+                }
+            call.respond(result)
+        }
+
+        get("/{id}") {
+            val user = call.principal<AuthUser>()!!
+            val sessionId = call.parameters["id"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                ?: return@get call.respond(HttpStatusCode.NotFound, mapOf("error" to "Capture not found"))
+            val capture = photoService.getCapture(user.uid, sessionId)
+                ?: return@get call.respond(HttpStatusCode.NotFound, mapOf("error" to "Capture not found"))
+            call.respond(capture)
+        }
+
+        post("/{id}/revisited") {
+            val user = call.principal<AuthUser>()!!
+            val sessionId = call.parameters["id"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                ?: return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "Capture not found"))
+            val result = photoService.markCaptureRevisited(user.uid, sessionId)
+                ?: return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "Capture not found"))
+            call.respond(result)
+        }
+
+        post("/{id}/retry") {
+            val user = call.principal<AuthUser>()!!
+            val sessionId = call.parameters["id"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                ?: return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "Capture not found"))
+            if (!photoService.retryCapture(sessionId, user.uid)) {
+                return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "Capture cannot be retried"))
+            }
+            call.respond(HttpStatusCode.Accepted, mapOf("status" to "processing"))
+        }
+
+        post("/{id}/kanji/{kanjiId}/exclusion") {
+            val user = call.principal<AuthUser>()!!
+            val sessionId = call.parameters["id"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                ?: return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "Capture not found"))
+            val kanjiId = call.parameters["kanjiId"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid kanji id"))
+            val request = call.receive<CaptureKanjiCorrectionRequest>()
+            val result = photoService.setCaptureKanjiExcluded(user.uid, sessionId, kanjiId, request.excluded)
+                ?: return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "Capture kanji not found"))
+            call.respond(result)
+        }
+    }
+
     route("/api/photo") {
         post("/analyze") {
             val user = call.principal<AuthUser>()!!

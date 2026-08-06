@@ -16,6 +16,12 @@ import org.ktorm.support.postgresql.insertOrUpdate
 import org.ktorm.support.postgresql.locking
 import java.time.Instant
 import java.util.UUID
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 data class PhotoAnalysisClaim(
     val sessionId: UUID,
@@ -40,6 +46,8 @@ class PhotoAnalysisRepository(
     private val db: Database,
     private val modelConfigs: AiModelConfigRepository = AiModelConfigRepository(db),
 ) {
+    fun translationModel(): String = modelConfigs.requireActive().translationModel
+
     fun recordProviderCost(claim: PhotoAnalysisClaim, cost: Long) {
         db.useTransaction { recordCost(claim, cost) }
     }
@@ -122,6 +130,16 @@ class PhotoAnalysisRepository(
             set(it.attempts, attempt.attemptNumber)
             where { it.id eq sessionId }
         }
+        db.update(PhotoSessionTaskTable) {
+            set(it.status, "PROCESSING")
+            set(it.claimedBy, claimedBy)
+            set(it.leaseUntil, now.plusSeconds(leaseSeconds))
+            where {
+                (it.photoSessionId eq sessionId) and
+                    (it.taskType eq "VISUAL_ANALYSIS") and
+                    (it.pipelineVersion eq 2)
+            }
+        }
         PhotoAnalysisClaim(
             sessionId = sessionId,
             userId = session.userId,
@@ -157,17 +175,78 @@ class PhotoAnalysisRepository(
             .associateBy { it.character }
     }
 
-    fun complete(claim: PhotoAnalysisClaim, enrichedJson: String, costMicrodollars: Long): Boolean =
+    fun markTranslationProcessing(claim: PhotoAnalysisClaim) {
+        db.useTransaction {
+            if (!ownsActiveClaim(claim)) return@useTransaction
+            db.update(PhotoSessionTaskTable) {
+                set(it.status, "DONE")
+                set(it.finishedAt, Instant.now())
+                where {
+                    (it.photoSessionId eq claim.sessionId) and
+                        (it.taskType eq "VISUAL_ANALYSIS") and
+                        (it.pipelineVersion eq 2)
+                }
+            }
+            db.update(PhotoSessionTaskTable) {
+                set(it.status, "PROCESSING")
+                where {
+                    (it.photoSessionId eq claim.sessionId) and
+                        (it.taskType eq "TRANSLATION") and
+                        (it.pipelineVersion eq 2)
+                }
+            }
+        }
+    }
+
+    fun complete(
+        claim: PhotoAnalysisClaim,
+        fullText: String,
+        translation: String,
+        enrichedJson: String,
+        costMicrodollars: Long,
+    ): Boolean =
         db.useTransaction {
             recordCost(claim, costMicrodollars)
             if (!ownsActiveClaim(claim)) return@useTransaction false
-            val hasResult = enrichedJson.isNotBlank() && enrichedJson != "[]"
+            val hasResult = fullText.isNotBlank() && translation.isNotBlank()
+            if (hasResult) publishKanji(claim.sessionId, enrichedJson)
+            val activeKanji = db.from(PhotoSessionKanjiTable)
+                .select(PhotoSessionKanjiTable.kanjiMasterId)
+                .where {
+                    (PhotoSessionKanjiTable.photoSessionId eq claim.sessionId) and
+                        PhotoSessionKanjiTable.excludedAt.isNull()
+                }
+                .mapNotNull { it[PhotoSessionKanjiTable.kanjiMasterId] }
+            val familiarKanji = if (activeKanji.isEmpty()) 0 else db.from(UserKanjiTable)
+                .select(UserKanjiTable.kanjiId)
+                .where {
+                    (UserKanjiTable.userId eq claim.userId) and
+                        (UserKanjiTable.kanjiId inList activeKanji) and
+                        (UserKanjiTable.familiarity greaterEq 5)
+                }
+                .totalRecordsInAllPages
+            val capturedCoverage = if (activeKanji.isEmpty()) null else familiarKanji.toFloat() / activeKanji.size
             db.update(PhotoSessionTable) {
                 set(it.rawAiResponse, enrichedJson)
                 set(it.status, if (hasResult) PhotoSessionStatus.DONE.name else PhotoSessionStatus.FAILED.name)
+                set(it.processingStatus, if (hasResult) "READY" else "NEEDS_ATTENTION")
+                set(it.fullText, fullText)
+                set(it.translation, translation)
+                set(it.translationLanguage, "en")
+                set(it.readyAt, if (hasResult) Instant.now() else null)
+                set(it.capturedKanjiCoverage, capturedCoverage)
                 set(it.failureCode, if (hasResult) null else PhotoFailureCode.INVALID_RESPONSE)
                 set(it.costMicrodollars, costMicrodollars)
                 where { it.id eq claim.sessionId }
+            }
+            db.update(PhotoSessionTaskTable) {
+                set(it.status, if (hasResult) "DONE" else "FAILED")
+                set(it.finishedAt, Instant.now())
+                where {
+                    (it.photoSessionId eq claim.sessionId) and
+                        (it.taskType eq "TRANSLATION") and
+                        (it.pipelineVersion eq 2)
+                }
             }
             terminalize(claim, if (hasResult) "done" else "failed", if (hasResult) null else PhotoFailureCode.INVALID_RESPONSE)
             hasResult
@@ -179,9 +258,19 @@ class PhotoAnalysisRepository(
             if (!ownsActiveClaim(claim)) return@useTransaction false
             db.update(PhotoSessionTable) {
                 set(it.status, PhotoSessionStatus.FAILED.name)
+                set(it.processingStatus, "NEEDS_ATTENTION")
                 set(it.failureCode, failureCode)
                 if (costMicrodollars > 0) set(it.costMicrodollars, costMicrodollars)
                 where { it.id eq claim.sessionId }
+            }
+            db.update(PhotoSessionTaskTable) {
+                set(it.status, "FAILED")
+                set(it.failureCode, failureCode)
+                set(it.finishedAt, Instant.now())
+                where {
+                    (it.photoSessionId eq claim.sessionId) and
+                        (it.status inList listOf("PENDING", "PROCESSING", "BLOCKED"))
+                }
             }
             terminalize(claim, "failed", failureCode)
             true
@@ -198,6 +287,26 @@ class PhotoAnalysisRepository(
             set(it.costMicrodollars, cost)
             onConflict(it.jobAttemptId) {
                 set(it.costMicrodollars, cost)
+            }
+        }
+    }
+
+    private fun publishKanji(sessionId: UUID, enrichedJson: String) {
+        db.delete(PhotoSessionKanjiTable) { it.photoSessionId eq sessionId }
+        val seen = mutableSetOf<UUID>()
+        Json.parseToJsonElement(enrichedJson).jsonArray.forEachIndexed { index, element ->
+            val item = element.jsonObject
+            val kanjiId = item["kanjiMasterId"]?.jsonPrimitive?.contentOrNull
+                ?.let { value -> runCatching { UUID.fromString(value) }.getOrNull() }
+                ?: return@forEachIndexed
+            if (!seen.add(kanjiId)) return@forEachIndexed
+            db.insert(PhotoSessionKanjiTable) {
+                set(it.photoSessionId, sessionId)
+                set(it.kanjiMasterId, kanjiId)
+                set(it.firstSeenOrder, index)
+                set(it.recommendationRank, item["recommendationRank"]?.jsonPrimitive?.intOrNull ?: index)
+                set(it.whyUseful, item["whyUseful"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                set(it.pipelineVersion, 2)
             }
         }
     }

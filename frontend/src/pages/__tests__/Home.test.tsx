@@ -100,6 +100,15 @@ describe("Home", () => {
     });
   });
 
+  it("offers a gallery entry without duplicating capture processing state", async () => {
+    mockApiFetch.mockResolvedValue(activeSummary);
+    renderHome();
+
+    expect(await screen.findByText("Captures")).toBeInTheDocument();
+    expect(screen.getByText("Revisit photos, translations, and kanji")).toBeInTheDocument();
+    expect(screen.queryByText("Analysing your photo")).not.toBeInTheDocument();
+  });
+
   it("shows a ready session when the collection has content even if onboarding state is stale", async () => {
     mockApiFetch.mockResolvedValue(populatedCollectionWithStaleOnboarding);
     renderHome();

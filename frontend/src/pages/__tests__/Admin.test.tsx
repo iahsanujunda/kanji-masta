@@ -68,7 +68,7 @@ describe("Admin control plane", () => {
 
     expect(modelSettings.compareDocumentPosition(firstJob) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText("vision/current")).toBeInTheDocument();
-    expect(screen.getAllByText("text/current")).toHaveLength(2);
+    expect(screen.getAllByText("text/current")).toHaveLength(3);
   });
 
   it("explains when no database model configuration is active", async () => {
@@ -76,8 +76,8 @@ describe("Admin control plane", () => {
 
     renderWithProviders(<Admin />);
 
-    expect(await screen.findByText("No active model configuration. Choose all three models, then submit.")).toBeInTheDocument();
-    expect(screen.getAllByText("Choose model")).toHaveLength(3);
+    expect(await screen.findByText("No active model configuration. Choose all four models, then submit.")).toBeInTheDocument();
+    expect(screen.getAllByText("Choose model")).toHaveLength(4);
     expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
   });
 
@@ -128,6 +128,7 @@ describe("Admin control plane", () => {
     expect(screen.getByText("qwen/qwen-vision")).toBeInTheDocument();
     expect(mockModelSave).toHaveBeenCalledWith({
       photoAnalysisModel: "qwen/qwen-vision",
+      translationModel: "text/current",
       quizGenerationModel: "text/current",
       wordDiscoveryModel: "text/current",
     });

@@ -37,7 +37,7 @@ class PhotoAnalysisExecutorIntegrationTest : PersistenceTest() {
             userId = "photo-user",
             imageUrl = "https://images.test/photo.jpg",
         )
-        var requestedModel = ""
+        val requestedModels = mutableListOf<String>()
         val http = HttpClient(MockEngine { request ->
             if (request.url.host == "images.test") {
                 respond(
@@ -45,10 +45,16 @@ class PhotoAnalysisExecutorIntegrationTest : PersistenceTest() {
                     headers = headersOf(HttpHeaders.ContentType, ContentType.Image.JPEG.toString()),
                 )
             } else {
-                requestedModel = Json.parseToJsonElement((request.body as TextContent).text)
+                val requestedModel = Json.parseToJsonElement((request.body as TextContent).text)
                     .jsonObject["model"]!!.jsonPrimitive.content
+                requestedModels += requestedModel
+                val content = if (requestedModel == "vision/model") {
+                    "[{\"fullText\":\"本日は運休です\",\"kanji\":[{\"character\":\"日\",\"recommendationRank\":0,\"whyUseful\":\"daily\",\"exampleWords\":[]}]}]"
+                } else {
+                    "[{\"translation\":\"Service is suspended today.\"}]"
+                }
                 respond(
-                    """{"model":"vision/actual","choices":[{"message":{"content":"[{\"character\":\"日\",\"recommended\":true,\"whyUseful\":\"daily\",\"exampleWords\":[]}]"}}],"usage":{"cost":"0.0025"}}""",
+                    """{"model":"$requestedModel","choices":[{"message":{"content":${Json.encodeToString(content)}}}],"usage":{"cost":"0.0025"}}""",
                     headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
                 )
             }
@@ -62,16 +68,21 @@ class PhotoAnalysisExecutorIntegrationTest : PersistenceTest() {
 
         assertTrue(executor.run(UUID.fromString(session.id), claimedBy = "photo-execution"))
 
-        assertEquals("vision/model", requestedModel)
+        assertEquals(listOf("vision/model", "translation/model"), requestedModels)
         val result = db.from(PhotoSessionTable).select()
             .where { PhotoSessionTable.id eq UUID.fromString(session.id) }
             .map { Triple(it[PhotoSessionTable.status], it[PhotoSessionTable.costMicrodollars], it[PhotoSessionTable.rawAiResponse]) }
             .single()
         assertEquals("DONE", result.first)
-        assertEquals(2_500, result.second)
+        assertEquals(5_000, result.second)
         val enriched = Json.parseToJsonElement(result.third!!)
             .jsonArray.single().jsonObject
         assertEquals(kanjiId.toString(), enriched["kanjiMasterId"]?.jsonPrimitive?.content)
+        assertEquals("本日は運休です", db.from(PhotoSessionTable).select(PhotoSessionTable.fullText)
+            .map { it[PhotoSessionTable.fullText] }.single())
+        assertEquals("Service is suspended today.", db.from(PhotoSessionTable).select(PhotoSessionTable.translation)
+            .map { it[PhotoSessionTable.translation] }.single())
+        assertEquals(1, db.from(PhotoSessionKanjiTable).select().totalRecordsInAllPages)
         assertEquals("done", db.from(JobAttemptTable).select(JobAttemptTable.status)
             .map { it[JobAttemptTable.status] }.single())
         assertEquals(1, db.from(UserCostTable).select().totalRecordsInAllPages)
@@ -117,6 +128,7 @@ class PhotoAnalysisExecutorIntegrationTest : PersistenceTest() {
             set(it.photoAnalysisModel, "vision/model")
             set(it.quizGenerationModel, "quiz/model")
             set(it.wordDiscoveryModel, "discovery/model")
+            set(it.translationModel, "translation/model")
             set(it.validationStatus, "passed")
             set(it.createdBy, "test")
         }

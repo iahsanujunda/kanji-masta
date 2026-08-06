@@ -27,7 +27,7 @@ export const adminApi = {
     if (query.trim()) params.set("q", query.trim());
     return apiFetch<{ models: CatalogModel[] }>(`/api/admin/models?${params}`, { signal });
   },
-  saveModelConfig: (body: { photoAnalysisModel: string; quizGenerationModel: string; wordDiscoveryModel: string }) =>
+  saveModelConfig: (body: { photoAnalysisModel: string; quizGenerationModel: string; wordDiscoveryModel: string; translationModel: string }) =>
     apiFetch<ModelConfig>("/api/admin/model-config", {
       method: "PUT",
       body: JSON.stringify(body),

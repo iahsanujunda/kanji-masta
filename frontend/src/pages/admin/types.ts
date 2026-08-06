@@ -79,6 +79,7 @@ export interface ModelConfig {
   photoAnalysisModel: string;
   quizGenerationModel: string;
   wordDiscoveryModel: string;
+  translationModel?: string;
   validationStatus: "pending" | "passed" | "failed";
   failureCode?: string | null;
   createdAt: string;

@@ -110,6 +110,6 @@ class OpenRouterCatalogClient(
 
     private companion object {
         const val CACHE_MILLIS = 10 * 60 * 1000L
-        val REQUIRED_WORKLOADS = listOf("photo_analysis", "quiz_generation", "word_discovery")
+        val REQUIRED_WORKLOADS = listOf("photo_analysis", "translation", "quiz_generation", "word_discovery")
     }
 }

@@ -25,6 +25,8 @@ const Admin = lazy(routeImports.admin);
 const InsightDetail = lazy(routeImports.insightDetail);
 const LocalCaptureDetail = lazy(routeImports.localCaptureDetail);
 const CaptureQueue = lazy(routeImports.captureQueue);
+const CaptureGallery = lazy(routeImports.captureGallery);
+const CaptureDetail = lazy(routeImports.captureDetail);
 const ScanDetail = lazy(routeImports.scanDetail);
 
 function Loading() {
@@ -117,12 +119,28 @@ export default function App() {
           path="/captures"
           element={
             <ProtectedRoute user={user} isLoading={isLoading}>
+              <CaptureGallery />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/captures/:sessionId"
+          element={
+            <ProtectedRoute user={user} isLoading={isLoading}>
+              <CaptureDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/capture-queue"
+          element={
+            <ProtectedRoute user={user} isLoading={isLoading}>
               <CaptureQueue />
             </ProtectedRoute>
           }
         />
         <Route
-          path="/captures/:clientCaptureId"
+          path="/capture-queue/:clientCaptureId"
           element={
             <ProtectedRoute user={user} isLoading={isLoading}>
               <LocalCaptureDetail />

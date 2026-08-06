@@ -30,6 +30,17 @@ class KanjiRepository(private val db: Database) {
         }
     }
 
+    fun hasUserKanji(userId: String, kanjiMasterId: String): Boolean =
+        db.from(UserKanjiTable)
+            .select(UserKanjiTable.id)
+            .where {
+                (UserKanjiTable.userId eq userId) and
+                    (UserKanjiTable.kanjiId eq UUID.fromString(kanjiMasterId))
+            }
+            .limit(1)
+            .map { true }
+            .firstOrNull() == true
+
     // --- WordMaster ---
 
     fun findWordMasterByWord(word: String): String? {

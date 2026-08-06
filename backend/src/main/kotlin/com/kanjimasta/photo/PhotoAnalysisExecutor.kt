@@ -23,6 +23,7 @@ import kotlinx.serialization.json.put
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
 import java.util.UUID
+import java.text.Normalizer
 
 class PhotoAnalysisExecutor(
     private val repository: PhotoAnalysisRepository,
@@ -68,16 +69,9 @@ class PhotoAnalysisExecutor(
             return false
         }
 
-        val knownKanji = repository.knownKanji(claim.userId)
-        val knownSection = if (knownKanji.isEmpty()) {
-            "The learner is a beginner with no kanji knowledge yet."
-        } else {
-            "The learner already knows these kanji: ${knownKanji.joinToString(", ")}\n" +
-                "Do NOT recommend kanji they already know."
-        }
         val result = try {
             openRouter.analyzeImage(
-                prompt = PhotoPrompts.PHOTO_ANALYSIS.format(knownSection),
+                prompt = PhotoPrompts.PHOTO_ANALYSIS,
                 imageBytes = image.bytes,
                 contentType = image.contentType,
                 model = claim.modelId,
@@ -92,28 +86,66 @@ class PhotoAnalysisExecutor(
         }
         repository.recordProviderCost(claim, result.costMicrodollars)
 
-        val enriched = try {
-            enrich(result.data)
+        val visual = try {
+            parseVisualResult(result.data)
         } catch (error: Exception) {
             logger.error("Photo response validation failed for session={}", sessionId, error)
             repository.fail(claim, PhotoFailureCode.INVALID_RESPONSE, result.costMicrodollars)
             return false
         }
-        return repository.complete(claim, enriched.toString(), result.costMicrodollars)
+        if (visual.fullText.isBlank()) {
+            repository.fail(claim, PhotoFailureCode.INVALID_RESPONSE, result.costMicrodollars)
+            return false
+        }
+        repository.markTranslationProcessing(claim)
+        val translation = try {
+            openRouter.completeText(
+                prompt = PhotoPrompts.TRANSLATION.format(visual.fullText),
+                model = repository.translationModel(),
+            )
+        } catch (error: AiProviderException) {
+            logger.error("Photo translation failed for session={}: {}", sessionId, error.message)
+            repository.fail(claim, PhotoFailureCode.PROVIDER_FAILED, result.costMicrodollars)
+            return false
+        }
+        val translatedText = translation.data.firstOrNull()?.jsonObject
+            ?.get("translation")?.jsonPrimitive?.contentOrNull.orEmpty()
+        if (translatedText.isBlank()) {
+            repository.fail(claim, PhotoFailureCode.INVALID_RESPONSE, result.costMicrodollars + translation.costMicrodollars)
+            return false
+        }
+        return repository.complete(
+            claim = claim,
+            fullText = visual.fullText,
+            translation = translatedText,
+            enrichedJson = visual.enriched.toString(),
+            costMicrodollars = result.costMicrodollars + translation.costMicrodollars,
+        )
+    }
+
+    private fun parseVisualResult(data: JsonArray): VisualResult {
+        val envelope = data.singleOrNull()?.jsonObject
+        val fullText = envelope?.get("fullText")?.jsonPrimitive?.contentOrNull.orEmpty()
+        val items = envelope?.get("kanji") as? JsonArray
+            ?: throw IllegalArgumentException("Visual analysis did not return a kanji array")
+        return VisualResult(fullText, enrich(items))
     }
 
     private fun enrich(items: JsonArray): JsonArray {
         val objects = items.map { it.jsonObject }
-        val characters = objects.mapNotNull { it["character"]?.jsonPrimitive?.contentOrNull }
+        val characters = objects.mapNotNull { item ->
+            item["character"]?.jsonPrimitive?.contentOrNull?.let(::normalizeCharacter)
+        }
         val references = repository.lookupKanji(characters)
         return buildJsonArray {
-            objects.forEach { item ->
-                val character = item["character"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            objects.forEachIndexed { index, item ->
+                val character = item["character"]?.jsonPrimitive?.contentOrNull?.let(::normalizeCharacter).orEmpty()
                 val reference = references[character]
                 add(buildJsonObject {
                     if (reference == null) put("kanjiMasterId", JsonNull) else put("kanjiMasterId", reference.id.toString())
                     put("character", character)
-                    put("recommended", item["recommended"]?.jsonPrimitive?.booleanOrNull ?: false)
+                    put("recommended", index < 3)
+                    put("recommendationRank", item["recommendationRank"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: index)
                     put("whyUseful", item["whyUseful"]?.jsonPrimitive?.contentOrNull.orEmpty())
                     put("onyomi", JsonArray(reference?.onyomi.orEmpty().map(::JsonPrimitive)))
                     put("kunyomi", JsonArray(reference?.kunyomi.orEmpty().map(::JsonPrimitive)))
@@ -128,6 +160,11 @@ class PhotoAnalysisExecutor(
     private fun rewriteLocalhost(url: String): String =
         url.replace("http://127.0.0.1:", "http://host.docker.internal:")
             .replace("http://localhost:", "http://host.docker.internal:")
+
+    private fun normalizeCharacter(value: String): String {
+        val normalized = Normalizer.normalize(value.trim(), Normalizer.Form.NFKC)
+        return normalized.takeIf { it.codePointCount(0, it.length) == 1 }.orEmpty()
+    }
 
     private suspend fun readImage(channel: io.ktor.utils.io.ByteReadChannel, contentLength: Long?): ByteArray {
         if (contentLength != null && contentLength > maxImageBytes) {
@@ -148,6 +185,7 @@ class PhotoAnalysisExecutor(
     }
 
     private data class DownloadedImage(val bytes: ByteArray, val contentType: String)
+    private data class VisualResult(val fullText: String, val enriched: JsonArray)
 
     private companion object {
         val logger = LoggerFactory.getLogger(PhotoAnalysisExecutor::class.java)

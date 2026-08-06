@@ -1,6 +1,5 @@
 package com.kanjimasta.kanji
 
-import com.kanjimasta.photo.PhotoSessionStatus
 import com.kanjimasta.jobs.JobDispatcher
 import com.kanjimasta.photo.PhotoRepository
 import kotlinx.serialization.json.*
@@ -15,22 +14,48 @@ class KanjiService(
     private val jobDispatcher: JobDispatcher,
 ) {
     suspend fun saveSession(userId: String, request: SaveSessionRequest) {
+        val sessionId = runCatching { UUID.fromString(request.sessionId) }.getOrElse {
+            throw IllegalArgumentException("Invalid capture id")
+        }
+        val learningSelections = request.selections.filter { it.status.equals("learning", ignoreCase = true) }
+        require(learningSelections.size <= 3) { "A capture batch can contain at most 3 learning kanji" }
+        require(request.selections.all { it.status.equals("learning", true) || it.status.equals("familiar", true) }) {
+            "Invalid kanji status"
+        }
+        val requestedIds = request.selections.map {
+            runCatching { UUID.fromString(it.kanjiMasterId) }.getOrElse { throw IllegalArgumentException("Invalid kanji id") }
+        }.toSet()
+        require(photoRepository.validateCaptureSelection(sessionId, userId, requestedIds)) {
+            "Every kanji must be selectable from this capture"
+        }
+        if (learningSelections.isNotEmpty()) {
+            require(!photoRepository.hasIncompleteCaptureLearningBatch(sessionId, userId)) {
+                "Finish the previous capture batch first"
+            }
+        }
         val learningKanjiIds = mutableListOf<String>()
+        val batchId = UUID.randomUUID()
+        val decisionSource = if (photoRepository.hasCaptureSelectionDecisions(sessionId)) "REVISIT" else "INITIAL"
 
         for (selection in request.selections) {
+            if (kanjiRepository.hasUserKanji(userId, selection.kanjiMasterId)) continue
             kanjiRepository.insertUserKanji(
                 userId = userId,
                 kanjiMasterId = selection.kanjiMasterId,
                 status = selection.status,
                 sourcePhotoId = request.sessionId,
             )
+            photoRepository.appendSelectionDecision(
+                sessionId = sessionId,
+                kanjiId = UUID.fromString(selection.kanjiMasterId),
+                batchId = batchId,
+                decision = selection.status.uppercase(),
+                source = decisionSource,
+            )
             if (selection.status == "learning") {
                 learningKanjiIds.add(selection.kanjiMasterId)
             }
         }
-
-        // Mark photo session as ingested so it no longer appears in recent scans
-        photoRepository.updateSessionStatus(request.sessionId, userId, PhotoSessionStatus.INGESTED)
 
         if (learningKanjiIds.isNotEmpty()) {
             processWordsForKanji(userId, request.sessionId, learningKanjiIds)
@@ -61,7 +86,7 @@ class KanjiService(
                 continue
             }
 
-            for (ew in exampleWords) {
+            for (ew in exampleWords.take(1)) {
                 // 1. Find or create WordMaster
                 val wmId = kanjiRepository.findOrCreateWordMaster(ew.word, ew.reading, ew.meaning, kanjiMasterId)
 

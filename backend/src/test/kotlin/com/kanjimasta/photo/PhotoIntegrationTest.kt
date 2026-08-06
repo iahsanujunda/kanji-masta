@@ -260,6 +260,59 @@ class PhotoIntegrationTest : com.kanjimasta.support.PersistenceTest() {
     }
 
     @Test
+    fun `GET captures returns retained captures with derived labels and live coverage`() = testApplication {
+        val sessionId = UUID.randomUUID()
+        TestDatabase.db.insert(PhotoSessionTable) {
+            set(it.id, sessionId)
+            set(it.userId, TEST_USER_ID)
+            set(it.imageUrl, "https://storage.example.com/photos/announcement.jpg")
+            set(it.storagePath, "$TEST_USER_ID/announcement.jpg")
+            set(it.status, "DONE")
+            set(it.fullText, "本日は運転を見合わせます\n駅係員にお尋ねください")
+            set(it.translation, "Train service is suspended today.")
+            set(it.readyAt, Instant.parse("2026-08-06T08:30:00Z"))
+            set(it.createdAt, Instant.parse("2026-08-06T08:00:00Z"))
+        }
+        val familiarId = UUID.randomUUID()
+        val notStartedId = UUID.randomUUID()
+        listOf(familiarId to "本", notStartedId to "日").forEach { (id, character) ->
+            TestDatabase.db.insert(com.kanjimasta.kanji.KanjiMasterTable) {
+                set(it.id, id)
+                set(it.character, character)
+                set(it.onyomi, emptyList())
+                set(it.kunyomi, emptyList())
+                set(it.meanings, emptyList())
+            }
+            TestDatabase.db.insert(PhotoSessionKanjiTable) {
+                set(it.photoSessionId, sessionId)
+                set(it.kanjiMasterId, id)
+                set(it.firstSeenOrder, if (id == familiarId) 0 else 1)
+                set(it.recommendationRank, if (id == familiarId) 0 else 1)
+            }
+        }
+        TestDatabase.db.insert(com.kanjimasta.kanji.UserKanjiTable) {
+            set(it.userId, TEST_USER_ID)
+            set(it.kanjiId, familiarId)
+            set(it.status, com.kanjimasta.kanji.UserKanjiStatus.FAMILIAR)
+            set(it.familiarity, 5)
+            set(it.currentTier, com.kanjimasta.quiz.QuizType.FILL_IN_THE_BLANK)
+        }
+
+        application { testModule(TestDatabase.db) }
+        val response = jsonClient().get("/api/captures?sort=recent&direction=desc") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        val capture = Json.parseToJsonElement(response.bodyAsText()).jsonObject["captures"]!!
+            .jsonArray.single().jsonObject
+        assertEquals("本日は運転を見合わせます", capture["label"]?.jsonPrimitive?.content)
+        assertEquals(1, capture["familiarKanji"]?.jsonPrimitive?.content?.toInt())
+        assertEquals(2, capture["totalKanji"]?.jsonPrimitive?.content?.toInt())
+        assertEquals(true, capture["translationAvailable"]?.jsonPrimitive?.content?.toBoolean())
+    }
+
+    @Test
     fun `GET activity paginates the owners complete scan history newest first`() = testApplication {
         val now = Instant.parse("2026-08-05T05:00:00Z")
         val expectedIds = listOf(

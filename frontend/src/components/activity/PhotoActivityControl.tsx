@@ -186,13 +186,13 @@ export default function PhotoActivityControl({ userId }: { userId?: string }) {
                   {visibleLocalCaptures.map((capture) => (
                     <LocalActivityRow key={capture.id} capture={capture} onOpen={() => {
                       closeDrawer();
-                      navigate(`/captures/${capture.id}`);
+                      navigate(`/capture-queue/${capture.id}`);
                     }} />
                   ))}
                   {activeServerItems.map((item) => (
                     <ServerActivityRow key={item.sessionId} item={item} onOpen={() => {
                       closeDrawer();
-                      navigate(`/scans/${item.sessionId}`);
+                      navigate(`/captures/${item.sessionId}`);
                     }} />
                   ))}
                 </ActivitySection>
@@ -202,7 +202,7 @@ export default function PhotoActivityControl({ userId }: { userId?: string }) {
                   {terminalServerItems.map((item) => (
                     <ServerActivityRow key={item.sessionId} item={item} onOpen={() => {
                       closeDrawer();
-                      navigate(`/scans/${item.sessionId}`);
+                      navigate(`/captures/${item.sessionId}`);
                     }} />
                   ))}
                 </ActivitySection>

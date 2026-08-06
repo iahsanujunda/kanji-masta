@@ -8,5 +8,7 @@ export const queryKeys = {
   curriculumDetail: (userId: string, jlpt: number) => ["curriculum-detail", userId, jlpt] as const,
   photoSession: (userId: string, sessionId: string | undefined) => ["photo-session", userId, sessionId] as const,
   signedPhoto: (userId: string, storagePath: string | undefined) => ["signed-photo", userId, storagePath] as const,
+  captures: (userId: string, sort: string, direction: string) => ["captures", userId, sort, direction] as const,
+  capture: (userId: string, sessionId: string | undefined) => ["capture", userId, sessionId] as const,
   quizSession: (userId: string) => ["quiz-session", userId, "active"] as const,
 };

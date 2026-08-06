@@ -14,6 +14,8 @@ export const routeImports = {
   insightDetail: () => import("@/pages/InsightDetail"),
   localCaptureDetail: () => import("@/pages/LocalCaptureDetail"),
   captureQueue: () => import("@/pages/CaptureQueue"),
+  captureGallery: () => import("@/pages/CaptureGallery"),
+  captureDetail: () => import("@/pages/CaptureDetail"),
   scanDetail: () => import("@/pages/ScanDetail"),
 };
 
@@ -21,6 +23,7 @@ const commonAuthenticatedRoutes: RouteImporter[] = [
   routeImports.collection,
   routeImports.capture,
   routeImports.dictionary,
+  routeImports.captureGallery,
   routeImports.settings,
 ];
 

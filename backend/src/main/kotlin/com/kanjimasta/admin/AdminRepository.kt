@@ -34,6 +34,7 @@ class AdminRepository(private val db: Database) {
             set(it.photoAnalysisModel, request.photoAnalysisModel)
             set(it.quizGenerationModel, request.quizGenerationModel)
             set(it.wordDiscoveryModel, request.wordDiscoveryModel)
+            set(it.translationModel, request.translationModel)
             set(it.validationStatus, "passed")
             set(it.failureCode, null)
             set(it.createdBy, adminUserId)
@@ -69,6 +70,7 @@ class AdminRepository(private val db: Database) {
         photoAnalysisModel = row[AiModelConfigTable.photoAnalysisModel] ?: "",
         quizGenerationModel = row[AiModelConfigTable.quizGenerationModel] ?: "",
         wordDiscoveryModel = row[AiModelConfigTable.wordDiscoveryModel] ?: "",
+        translationModel = row[AiModelConfigTable.translationModel] ?: "",
         validationStatus = row[AiModelConfigTable.validationStatus] ?: "failed",
         failureCode = row[AiModelConfigTable.failureCode],
         createdBy = row[AiModelConfigTable.createdBy] ?: "system",

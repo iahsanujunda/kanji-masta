@@ -7,6 +7,7 @@ import {
   AccordionSummary,
   Box,
   Button,
+  Checkbox,
   LinearProgress,
   Paper,
   Skeleton,
@@ -24,6 +25,7 @@ import { useSignedPhotoUrl } from "@/hooks/useSignedPhotoUrl";
 import { apiFetch } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
 import type { CaptureDetail, CaptureKanjiItem } from "@/lib/photo";
+import type { CaptureWordCandidate } from "@/lib/photo";
 
 export default function CaptureDetailPage() {
   const { sessionId } = useParams();
@@ -32,11 +34,15 @@ export default function CaptureDetailPage() {
   const queryClient = useQueryClient();
   const [translationOpen, setTranslationOpen] = useState(false);
   const [allKanjiOpen, setAllKanjiOpen] = useState(false);
+  const [deselectedWordIds, setDeselectedWordIds] = useState<Set<string>>(new Set());
   const query = useQuery({
     queryKey: queryKeys.capture(user?.id ?? "", sessionId),
     queryFn: () => apiFetch<CaptureDetail>(`/api/captures/${sessionId}`),
     enabled: Boolean(user && sessionId),
-    refetchInterval: (state) => state.state.data?.status === "processing" ? 2_000 : false,
+    refetchInterval: (state) => {
+      const data = state.state.data;
+      return data?.status === "processing" || data?.wordDiscovery.status === "PENDING" || data?.wordDiscovery.status === "PROCESSING" ? 2_000 : false;
+    },
   });
   const photo = useSignedPhotoUrl(query.data?.storagePath).data;
   const loadedCaptureId = query.data?.sessionId;
@@ -47,6 +53,10 @@ export default function CaptureDetailPage() {
       .then(() => queryClient.invalidateQueries({ queryKey: ["captures", user?.id] }))
       .catch(() => undefined);
   }, [loadedCaptureId, queryClient, sessionId, user?.id]);
+  const newCandidateIds = query.data?.wordDiscovery.candidates
+    .filter((candidate) => candidate.learningState === "NEW")
+    .map((candidate) => candidate.candidateId) ?? [];
+  const selectedWordIds = new Set(newCandidateIds.filter((candidateId) => !deselectedWordIds.has(candidateId)));
 
   const learningMutation = useMutation({
     mutationFn: (selections: Array<{ kanjiMasterId: string; status: "learning" | "familiar" }>) => apiFetch("/api/kanji/session", {
@@ -76,6 +86,34 @@ export default function CaptureDetailPage() {
   const retryMutation = useMutation({
     mutationFn: () => apiFetch(`/api/captures/${sessionId}/retry`, { method: "POST" }),
     onSuccess: () => query.refetch(),
+  });
+  const wordDiscoveryMutation = useMutation({
+    mutationFn: (retry: boolean) => apiFetch(
+      retry
+        ? `/api/captures/${sessionId}/tasks/CAPTURE_WORD_DISCOVERY/retry`
+        : `/api/captures/${sessionId}/word-discovery`,
+      { method: "POST" },
+    ),
+    onSuccess: async () => {
+      await query.refetch();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["photo-activity", user?.id] }),
+        queryClient.invalidateQueries({ queryKey: ["photo-activity-unseen", user?.id] }),
+      ]);
+    },
+  });
+  const wordDecisionMutation = useMutation({
+    mutationFn: (candidateIds: string[]) => apiFetch(`/api/captures/${sessionId}/word-decisions`, {
+      method: "PUT",
+      body: JSON.stringify({ candidateIds }),
+    }),
+    onSuccess: async () => {
+      await query.refetch();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["words", user?.id] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.userSummary(user?.id ?? "") }),
+      ]);
+    },
   });
 
   if (query.isLoading) return <CaptureDetailSkeleton />;
@@ -178,13 +216,22 @@ export default function CaptureDetailPage() {
           </Paper>
         )}
 
-        {capture.coveragePercent === 100 && (
-          <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3.5, bgcolor: "rgba(16,185,129,.08)", borderColor: "rgba(52,211,153,.28)" }}>
-            <CheckCircleOutlineIcon sx={{ color: "#34d399", mb: 1 }} />
-            <Typography fontWeight={800}>You know every kanji in this capture.</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 2 }}>Some combinations may still be new. Word discovery will be available here.</Typography>
-            <Button variant="outlined" disabled sx={{ minHeight: 48 }}>Find new words</Button>
-          </Paper>
+        {capture.wordDiscovery.eligible && (
+          <WordDiscoveryCard
+            discovery={capture.wordDiscovery}
+            selectedIds={selectedWordIds}
+            onToggle={(candidateId) => setDeselectedWordIds((current) => {
+              const next = new Set(current);
+              if (selectedWordIds.has(candidateId)) next.add(candidateId); else next.delete(candidateId);
+              return next;
+            })}
+            onStart={() => wordDiscoveryMutation.mutate(capture.wordDiscovery.status === "FAILED")}
+            onLearn={() => wordDecisionMutation.mutate([...selectedWordIds])}
+            starting={wordDiscoveryMutation.isPending}
+            learning={wordDecisionMutation.isPending}
+            startError={wordDiscoveryMutation.isError}
+            learnError={wordDecisionMutation.isError}
+          />
         )}
 
         <Button onClick={() => setAllKanjiOpen((open) => !open)} endIcon={<ExpandMoreIcon sx={{ transform: allKanjiOpen ? "rotate(180deg)" : "none", transition: "transform 180ms" }} />} aria-expanded={allKanjiOpen} sx={{ minHeight: 48, justifyContent: "space-between", color: "#a5b4fc", px: 2 }}>
@@ -217,6 +264,95 @@ export default function CaptureDetailPage() {
         <Button onClick={() => navigate("/captures")} sx={{ minHeight: 48 }}>Done</Button>
       </Box>
     </PageShell>
+  );
+}
+
+function WordDiscoveryCard({
+  discovery,
+  selectedIds,
+  onToggle,
+  onStart,
+  onLearn,
+  starting,
+  learning,
+  startError,
+  learnError,
+}: {
+  discovery: CaptureDetail["wordDiscovery"];
+  selectedIds: Set<string>;
+  onToggle: (candidateId: string) => void;
+  onStart: () => void;
+  onLearn: () => void;
+  starting: boolean;
+  learning: boolean;
+  startError: boolean;
+  learnError: boolean;
+}) {
+  const running = discovery.status === "PENDING" || discovery.status === "PROCESSING";
+  return (
+    <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3.5, bgcolor: "rgba(16,185,129,.08)", borderColor: "rgba(52,211,153,.28)" }}>
+      <CheckCircleOutlineIcon sx={{ color: "#34d399", mb: 1 }} />
+      <Typography fontWeight={800}>You know every kanji in this capture.</Typography>
+      {discovery.status === "NOT_STARTED" && (
+        <>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 2 }}>Some combinations may still be new.</Typography>
+          <Button variant="outlined" disabled={starting} onClick={onStart} sx={{ minHeight: 48 }}>{starting ? "Starting…" : "Find new words"}</Button>
+        </>
+      )}
+      {running && (
+        <Box role="status" sx={{ mt: 1.5 }}>
+          <Typography variant="body2" color="text.secondary">Finding words in the captured text…</Typography>
+          <LinearProgress sx={{ mt: 1.5, borderRadius: 2, bgcolor: "#1a1a24" }} />
+        </Box>
+      )}
+      {discovery.status === "FAILED" && (
+        <>
+          <Typography role="alert" variant="body2" color="error.light" sx={{ mt: 1, mb: 1.5 }}>Word discovery needs attention.</Typography>
+          <Button variant="outlined" disabled={starting} onClick={onStart} sx={{ minHeight: 48 }}>{starting ? "Retrying…" : "Try again"}</Button>
+        </>
+      )}
+      {discovery.status === "DONE" && (
+        <Box sx={{ mt: 1.5 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            {discovery.newCount} new · {discovery.learningCount} learning · {discovery.familiarCount} familiar
+          </Typography>
+          {discovery.candidates.length === 0 ? (
+            <Typography variant="body2">No new words were found in this capture.</Typography>
+          ) : (
+            <Box sx={{ display: "grid", gap: 1 }}>
+              {discovery.candidates.map((candidate) => (
+                <CapturedWordRow key={candidate.candidateId} candidate={candidate} checked={selectedIds.has(candidate.candidateId)} onToggle={() => onToggle(candidate.candidateId)} />
+              ))}
+            </Box>
+          )}
+          {discovery.newCount > 0 && (
+            <Button fullWidth variant="contained" disabled={learning || selectedIds.size === 0} onClick={onLearn} sx={{ ...primaryButtonSx, mt: 2 }}>
+              {learning ? "Adding…" : `Learn ${selectedIds.size} ${selectedIds.size === 1 ? "word" : "words"}`}
+            </Button>
+          )}
+        </Box>
+      )}
+      {startError && <Typography role="alert" variant="body2" color="error.light" sx={{ mt: 1.5 }}>Word discovery could not start. Try again.</Typography>}
+      {learnError && <Typography role="alert" variant="body2" color="error.light" sx={{ mt: 1.5 }}>These words could not be added. Your selection is preserved.</Typography>}
+    </Paper>
+  );
+}
+
+function CapturedWordRow({ candidate, checked, onToggle }: { candidate: CaptureWordCandidate; checked: boolean; onToggle: () => void }) {
+  const isNew = candidate.learningState === "NEW";
+  const stateLabel = isNew ? "New" : candidate.learningState === "LEARNING" ? "Learning" : "Familiar";
+  return (
+    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 3, bgcolor: "#0f0f16", borderColor: "#1a1a24" }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        {isNew && <Checkbox checked={checked} onChange={onToggle} inputProps={{ "aria-label": `Learn ${candidate.surfaceText}` }} sx={{ color: "#818cf8", "&.Mui-checked": { color: "#10b981" } }} />}
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Typography lang="ja" fontWeight={800}>{candidate.surfaceText}</Typography>
+          <Typography lang="ja" variant="caption" sx={{ color: "#a5b4fc" }}>{candidate.reading}</Typography>
+          <Typography variant="body2" color="text.secondary">{candidate.meaning}</Typography>
+        </Box>
+        <Typography variant="caption" sx={{ color: isNew ? "#a5b4fc" : "#34d399", fontWeight: 800 }}>{stateLabel}</Typography>
+      </Box>
+    </Paper>
   );
 }
 

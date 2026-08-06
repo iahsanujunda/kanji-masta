@@ -6,11 +6,13 @@ import com.kanjimasta.quiz.QuizBankTable
 import com.kanjimasta.quiz.QuizType
 import com.kanjimasta.quiz.generation.JobStatus
 import com.kanjimasta.quiz.generation.QuizGenerationJobTable
+import com.kanjimasta.language.WordIdentity
 import org.ktorm.database.Database
 import org.ktorm.dsl.*
 import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.util.UUID
+import org.ktorm.support.postgresql.insertOrUpdateReturning
 
 private val logger = LoggerFactory.getLogger("com.kanjimasta.kanji.KanjiRepository")
 
@@ -53,18 +55,20 @@ class KanjiRepository(private val db: Database) {
     }
 
     fun findOrCreateWordMaster(word: String, reading: String, meaning: String, kanjiMasterId: String): String {
-        val existing = findWordMasterByWord(word)
-        if (existing != null) return existing
-
-        val id = UUID.randomUUID()
-        db.insert(WordMasterTable) {
+        val identity = WordIdentity.from(word, reading)
+        return checkNotNull(db.insertOrUpdateReturning(WordMasterTable, WordMasterTable.id) {
+            val id = UUID.randomUUID()
             set(it.id, id)
             set(it.word, word)
             set(it.reading, reading)
+            set(it.normalizedLemma, identity.normalizedLemma)
+            set(it.normalizedReading, identity.normalizedReading)
             set(it.meanings, listOf(meaning))
             set(it.kanjiIds, listOf(kanjiMasterId))
-        }
-        return id.toString()
+            onConflict(it.normalizedLemma, it.normalizedReading) {
+                set(it.normalizedLemma, identity.normalizedLemma)
+            }
+        }).toString()
     }
 
     fun getWordMasterById(id: String): WordMasterRow? {

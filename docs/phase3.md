@@ -996,9 +996,30 @@ The worker contract differs from the existing generic word-discovery prompt:
 
 - input is canonical `fullText`, not one kanji and a known-word list;
 - return only lexical items actually present in the captured text;
-- return surface text, lemma, reading, meaning, position, and constituent kanji;
+- return surface text, lemma, reading, and meaning;
 - include kanji-plus-kana words such as `遅れる`, not only multi-kanji compounds;
 - do not suggest related vocabulary that is absent from the capture.
+
+### Deterministic publication boundary
+
+The model remains a probabilistic extractor inside a deterministic application shell. It never supplies database IDs, learner state, trusted positions, or canonical word identity.
+
+Each task snapshots the capture pipeline version, model-configuration version, model ID, and canonical `fullText`. The backend then:
+
+1. NFKC-normalizes the returned surface, lemma, reading, and canonical capture text;
+2. verifies that the surface occurs in `fullText` and rejects absent suggestions;
+3. computes the first Unicode code-point position itself;
+4. normalizes lemma whitespace and converts katakana readings to hiragana;
+5. derives identity from normalized `(lemma, reading)`, never spelling alone;
+6. derives constituent kanji by scanning the accepted surface and resolving each character through `kanji_master.character`;
+7. deduplicates by normalized identity, retaining the earliest deterministic candidate;
+8. orders candidates by first position, normalized lemma, normalized reading, and stable ID;
+9. derives the candidate ID from capture ID, pipeline version, normalized lemma, and normalized reading;
+10. publishes candidates and completes the task in one claim-token-fenced transaction.
+
+A provider retry before successful publication may return a different extraction. The first successfully validated, fenced completion becomes authoritative for that capture and pipeline version. A completed extraction is never silently rerun; intentional re-extraction requires a new pipeline version.
+
+Word meaning is extraction evidence, not identity. Linking to an existing `WordMaster` never overwrites its canonical meaning. Same-spelling words with different normalized readings remain distinct.
 
 The extraction is stored once per capture and pipeline version. "New to this learner" is computed later by joining against `user_words`; it is not embedded in the AI prompt or frozen in the task result.
 
@@ -1035,7 +1056,7 @@ On confirmation, one transaction:
 
 Retries and repeated confirmations must not create duplicate user words, candidates, quiz jobs, or attempts.
 
-The existing `WordDiscoveryService` is infrastructure to reuse, not a compatible domain implementation. Today it is constructed but has no caller, suggests five generic words around one kanji, and immediately inserts every result into `UserWords`. Its prompt, request, persistence, and runtime entry point must become capture-specific.
+The former generic `WordDiscoveryService` was removed. Capture-specific prompt, repository, executor, task dispatch, publication, and explicit enrollment now live with the capture domain. The admin workload key remains `word_discovery`, so model configuration stays compatible.
 
 ---
 
@@ -1174,6 +1195,14 @@ Automated integration tests must cover these boundaries:
 - reversing each gallery tab preserves complete, duplicate-free cursor pagination;
 - Familiarity always places `N/A` after numeric coverage;
 - Recently visited places never-visited captures last when descending and first when ascending.
+- an AI word whose normalized surface is absent from canonical `fullText` is rejected;
+- reordered or duplicated AI word results publish the same normalized candidate set and ordering;
+- katakana and hiragana readings resolve to the same canonical identity;
+- same-spelling words with different readings remain distinct;
+- discovery creates no `UserWords` or quiz jobs before explicit confirmation;
+- repeated discovery start, completion, and confirmation create no duplicate task, candidate, word, quiz job, or attempt;
+- accepting a word updates its live learning state in every capture with the same normalized identity;
+- a stale word-discovery worker cannot replace a successfully published result.
 
 ---
 
@@ -1181,7 +1210,7 @@ Automated integration tests must cover these boundaries:
 
 - [ ] Required visual-analysis and translation tasks use separate configurable models
 - [ ] Capture readiness is derived from required task completion
-- [ ] Optional word discovery does not demote a ready capture
+- [x] Optional word discovery does not demote a ready capture
 - [ ] Extracted characters are normalized, validated, resolved only through unique `kanji_master.character`, and deduplicated
 - [ ] Unresolved characters are retained as diagnostic evidence but are not selectable or counted in coverage
 - [ ] Every resolved detected kanji is normalized into `photo_session_kanji` in the fenced completion transaction
@@ -1190,7 +1219,7 @@ Automated integration tests must cover these boundaries:
 - [ ] Initial and revisit selections are retained separately
 - [ ] Capture detail shows familiar, learning, and not-started kanji using live state
 - [ ] False-positive exclusion is reversible, capture-specific, and excluded from coverage
-- [ ] A no-kanji capture shows `N/A`, remains ready, and can run word discovery
+- [x] A no-kanji capture shows `N/A`, remains ready, and can run word discovery
 - [ ] Already-learning and familiar kanji remain visible but are never selectable or recommended next
 - [ ] Backend eligibility overrides contradictory AI recommendation metadata
 - [ ] Kanji coverage uses distinct detected kanji and familiarity 5
@@ -1200,15 +1229,15 @@ Automated integration tests must cover these boundaries:
 - [ ] The next capture batch remains gated until the preceding capture-selected batch is familiar
 - [ ] Each newly selected learning kanji creates exactly one starter word
 - [ ] Selecting the next batch continues the existing kanji learning flow
-- [ ] 100% kanji coverage unlocks capture-specific word discovery
-- [ ] Word discovery returns only lexical items actually present in canonical `fullText`
-- [ ] Word candidates are normalized and retained per capture
-- [ ] New/learning/familiar word state is computed live from `user_words`
-- [ ] Initial word progress uses counts and does not claim a percentage
-- [ ] `WordMaster` identity and uniqueness migrate from spelling-only to normalized `(lemma, reading)`
-- [ ] Discovery results require explicit learner confirmation before creating `UserWords`
-- [ ] Accepting new words creates no duplicate `UserWords` or quiz jobs
-- [ ] Existing global quizzes are reused; generation runs only when quizzes are missing
+- [x] 100% kanji coverage unlocks capture-specific word discovery
+- [x] Word discovery returns only lexical items actually present in canonical `fullText`
+- [x] Word candidates are normalized and retained per capture
+- [x] New/learning/familiar word state is computed live from `user_words`
+- [x] Initial word progress uses counts and does not claim a percentage
+- [x] `WordMaster` identity and uniqueness migrate from spelling-only to normalized `(lemma, reading)`
+- [x] Discovery results require explicit learner confirmation before creating `UserWords`
+- [x] Accepting new words creates no duplicate `UserWords` or quiz jobs
+- [x] Existing global quizzes are reused; generation runs only when quizzes are missing
 - [ ] Permanent gallery replaces `/captures` local-queue semantics
 - [ ] Upload queue and recovery routes move to `/capture-queue`
 - [ ] Processing and failed captures remain visible in gallery and activity drawer
@@ -1226,6 +1255,6 @@ Automated integration tests must cover these boundaries:
 - [ ] A pending 60% Activity item upgrades to 100% rather than duplicating
 - [ ] No rename, archive, or capture-level delete action appears in the initial API or UI
 - [ ] Capture-level hard delete is absent from the initial API and UI
-- [ ] Immediate dispatch and scheduled draining recover stranded database work
-- [ ] Claim-token fencing prevents stale workers from publishing results
+- [x] Immediate dispatch and scheduled draining recover stranded database work
+- [x] Claim-token fencing prevents stale workers from publishing results
 - [ ] Pre-feature photo sessions are excluded from the permanent gallery and never enqueue backfill jobs

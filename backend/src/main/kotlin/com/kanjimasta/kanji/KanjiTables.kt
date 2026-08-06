@@ -23,6 +23,8 @@ object WordMasterTable : Table<Nothing>("word_master") {
     val id = uuid("id").primaryKey()
     val word = text("word")
     val reading = text("reading")
+    val normalizedLemma = text("normalized_lemma")
+    val normalizedReading = text("normalized_reading")
     val meanings = textArray("meanings")
     val kanjiIds = uuidArray("kanji_ids")
     val frequency = int("frequency")

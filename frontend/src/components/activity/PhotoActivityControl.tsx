@@ -42,8 +42,8 @@ export default function PhotoActivityControl({ userId }: { userId?: string }) {
     [localCaptures],
   );
   const serverItems = activityQuery.data?.pages.flatMap((page) => page.items) ?? [];
-  const activeServerItems = serverItems.filter((item) => item.status === "processing");
-  const terminalServerItems = serverItems.filter((item) => item.status !== "processing");
+  const activeServerItems = serverItems.filter((item) => item.status === "processing" || item.taskStatus === "pending" || item.taskStatus === "processing");
+  const terminalServerItems = serverItems.filter((item) => item.status !== "processing" && item.taskStatus !== "pending" && item.taskStatus !== "processing");
   const { fetchNextPage, hasNextPage, isFetchingNextPage } = activityQuery;
 
   const seenMutation = useMutation({
@@ -254,7 +254,13 @@ function LocalActivityRow({ capture, onOpen }: { capture: LocalCapture; onOpen: 
 }
 
 function ServerActivityRow({ item, onOpen }: { item: PhotoActivityItem; onOpen: () => void }) {
-  const presentation = item.status === "processing"
+  const presentation = item.taskType === "CAPTURE_WORD_DISCOVERY"
+    ? item.taskStatus === "pending" || item.taskStatus === "processing"
+      ? { title: "Finding words", subtitle: "Your capture remains ready", tone: "active" as const, icon: <HourglassTopOutlinedIcon /> }
+      : item.taskStatus === "failed"
+        ? { title: "Word discovery needs attention", subtitle: "Tap to try again", tone: "danger" as const, icon: <ErrorOutlineIcon /> }
+        : { title: "New words ready", subtitle: "Review words from this capture", tone: "done" as const, icon: <CheckCircleOutlineIcon /> }
+    : item.status === "processing"
     ? { title: "Analysing photo", subtitle: "Safe to close the app", tone: "active" as const, icon: <HourglassTopOutlinedIcon /> }
     : item.status === "failed"
       ? { title: "Scan did not finish", subtitle: "Tap to view options", tone: "danger" as const, icon: <ErrorOutlineIcon /> }

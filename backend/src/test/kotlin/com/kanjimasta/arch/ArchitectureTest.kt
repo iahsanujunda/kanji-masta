@@ -39,6 +39,7 @@ class ArchitectureTest {
         "PhotoSessionTaskTable" to "photo/PhotoTables.kt",
         "PhotoSessionKanjiTable" to "photo/PhotoTables.kt",
         "PhotoSessionKanjiDecisionTable" to "photo/PhotoTables.kt",
+        "PhotoSessionWordTable" to "photo/PhotoTables.kt",
         "UserPhotoActivityStateTable" to "photo/PhotoTables.kt",
         "QuizBankTable" to "quiz/QuizTables.kt",
         "QuizDistractorTable" to "quiz/QuizTables.kt",

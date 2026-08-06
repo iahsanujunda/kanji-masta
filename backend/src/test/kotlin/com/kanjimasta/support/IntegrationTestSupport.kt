@@ -70,7 +70,12 @@ fun Application.testModule(
         }
     }
     val acceptedDispatcher = JobDispatcher { true }
-    val photoService = PhotoService(PhotoRepository(db), acceptedDispatcher)
+    val photoService = PhotoService(
+        PhotoRepository(db),
+        acceptedDispatcher,
+        wordDiscoveryRepository = com.kanjimasta.photo.CaptureWordDiscoveryRepository(db),
+        quizJobDispatcher = acceptedDispatcher,
+    )
     val kanjiService = KanjiService(KanjiRepository(db), PhotoRepository(db), acceptedDispatcher)
     val quizRepository = com.kanjimasta.quiz.QuizRepository(db)
     val quizService = com.kanjimasta.quiz.QuizService(quizRepository)

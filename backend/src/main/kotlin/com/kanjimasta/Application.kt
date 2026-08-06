@@ -21,6 +21,7 @@ import com.kanjimasta.kanji.KanjiRepository
 import com.kanjimasta.kanji.KanjiService
 import com.kanjimasta.photo.PhotoRepository
 import com.kanjimasta.photo.PhotoService
+import com.kanjimasta.photo.CaptureWordDiscoveryRepository
 import com.kanjimasta.quiz.QuizRepository
 import com.kanjimasta.quiz.QuizService
 import io.ktor.client.*
@@ -72,6 +73,8 @@ fun Application.module() {
         photoRepository,
         dispatcher(photoAnalysisJobName, "photo-job"),
         storageSigner,
+        CaptureWordDiscoveryRepository(database),
+        dispatcher(quizGenerationJobName, "quiz-job"),
     )
 
     val kanjiRepository = KanjiRepository(database)
@@ -110,7 +113,7 @@ fun Application.module() {
         },
         modelCatalogGateway = openRouterCatalog,
     )
-    val internalService = InternalService(database)
+    val internalService = InternalService(database) { photoService.drainWordDiscovery() }
 
     monitor.subscribe(ApplicationStopped) {
         httpClient.close()

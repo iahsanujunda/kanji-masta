@@ -39,6 +39,59 @@ fun Route.photoRoutes(photoService: PhotoService) {
             call.respond(result)
         }
 
+        post("/{id}/word-discovery") {
+            val user = call.principal<AuthUser>()!!
+            val sessionId = call.parameters["id"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                ?: return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "Capture not found"))
+            when (val result = photoService.startWordDiscovery(user.uid, sessionId)) {
+                CaptureWordDiscoveryEnqueueResult.NotFound ->
+                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "Capture not found"))
+                CaptureWordDiscoveryEnqueueResult.Locked ->
+                    call.respond(HttpStatusCode.Conflict, mapOf("error" to "Word discovery is not available"))
+                is CaptureWordDiscoveryEnqueueResult.Accepted ->
+                    call.respond(
+                        HttpStatusCode.Accepted,
+                        StartCaptureWordDiscoveryResponse(result.value.taskId.toString(), result.value.status.lowercase()),
+                    )
+            }
+        }
+
+        put("/{id}/word-decisions") {
+            val user = call.principal<AuthUser>()!!
+            val sessionId = call.parameters["id"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                ?: return@put call.respond(HttpStatusCode.NotFound, mapOf("error" to "Capture not found"))
+            val request = call.receive<CaptureWordDecisionRequest>()
+            val candidateIds = request.candidateIds.map {
+                runCatching { UUID.fromString(it) }.getOrNull()
+                    ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid candidate id"))
+            }.toSet()
+            when (val result = photoService.acceptDiscoveredWords(user.uid, sessionId, candidateIds)) {
+                CaptureWordDecisionResult.NotFound ->
+                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "Capture not found"))
+                CaptureWordDecisionResult.Invalid ->
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid word selection"))
+                is CaptureWordDecisionResult.Accepted ->
+                    call.respond(mapOf("added" to result.added))
+            }
+        }
+
+        post("/{id}/tasks/{taskType}/retry") {
+            val user = call.principal<AuthUser>()!!
+            val sessionId = call.parameters["id"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+                ?: return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "Capture not found"))
+            if (call.parameters["taskType"] != CaptureWordDiscoveryRepository.TASK_TYPE) {
+                return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Unsupported task type"))
+            }
+            when (val result = photoService.startWordDiscovery(user.uid, sessionId)) {
+                CaptureWordDiscoveryEnqueueResult.NotFound ->
+                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "Capture not found"))
+                CaptureWordDiscoveryEnqueueResult.Locked ->
+                    call.respond(HttpStatusCode.Conflict, mapOf("error" to "Word discovery is not available"))
+                is CaptureWordDiscoveryEnqueueResult.Accepted ->
+                    call.respond(HttpStatusCode.Accepted, StartCaptureWordDiscoveryResponse(result.value.taskId.toString(), result.value.status.lowercase()))
+            }
+        }
+
         post("/{id}/retry") {
             val user = call.principal<AuthUser>()!!
             val sessionId = call.parameters["id"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }

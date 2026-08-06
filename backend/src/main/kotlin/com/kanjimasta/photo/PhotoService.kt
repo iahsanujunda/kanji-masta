@@ -16,6 +16,8 @@ class PhotoService(
     private val photoRepository: PhotoRepository,
     private val jobDispatcher: JobDispatcher,
     private val storageSigner: SupabaseStorageSigner? = null,
+    private val wordDiscoveryRepository: CaptureWordDiscoveryRepository? = null,
+    private val quizJobDispatcher: JobDispatcher? = null,
 ) {
     suspend fun startAnalysis(
         userId: String,
@@ -154,6 +156,10 @@ class PhotoService(
         val hasMore = sessions.size > limit
         val page = sessions.take(limit)
         val items = page.map { session ->
+            val wordActivity = wordDiscoveryRepository?.activityState(
+                UUID.fromString(session.id),
+                session.pipelineVersion ?: 2,
+            )
             PhotoActivityItem(
                 sessionId = session.id,
                 storagePath = session.storagePath,
@@ -162,6 +168,8 @@ class PhotoService(
                 updatedAt = session.updatedAt?.toString() ?: session.createdAt?.toString() ?: "",
                 kanjiCount = kanjiCount(session),
                 failureCode = session.failureCode,
+                taskType = wordActivity?.first,
+                taskStatus = wordActivity?.second?.lowercase(),
             )
         }
         val nextCursor = if (hasMore) page.lastOrNull()?.let { session ->
@@ -279,6 +287,13 @@ class PhotoService(
                     excluded = excluded,
                 )
             },
+            wordDiscovery = wordDiscoveryRepository?.readState(
+                userId = userId,
+                sessionId = sessionId,
+                pipelineVersion = session.pipelineVersion ?: 2,
+                eligible = captureStatus(session) == "ready" && !session.fullText.isNullOrBlank() &&
+                    (active.isEmpty() || familiar == active.size),
+            ) ?: CaptureWordDiscovery(false, "LOCKED"),
         )
     }
 
@@ -291,6 +306,38 @@ class PhotoService(
         val now = Instant.now()
         if (!photoRepository.markRevisited(sessionId, userId, now)) return null
         return MarkCaptureRevisitedResponse(now.toString())
+    }
+
+    suspend fun startWordDiscovery(userId: String, sessionId: UUID): CaptureWordDiscoveryEnqueueResult {
+        val result = wordDiscoveryRepository?.enqueue(userId, sessionId)
+            ?: return CaptureWordDiscoveryEnqueueResult.NotFound
+        val accepted = result as? CaptureWordDiscoveryEnqueueResult.Accepted ?: return result
+        if (accepted.value.created) {
+            jobDispatcher.dispatch(mapOf("CAPTURE_WORD_TASK_ID" to accepted.value.taskId.toString()))
+        }
+        return result
+    }
+
+    suspend fun acceptDiscoveredWords(
+        userId: String,
+        sessionId: UUID,
+        candidateIds: Set<UUID>,
+    ): CaptureWordDecisionResult {
+        val result = wordDiscoveryRepository?.acceptWords(userId, sessionId, candidateIds)
+            ?: return CaptureWordDecisionResult.NotFound
+        if ((result as? CaptureWordDecisionResult.Accepted)?.quizDispatchRequired == true) {
+            quizJobDispatcher?.dispatch(emptyMap())
+        }
+        return result
+    }
+
+    suspend fun drainWordDiscovery(limit: Int = 20): Int {
+        val repository = wordDiscoveryRepository ?: return 0
+        var dispatched = 0
+        repository.pendingTaskIds(limit).forEach { taskId ->
+            if (jobDispatcher.dispatch(mapOf("CAPTURE_WORD_TASK_ID" to taskId.toString()))) dispatched++
+        }
+        return dispatched
     }
 
     private fun kanjiCount(session: PhotoSessionRow): Int? {

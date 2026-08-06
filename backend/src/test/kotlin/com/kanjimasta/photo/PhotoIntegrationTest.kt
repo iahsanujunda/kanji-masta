@@ -30,6 +30,120 @@ import kotlin.test.assertTrue
 class PhotoIntegrationTest : com.kanjimasta.support.PersistenceTest() {
 
     @Test
+    fun `starting eligible word discovery creates one optional task and no user words`() = testApplication {
+        val sessionId = UUID.randomUUID()
+        TestDatabase.db.insert(PhotoSessionTable) {
+            set(it.id, sessionId)
+            set(it.userId, TEST_USER_ID)
+            set(it.imageUrl, "https://storage.example.com/photos/words.jpg")
+            set(it.status, "DONE")
+            set(it.processingStatus, "READY")
+            set(it.pipelineVersion, 2)
+            set(it.fullText, "本日は運転を見合わせます")
+        }
+        application { testModule(TestDatabase.db) }
+        val client = jsonClient()
+
+        repeat(2) {
+            val response = client.post("/api/captures/$sessionId/word-discovery") {
+                header(HttpHeaders.Authorization, "Bearer test-token")
+            }
+            assertEquals(HttpStatusCode.Accepted, response.status)
+        }
+
+        assertEquals(
+            1,
+            TestDatabase.db.from(PhotoSessionTaskTable)
+                .select()
+                .where {
+                    (PhotoSessionTaskTable.photoSessionId eq sessionId) and
+                        (PhotoSessionTaskTable.taskType eq "CAPTURE_WORD_DISCOVERY")
+                }
+                .totalRecordsInAllPages,
+        )
+        assertEquals(
+            0,
+            TestDatabase.db.from(com.kanjimasta.kanji.UserWordsTable)
+                .select()
+                .totalRecordsInAllPages,
+        )
+    }
+
+    @Test
+    fun `word candidates stay read only until exact confirmation and confirmation is idempotent`() = testApplication {
+        val sessionId = UUID.randomUUID()
+        val candidateId = UUID.randomUUID()
+        val kanjiId = UUID.randomUUID()
+        TestDatabase.db.insert(com.kanjimasta.kanji.KanjiMasterTable) {
+            set(it.id, kanjiId)
+            set(it.character, "運")
+            set(it.onyomi, emptyList())
+            set(it.kunyomi, emptyList())
+            set(it.meanings, listOf("carry"))
+        }
+        TestDatabase.db.insert(PhotoSessionTable) {
+            set(it.id, sessionId)
+            set(it.userId, TEST_USER_ID)
+            set(it.imageUrl, "https://storage.example.com/photos/confirmed-words.jpg")
+            set(it.status, "DONE")
+            set(it.processingStatus, "READY")
+            set(it.pipelineVersion, 2)
+            set(it.fullText, "運転見合わせ")
+        }
+        TestDatabase.db.insert(PhotoSessionTaskTable) {
+            set(it.id, UUID.randomUUID())
+            set(it.photoSessionId, sessionId)
+            set(it.taskType, "CAPTURE_WORD_DISCOVERY")
+            set(it.status, "DONE")
+            set(it.requiredForReady, false)
+            set(it.pipelineVersion, 2)
+        }
+        TestDatabase.db.insert(PhotoSessionWordTable) {
+            set(it.id, candidateId)
+            set(it.photoSessionId, sessionId)
+            set(it.surfaceText, "運転見合わせ")
+            set(it.lemma, "運転見合わせ")
+            set(it.normalizedLemma, "運転見合わせ")
+            set(it.reading, "うんてんみあわせ")
+            set(it.normalizedReading, "うんてんみあわせ")
+            set(it.meaning, "service suspension")
+            set(it.firstSeenOrder, 0)
+            set(it.kanjiIds, listOf(kanjiId.toString()))
+            set(it.pipelineVersion, 2)
+        }
+        application { testModule(TestDatabase.db) }
+        val client = jsonClient()
+
+        suspend fun state(): JsonObject {
+            val response = client.get("/api/captures/$sessionId") {
+                header(HttpHeaders.Authorization, "Bearer test-token")
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+            return Json.parseToJsonElement(response.bodyAsText()).jsonObject["wordDiscovery"]!!.jsonObject
+        }
+        assertEquals("NEW", state()["candidates"]!!.jsonArray.single().jsonObject["learningState"]!!.jsonPrimitive.content)
+        assertEquals(0, TestDatabase.db.from(com.kanjimasta.kanji.UserWordsTable).select().totalRecordsInAllPages)
+
+        suspend fun confirm(): JsonObject {
+            val response = client.put("/api/captures/$sessionId/word-decisions") {
+                header(HttpHeaders.Authorization, "Bearer test-token")
+                contentType(ContentType.Application.Json)
+                setBody("""{"candidateIds":["$candidateId"]}""")
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+            return Json.parseToJsonElement(response.bodyAsText()).jsonObject
+        }
+        assertEquals(1, confirm()["added"]!!.jsonPrimitive.int)
+        assertEquals(0, confirm()["added"]!!.jsonPrimitive.int)
+
+        assertEquals("LEARNING", state()["candidates"]!!.jsonArray.single().jsonObject["learningState"]!!.jsonPrimitive.content)
+        assertEquals(1, TestDatabase.db.from(com.kanjimasta.kanji.UserWordsTable).select().totalRecordsInAllPages)
+        assertEquals(1, TestDatabase.db.from(com.kanjimasta.quiz.generation.QuizGenerationJobTable).select().totalRecordsInAllPages)
+        assertEquals(1, TestDatabase.db.from(com.kanjimasta.jobs.JobAttemptTable)
+            .select().where { com.kanjimasta.jobs.JobAttemptTable.jobType eq "quiz_generation" }.totalRecordsInAllPages)
+    }
+
+    @Test
     fun `cloud run job dispatch returns after execution is accepted`() = runBlocking {
         var jobRequestBody = ""
         var jobAuthorization = ""

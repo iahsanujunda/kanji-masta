@@ -63,6 +63,8 @@ data class PhotoActivityItem(
     val updatedAt: String,
     val kanjiCount: Int? = null,
     val failureCode: String? = null,
+    val taskType: String? = null,
+    val taskStatus: String? = null,
 )
 
 @Serializable
@@ -115,6 +117,7 @@ data class CaptureDetail(
     val coveragePercent: Int? = null,
     val batchGateSatisfied: Boolean,
     val kanji: List<CaptureKanjiItem>,
+    val wordDiscovery: CaptureWordDiscovery,
 )
 
 @Serializable
@@ -137,3 +140,35 @@ data class CaptureKanjiCorrectionRequest(val excluded: Boolean)
 
 @Serializable
 data class MarkCaptureRevisitedResponse(val lastRevisitedAt: String)
+
+@Serializable
+data class StartCaptureWordDiscoveryResponse(
+    val taskId: String,
+    val status: String,
+)
+
+@Serializable
+data class CaptureWordDiscovery(
+    val eligible: Boolean,
+    val status: String,
+    val failureCode: String? = null,
+    val newCount: Int = 0,
+    val learningCount: Int = 0,
+    val familiarCount: Int = 0,
+    val candidates: List<CaptureWordCandidate> = emptyList(),
+)
+
+@Serializable
+data class CaptureWordCandidate(
+    val candidateId: String,
+    val surfaceText: String,
+    val lemma: String,
+    val reading: String,
+    val meaning: String,
+    val kanjiMasterIds: List<String>,
+    val learningState: String,
+    val familiarity: Int? = null,
+)
+
+@Serializable
+data class CaptureWordDecisionRequest(val candidateIds: List<String>)

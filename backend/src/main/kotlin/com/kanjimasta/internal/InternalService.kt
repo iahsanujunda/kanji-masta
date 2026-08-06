@@ -20,7 +20,12 @@ import java.util.UUID
 
 private val logger = LoggerFactory.getLogger("com.kanjimasta.internal.InternalService")
 
-class InternalService(private val db: Database) {
+class InternalService(
+    private val db: Database,
+    private val captureWordDiscoveryDrainer: suspend () -> Int = { 0 },
+) {
+
+    suspend fun drainCaptureWordDiscovery(): Int = captureWordDiscoveryDrainer()
 
     fun handlePhotoResult(request: PhotoResultRequest) {
         db.useTransaction {

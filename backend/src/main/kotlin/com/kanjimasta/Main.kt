@@ -20,14 +20,22 @@ fun main(args: Array<String>) {
 }
 
 private fun runPhotoJob() = withJobRuntime { runtime ->
-    val sessionId = requiredEnvironment("PHOTO_SESSION_ID").let(UUID::fromString)
-    val taskAttempt = System.getenv("CLOUD_RUN_TASK_ATTEMPT")?.toIntOrNull() ?: 0
     val claimedBy = listOfNotNull(
         System.getenv("CLOUD_RUN_EXECUTION"),
         System.getenv("CLOUD_RUN_TASK_INDEX"),
     ).joinToString("/").ifBlank { "local-photo-job" }
-    val succeeded = runBlocking { runtime.photoExecutor.run(sessionId, taskAttempt, claimedBy) }
-    check(succeeded) { "Photo analysis failed for $sessionId" }
+    val photoSessionId = System.getenv("PHOTO_SESSION_ID")?.takeIf(String::isNotBlank)?.let(UUID::fromString)
+    val wordTaskId = System.getenv("CAPTURE_WORD_TASK_ID")?.takeIf(String::isNotBlank)?.let(UUID::fromString)
+    require((photoSessionId == null) != (wordTaskId == null)) {
+        "photo-job requires exactly one of PHOTO_SESSION_ID or CAPTURE_WORD_TASK_ID"
+    }
+    val succeeded = if (photoSessionId != null) {
+        val taskAttempt = System.getenv("CLOUD_RUN_TASK_ATTEMPT")?.toIntOrNull() ?: 0
+        runBlocking { runtime.photoExecutor.run(photoSessionId, taskAttempt, claimedBy) }
+    } else {
+        runBlocking { runtime.captureWordDiscoveryExecutor.run(wordTaskId!!, claimedBy) }
+    }
+    check(succeeded) { "Capture processing failed for ${photoSessionId ?: wordTaskId}" }
 }
 
 private fun runQuizJob(mode: String) = withJobRuntime { runtime ->

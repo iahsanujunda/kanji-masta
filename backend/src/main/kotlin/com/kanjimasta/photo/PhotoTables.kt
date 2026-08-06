@@ -66,6 +66,23 @@ object PhotoSessionKanjiDecisionTable : Table<Nothing>("photo_session_kanji_deci
     val createdAt = timestamp("created_at")
 }
 
+object PhotoSessionWordTable : Table<Nothing>("photo_session_word") {
+    val id = uuid("id").primaryKey()
+    val photoSessionId = uuid("photo_session_id")
+    val surfaceText = text("surface_text")
+    val lemma = text("lemma")
+    val normalizedLemma = text("normalized_lemma")
+    val reading = text("reading")
+    val normalizedReading = text("normalized_reading")
+    val meaning = text("meaning")
+    val firstSeenOrder = int("first_seen_order")
+    val kanjiIds = uuidArray("kanji_ids")
+    val wordMasterId = uuid("word_master_id")
+    val pipelineVersion = int("pipeline_version")
+    val createdAt = timestamp("created_at")
+    val updatedAt = timestamp("updated_at")
+}
+
 object UserPhotoActivityStateTable : Table<Nothing>("user_photo_activity_state") {
     val userId = text("user_id").primaryKey()
     val seenThrough = timestamp("seen_through")

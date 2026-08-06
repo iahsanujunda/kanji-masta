@@ -60,6 +60,33 @@ describe("PhotoActivityControl", () => {
     ));
   });
 
+  it("shows optional word discovery progress without making the capture unavailable", async () => {
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === "/api/photo/activity/unseen") return Promise.resolve({ hasUnseen: false, latestTerminalAt: null });
+      if (path === "/api/photo/activity?limit=20") return Promise.resolve({
+        items: [{
+          sessionId: "capture-words",
+          storagePath: null,
+          status: "done",
+          createdAt: "2026-08-05T05:00:00Z",
+          updatedAt: "2026-08-05T05:10:00Z",
+          kanjiCount: 5,
+          taskType: "CAPTURE_WORD_DISCOVERY",
+          taskStatus: "processing",
+        }],
+        nextCursor: null,
+        hasMore: false,
+      });
+      throw new Error(`Unexpected API call: ${path}`);
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<PhotoActivityControl userId="test-user" />);
+
+    await user.click(await screen.findByRole("button", { name: "Activity" }));
+    expect(await screen.findByText("Finding words")).toBeInTheDocument();
+    expect(screen.getByText("Your capture remains ready")).toBeInTheDocument();
+  });
+
   it("loads the next cursor page when the drawer sentinel becomes visible", async () => {
     let onIntersect: IntersectionObserverCallback | undefined;
     const observe = vi.fn();

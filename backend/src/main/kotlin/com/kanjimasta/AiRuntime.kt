@@ -2,8 +2,8 @@ package com.kanjimasta
 
 import com.kanjimasta.ai.AiModelConfigRepository
 import com.kanjimasta.ai.OpenRouterClient
-import com.kanjimasta.kanji.WordDiscoveryRepository
-import com.kanjimasta.kanji.WordDiscoveryService
+import com.kanjimasta.photo.CaptureWordDiscoveryExecutor
+import com.kanjimasta.photo.CaptureWordDiscoveryRepository
 import com.kanjimasta.photo.PhotoAnalysisExecutor
 import com.kanjimasta.photo.PhotoAnalysisRepository
 import com.kanjimasta.quiz.generation.QuizGenerationRepository
@@ -50,9 +50,9 @@ class AiRuntime(
         batchSize = settings.quizBatchSize,
         leaseSeconds = settings.jobLeaseSeconds,
     )
-    val wordDiscovery = WordDiscoveryService(
-        repository = WordDiscoveryRepository(database, modelConfigs),
-        modelConfigs = modelConfigs,
+    val captureWordDiscoveryExecutor = CaptureWordDiscoveryExecutor(
+        repository = CaptureWordDiscoveryRepository(database, modelConfigs),
         openRouter = openRouter,
+        leaseSeconds = settings.jobLeaseSeconds,
     )
 }

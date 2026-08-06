@@ -65,5 +65,15 @@ fun Route.internalRoutes(internalService: InternalService, internalKey: String) 
                 put("failed", count)
             })
         }
+
+        post("/cron/drain-capture-word-discovery") {
+            if (!requireInternalKey(internalKey)) return@post
+            val count = internalService.drainCaptureWordDiscovery()
+            logger.info("Capture word discovery drainer dispatched {} task(s)", count)
+            call.respond(buildJsonObject {
+                put("status", "ok")
+                put("dispatched", count)
+            })
+        }
     }
 }

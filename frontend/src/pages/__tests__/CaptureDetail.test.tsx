@@ -23,6 +23,7 @@ const capture = {
   totalKanji: 4,
   coveragePercent: 25,
   batchGateSatisfied: true,
+  wordDiscovery: { eligible: false, status: "LOCKED", failureCode: null, newCount: 0, learningCount: 0, familiarCount: 0, candidates: [] },
   kanji: [
     { kanjiMasterId: "kanji-1", character: "本", onyomi: [], kunyomi: [], meanings: ["book"], whyUseful: "", familiarity: 5, learningState: "FAMILIAR", selectable: false, recommendedNext: false, excluded: false },
     ...["日", "運", "転"].map((character, index) => ({ kanjiMasterId: `kanji-${index + 2}`, character, onyomi: [], kunyomi: [], meanings: ["meaning"], whyUseful: "Useful here", familiarity: null, learningState: "NOT_STARTED", selectable: true, recommendedNext: true, excluded: false })),
@@ -54,5 +55,59 @@ describe("CaptureDetail", () => {
     expect(screen.getByText("Train service is suspended today.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Hide translation" })).toBeInTheDocument();
     await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith("/api/captures/capture-1/revisited", { method: "POST" }));
+  });
+
+  it("starts discovery at full kanji coverage and enrolls only exact new candidates", async () => {
+    const user = userEvent.setup();
+    const mastered = {
+      ...capture,
+      familiarKanji: 4,
+      coveragePercent: 100,
+      kanji: capture.kanji.map((item) => ({ ...item, familiarity: 5, learningState: "FAMILIAR", selectable: false, recommendedNext: false })),
+      wordDiscovery: { eligible: true, status: "NOT_STARTED", failureCode: null, newCount: 0, learningCount: 0, familiarCount: 0, candidates: [] },
+    };
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === "/api/captures/capture-1") return Promise.resolve(mastered);
+      return Promise.resolve({});
+    });
+    const view = renderWithProviders(
+      <Routes><Route path="/captures/:sessionId" element={<CaptureDetailPage />} /></Routes>,
+      { route: "/captures/capture-1" },
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Find new words" }));
+    expect(mockApiFetch).toHaveBeenCalledWith("/api/captures/capture-1/word-discovery", { method: "POST" });
+
+    const completed = {
+      ...mastered,
+      wordDiscovery: {
+        eligible: true,
+        status: "DONE",
+        failureCode: null,
+        newCount: 1,
+        learningCount: 0,
+        familiarCount: 1,
+        candidates: [
+          { candidateId: "word-new", surfaceText: "運転見合わせ", lemma: "運転見合わせ", reading: "うんてんみあわせ", meaning: "service suspension", kanjiMasterIds: ["kanji-3"], learningState: "NEW", familiarity: null },
+          { candidateId: "word-known", surfaceText: "本日", lemma: "本日", reading: "ほんじつ", meaning: "today", kanjiMasterIds: ["kanji-1"], learningState: "FAMILIAR", familiarity: 5 },
+        ],
+      },
+    };
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === "/api/captures/capture-1") return Promise.resolve(completed);
+      return Promise.resolve({});
+    });
+    view.unmount();
+    renderWithProviders(
+      <Routes><Route path="/captures/:sessionId" element={<CaptureDetailPage />} /></Routes>,
+      { route: "/captures/capture-1" },
+    );
+    await waitFor(() => expect(screen.getByText("運転見合わせ")).toBeInTheDocument());
+    expect(screen.getByText("本日")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Learn 1 word" }));
+    expect(mockApiFetch).toHaveBeenCalledWith("/api/captures/capture-1/word-decisions", {
+      method: "PUT",
+      body: JSON.stringify({ candidateIds: ["word-new"] }),
+    });
   });
 });

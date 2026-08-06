@@ -37,6 +37,8 @@ export interface RecentScanItem {
 
 export interface PhotoActivityItem extends RecentScanItem {
   updatedAt: string;
+  taskType?: "CAPTURE_WORD_DISCOVERY" | null;
+  taskStatus?: "pending" | "processing" | "done" | "failed" | null;
 }
 
 export interface PhotoActivityPage {
@@ -92,4 +94,26 @@ export interface CaptureDetail extends Omit<CaptureSummary, "readyAt" | "lastRev
   translationLanguage: string;
   batchGateSatisfied: boolean;
   kanji: CaptureKanjiItem[];
+  wordDiscovery: CaptureWordDiscovery;
+}
+
+export interface CaptureWordDiscovery {
+  eligible: boolean;
+  status: "LOCKED" | "NOT_STARTED" | "PENDING" | "PROCESSING" | "FAILED" | "DONE";
+  failureCode: string | null;
+  newCount: number;
+  learningCount: number;
+  familiarCount: number;
+  candidates: CaptureWordCandidate[];
+}
+
+export interface CaptureWordCandidate {
+  candidateId: string;
+  surfaceText: string;
+  lemma: string;
+  reading: string;
+  meaning: string;
+  kanjiMasterIds: string[];
+  learningState: "NEW" | "LEARNING" | "FAMILIAR";
+  familiarity: number | null;
 }

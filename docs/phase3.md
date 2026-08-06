@@ -661,338 +661,550 @@ The frontend replaces its local snapshot with this response. A retry using the s
 
 # Iteration 3.2: Captures
 
-_Keeping the source material, and making progress legible against it_
+_Keeping the source material and making progress legible against it_
 
 ---
 
 ## The problem
 
-A photo is currently disposable input. It is uploaded, read for kanji, and never seen again. Two things are lost:
+A photo is currently disposable input. It is uploaded, analyzed for kanji, used once as a selector, and then hidden. This loses both the immediate value of understanding the photographed text and the long-term value of returning to material that motivated the learning.
 
-**The immediate need.** When you photograph a letter from the ward office or an announcement poster, you want to know what it says *now*. The app extracts kanji and sends you to Google Translate for the actual content. That is a gap in the product, not a feature.
+A capture must answer two different questions:
 
-**The long-term payoff.** The photo is the artifact of learning. Being able to return to a poster you could not read three months ago and read it now is the entire point of the app, and there is currently no way to feel it.
+1. **Kanji coverage:** how many distinct kanji in this photo has the learner mastered?
+2. **Word coverage:** does the learner understand the words those kanji form in this particular text?
 
-These pull in opposite directions only if you assume the revisit is about discovering content. It is not — it is about testing whether you can read it yourself. So the translation is given freely at capture, and hidden by default on revisit.
+These are deliberately separate. A learner can know 100% of the individual kanji in a poster while still not knowing a compound used by the poster. Calling both states "readability" would overstate what the app knows.
 
----
-
-## 3.2.1 Concept
-
-Every photo becomes a **capture** — a retained artifact with the original image, its full text, a translation, and a readability score that changes over time.
-
-```
-Captured 12 Mar          Today
-┌─────────────┐          ┌─────────────┐
-│  [poster]   │          │  [poster]   │
-│             │    →     │             │
-│  14% ▁▁     │          │  71% ▆▆▆▆   │
-└─────────────┘          └─────────────┘
-```
-
-The readability score is the feature. It turns an invisible internal state — your vocabulary — into a number attached to something you actually cared about enough to photograph.
+The translation is available immediately after processing and hidden by default on revisit. Revisiting is primarily a self-test and a way to choose the next small batch of kanji, not a familiarity-changing quiz.
 
 ---
 
-## 3.2.2 Schema
+## 3.2.1 Product concept
 
-```graphql
-type PhotoSession @table {
-  # ... existing fields
+Every successfully uploaded photo becomes a permanent **capture**. The existing kanji selector is replaced by the capture detail page rather than followed by a separate disposable flow.
 
-  fullText: String              # NEW — complete text in the image, not just kanji
-  translation: String           # NEW — English translation of fullText
-  segments: String              # NEW — JSON, word-level segmentation
-  title: String                 # NEW — short AI-generated label, user-editable
-  capturedReadability: Float    # NEW — readability snapshot at capture time
-  archived: Boolean! @default(value: false)   # NEW — hide from gallery, keep data
-  lastRevisitedAt: Timestamp    # NEW — for surfacing stale captures
-}
+```
+Photo
+  → required visual analysis
+  → required translation
+  → capture ready
+      → learn the first recommended kanji
+      → revisit and learn the next batch
+      → reach 100% kanji coverage
+      → discover unfamiliar words used in this capture
 ```
 
-**`segments`** is the piece that makes readability computable. Word-level segmentation of `fullText`, each segment linked to `WordMaster` where a match exists:
+The learner may begin with three recommended kanji, leave, and return later. The same page always shows:
 
-```json
-[
-  { "text": "本日", "reading": "ほんじつ", "wordMasterId": "uuid-a", "hasKanji": true },
-  { "text": "は", "reading": null, "wordMasterId": null, "hasKanji": false },
-  { "text": "電車", "reading": "でんしゃ", "wordMasterId": "uuid-b", "hasKanji": true },
-  { "text": "が", "reading": null, "wordMasterId": null, "hasKanji": false },
-  { "text": "遅れて", "reading": "おくれて", "wordMasterId": "uuid-c", "hasKanji": true },
-  { "text": "おります", "reading": null, "wordMasterId": null, "hasKanji": false }
-]
-```
+- every kanji detected in the photo;
+- which kanji the learner originally selected;
+- which were added on later revisits;
+- current familiarity, including progress made through other photos;
+- which kanji remain available to learn.
 
-Stored as JSON rather than a table. It is only ever read whole, per photo, and never queried across photos.
+AI omissions are out of scope for this iteration. The learner can revisit the detected list, but cannot manually add a kanji that visual analysis missed.
+
+Every capture is retained automatically. "Done" leaves the page; it does not decide whether the capture is saved.
 
 ---
 
-## 3.2.3 Readability
+## 3.2.2 Processing pipeline
+
+Visual analysis and translation use separate model workloads so each can be selected, evaluated, and fine-tuned for one task.
+
+### Required tasks
+
+**`VISUAL_ANALYSIS`** receives the image and returns:
+
+- complete Japanese text with line breaks;
+- a short title;
+- kanji character observations and their first-seen order;
+- a content-based learning priority for each character;
+- the existing kanji explanation and starter-word data needed by the learning flow.
+
+The visual model detects content; it does not determine canonical database identity or whether a kanji is appropriate for this learner. Do not send the learner's known-kanji list to the model. That state changes after the capture is processed and would make stored recommendations stale.
+
+### Deterministic kanji canonicalization
+
+Before publishing visual-analysis results, the backend:
+
+1. trims and Unicode-normalizes each returned character;
+2. validates that it represents one supported kanji character;
+3. resolves it through the unique `kanji_master.character` key;
+4. deduplicates observations by canonical `kanji_master.id`;
+5. retains the earliest observed position and best content-based priority;
+6. writes the normalized `photo_session_kanji` rows in the same fenced transaction that completes the task.
+
+The application never accepts a `kanjiMasterId`, reading, or meaning invented by the model. An unresolved character remains in task evidence for diagnostics, but is not selectable and does not count toward coverage. Repeated occurrences of the same kanji count once.
+
+Content priority may originate with the visual model, but learner eligibility is always recomputed by the backend. A model-provided priority can never make an already-learning or familiar kanji selectable.
+
+**`TRANSLATION`** receives the canonical `fullText` produced by visual analysis and returns an English translation. It does not inspect the image independently. This avoids paying twice for image input and prevents OCR disagreements between workers.
+
+Translation begins only after visual analysis completes. A capture becomes `READY` only after all required tasks succeed. Failure of a required task moves it to `NEEDS_ATTENTION`; retry reruns only the failed task.
+
+### Optional later task
+
+**`CAPTURE_WORD_DISCOVERY`** is not required for initial readiness. It is triggered from a revisit after kanji coverage reaches 100%, operates on canonical `fullText`, and extracts vocabulary actually present in the capture.
+
+Starting this optional task does not move a ready capture back to `PROCESSING`. Its status appears on the capture page and in the existing activity drawer.
+
+### Execution model
+
+The database is the durable queue and source of truth. Cloud Run Jobs provide execution; Redis, RabbitMQ, and Pub/Sub are not required for this workload.
+
+- Use the same application artifact and a generic capture-job runtime role with task executors.
+- Claim bounded batches with `FOR UPDATE SKIP LOCKED`.
+- Use immediate dispatch for responsiveness and a scheduled drainer for recovery.
+- Fence completion with the existing `job_attempt` claim token and lease pattern.
+- Snapshot pipeline version, model configuration version, and model ID on each task attempt.
+- Resolve fresh image access from private `storage_path` at execution time; do not treat an expiring signed URL as a durable job input.
+
+Suggested executors:
+
+- `CaptureVisualAnalysisExecutor`
+- `CaptureTranslationExecutor`
+- `CaptureWordDiscoveryExecutor`
+- `CapturePipelineCoordinator`
+
+---
+
+## 3.2.3 Persistence contract
+
+SQL migrations in `supabase/migrations/` remain the schema source of truth. The names below describe the domain contract; exact DDL is deferred until implementation.
+
+### `photo_session`: the capture aggregate
+
+Continue using the existing row as the aggregate to avoid an unnecessary rename migration. Add:
+
+- `processing_status`: `PROCESSING | READY | NEEDS_ATTENTION`
+- `pipeline_version`
+- `title`
+- `full_text`
+- `translation`
+- `translation_language`, initially `en`
+- `thumbnail_path`
+- `captured_kanji_coverage`, immutable and nullable for legacy captures
+- `ready_at`
+- `selection_completed_at`
+- `last_revisited_at`
+- `archived`
+
+Processing status and selection completion are separate. The current `INGESTED` state conflates them and must not hide a permanent capture.
+
+### `photo_session_task`: durable asynchronous work
+
+- `id`
+- `photo_session_id`
+- `task_type`: `VISUAL_ANALYSIS | TRANSLATION | CAPTURE_WORD_DISCOVERY`
+- `status`: `BLOCKED | PENDING | PROCESSING | DONE | FAILED`
+- `required_for_ready`
+- `pipeline_version`
+- `result_json` for provider evidence/debugging, not the primary read model
+- failure and lease metadata
+- timestamps
+
+Unique key: `(photo_session_id, task_type, pipeline_version)`.
+
+`job_attempt.job_id` points to the task ID. Completing a task and publishing its normalized result must be one fenced transaction.
+
+### `photo_session_kanji`: every detected kanji
+
+- `photo_session_id`
+- `kanji_master_id`
+- `first_seen_order`
+- `recommendation_rank`
+- `why_useful`
+- nullable `excluded_at` for a learner-confirmed false positive
+- visual-analysis provenance/version
+
+Unique key: `(photo_session_id, kanji_master_id)`. Repeated appearances of the same character do not inflate coverage.
+
+This association is permanent and independent from `user_kanji`. Live familiarity is joined from `user_kanji` when the capture is read.
+
+`recommendation_rank` is capture-content metadata, not a frozen user recommendation. When AI priority is absent or tied, use a stable fallback of canonical frequency, first-seen order, then `kanji_master_id`.
+
+### `photo_session_kanji_decision`: selection history
+
+- `photo_session_id`
+- `kanji_master_id`
+- `batch_id` for selections submitted together
+- `decision`: `LEARNING | FAMILIAR | EXCLUDED_FALSE_POSITIVE | RESTORED`
+- `decision_source`: `INITIAL | REVISIT`
+- `created_at`
+
+This preserves what the learner chose at capture time versus what they added later. The latest global learning state still lives in `user_kanji`.
+
+`EXCLUDED_FALSE_POSITIVE` and `RESTORED` change only the capture-specific association. They never create, remove, or modify global `user_kanji` state. Keeping the association and decision event makes the correction reversible and auditable.
+
+`user_kanji.source_photo_id` is not sufficient as the capture association because the same kanji may appear in many captures.
+
+### `photo_session_word`: vocabulary actually present
+
+- `photo_session_id`
+- position/order in canonical text
+- surface text
+- normalized lemma
+- reading
+- meaning
+- all constituent kanji IDs
+- nullable `word_master_id`
+- extraction version and timestamps
+
+The association is retained even after the learner encounters the same word elsewhere. Its current learning state is joined from `user_words`.
+
+Word identity must use at least normalized `(lemma, reading)`, not spelling alone. The current spelling-only lookup can merge homographs and must not be copied into this flow.
+
+This normalized capture-to-word relation also avoids pretending that a `UserWords` row has only one source photo.
+
+### `capture_revisit_prompt`: prompt delivery
+
+Use a separate row with threshold, status, fired/seen/dismissed timestamps, and a unique capture-plus-threshold key. A `firedThresholds` array on the capture cannot safely enforce one pending prompt and a weekly cross-capture rate limit.
+
+---
+
+## 3.2.4 Kanji coverage and progressive selection
+
+Kanji coverage is computed live from distinct resolved kanji that have not been excluded as false positives:
 
 ```kotlin
-fun readability(segments: List<Segment>, userId: String): Float {
-    val kanjiSegments = segments.filter { it.hasKanji }
-    if (kanjiSegments.isEmpty()) return 1.0f
+fun kanjiCoverage(activeDetected: Set<KanjiId>, familiarity: Map<KanjiId, Int>): Float? {
+    if (activeDetected.isEmpty()) return null
+    val familiar = activeDetected.count { (familiarity[it] ?: 0) >= 5 }
+    return familiar.toFloat() / activeDetected.size
+}
 
-    val readable = kanjiSegments.count { seg ->
-        seg.wordMasterId?.let { id ->
-            userWordsRepo.findByWordMaster(userId, id)?.familiarity ?: 0
-        }?.let { it >= 3 } ?: false
-    }
+fun kanjiGateSatisfied(activeDetected: Set<KanjiId>, familiarity: Map<KanjiId, Int>) =
+    activeDetected.all { (familiarity[it] ?: 0) >= 5 }
+```
 
-    return readable.toFloat() / kanjiSegments.size
+A capture with no resolved kanji shows kanji coverage as `N/A`, not 100%. It can still be `READY`, show its translation, and unlock capture word discovery because there is no kanji-learning prerequisite to satisfy.
+
+The capture page groups kanji into:
+
+- **Familiar:** familiarity 5 or higher;
+- **Learning:** present in `user_kanji` with familiarity 0–4;
+- **Not started:** no `user_kanji` row.
+
+Learning a kanji from any source updates every capture containing it. Opening a capture does not alter familiarity.
+
+The capture read model returns the backend-derived state instead of asking the client to infer it:
+
+```json
+{
+  "kanjiMasterId": "uuid",
+  "character": "電",
+  "firstSeenOrder": 4,
+  "recommendationRank": 2,
+  "familiarity": 5,
+  "learningState": "FAMILIAR",
+  "selectable": false,
+  "recommendedNext": false
 }
 ```
 
-**Only kanji-bearing segments count.** Particles and kana endings are always readable and would inflate every score toward 100%, making the metric useless.
+`selectable` is true only for `NOT_STARTED` and non-excluded rows. `recommendedNext` is true only when the previous learning batch selected from this capture has reached familiarity 5, then only for the first three selectable rows ordered by stored recommendation rank and its deterministic fallback. Familiar and learning kanji remain visible because they explain coverage, but neither can be selected again.
 
-**Familiarity 3 is the threshold.** That is the tier where the user can understand the word inside a sentence — which is exactly what reading a poster requires. Familiarity 1 or 2 means they recognize it in isolation, which is not the same as reading.
+Every non-excluded row also offers a secondary **Not in this photo** action. This handles false positives without adding support for kanji the AI missed. Excluded rows move to a collapsed correction section with an **Undo** action.
 
-**Computed live, never stored** — except `capturedReadability`, which is snapshotted once at capture time so the before/after comparison has a fixed anchor.
+### False-positive example
 
----
+A station announcement contains `本日は運転を見合わせます`, whose distinct kanji are `本 日 運 転 見 合`. Glare, a logo, or background decoration causes visual analysis to additionally report `米`. Because `米` is a real seeded kanji, deterministic canonical matching can correctly resolve its ID but cannot prove that the observation was visually correct.
 
-## 3.2.4 Capture flow changes
+Without correction, a learner familiar with every real kanji remains at `6 / 7` and never unlocks word discovery. Choosing **Not in this photo** records `EXCLUDED_FALSE_POSITIVE`, removes only `米` from this capture's coverage denominator, and produces `6 / 6`. It does not mark `米` familiar or alter any other capture. **Undo** restores the association if the learner excluded it by mistake.
 
-The existing flow is unchanged up to kanji selection. One screen is added after it.
+This is different from an AI omission: the learner can remove an incorrectly reported character but cannot add a character the model failed to report in this iteration.
 
-```
-Photo → analysis → kanji selection → [ NEW: Read it ] → home
-```
-
-### The "Read it" screen
+### Initial visit
 
 ```
 ┌────────────────────────────────────┐
 │  ← Station notice                  │
+│  [original image]                  │
 │                                    │
-│  ┌──────────────────────────────┐  │
-│  │        [original image]      │  │
-│  └──────────────────────────────┘  │
+│  Kanji coverage       4 / 18       │
 │                                    │
-│  本日は電車が遅れております。      │
-│  ご迷惑をおかけしております。      │
+│  Recommended next                  │
+│  電   運   転                       │
 │                                    │
-│  ───────────────────────────────   │
+│  [ Learn these 3 ]                 │
+│  [ Show all detected kanji ]       │
 │                                    │
-│  Trains are delayed today.         │
-│  We apologise for the trouble.     │
-│                                    │
-│  You can read 14% of this today.   │
-│                                    │
-│           [ Save capture ]         │
+│  [ Reveal translation ]            │
+│                         [ Done ]    │
 └────────────────────────────────────┘
 ```
 
-Skippable. Some photos are captured purely for vocabulary and the user does not care what the whole thing says.
+The word-encounter flow adds exactly one starter word for each newly selected learning kanji, preferring a contextually relevant word from the capture analysis. It must not add all five examples from the current AI response. These starter words are separate from later capture word discovery.
 
-`capturedReadability` is written here.
-
-### Extraction changes
-
-No new AI call. The photo analysis prompt already reads the image — it just discards everything that is not a kanji. Extend the response:
+### Revisit before 100%
 
 ```
-Additionally return:
-- "fullText": every line of Japanese text visible in the image, joined with newlines.
-  Preserve line breaks as they appear. Omit decorative text, logos, and English.
-- "translation": natural English translation of fullText. Translate meaning, not
-  word-for-word. Keep the register of the original — a casual sign stays casual,
-  an official notice stays formal.
-- "title": a 2-4 word English label for what this is. Examples: "Station notice",
-  "Ramen menu", "Ward office letter", "Convenience store sign".
-- "segments": fullText split into words. Each entry: {"text", "reading", "hasKanji"}.
-  Reading is null for kana-only segments. Split at word boundaries, keeping
-  okurigana attached to its stem.
+Kanji coverage: 9 / 18 familiar
+
+9 familiar · 3 learning · 6 not started
+
+[ Add next 3 ]
 ```
 
-Ktor resolves `wordMasterId` for each segment after the response returns, matching `segments[].text` against `WordMaster.word`. Unmatched segments keep `wordMasterId: null` and count as unreadable — which is correct, since a word not in the system is a word the user has never encountered.
+`Add next 3` remains disabled while any kanji in the previous learning batch selected from this capture is below familiarity 5. Kanji that were already being learned from another source do not block the capture's next batch. Declaring a not-started kanji **Already know** sets it familiar but does not consume one of the three learning slots.
 
-**Cost impact is marginal.** Same image, same call, longer response. Output tokens on a poster's worth of text are cheap relative to the image input already being paid for.
+When the batch gate opens, `Add next 3` uses the stored recommendation rank among not-started kanji. The client submits exact kanji IDs; the server does not recalculate a different batch during the mutation.
+
+The selection command rechecks everything transactionally because the response may be stale by the time the learner taps the button:
+
+1. verify that the authenticated user owns the capture;
+2. verify that every submitted ID belongs to that capture's normalized kanji set;
+3. enforce the batch-size limit for new `LEARNING` selections;
+4. insert missing `user_kanji` rows with `ON CONFLICT DO NOTHING`;
+5. never overwrite familiarity, tier, review date, or status on an existing row;
+6. append only newly applied capture decision events;
+7. return the refreshed capture snapshot.
+
+If a kanji became learning or familiar elsewhere after the page loaded, selecting it is an idempotent no-op rather than a duplicate-key error or a familiarity reset. Arbitrary kanji IDs and kanji from another capture are rejected.
+
+`captured_kanji_coverage` is snapshotted automatically when a new capture first becomes `READY`, before initial selections change the live value.
 
 ---
 
-## 3.2.5 The gallery
+## 3.2.5 Word discovery after kanji mastery
 
-A new tab or section listing all captures, newest first.
+Reaching 100% kanji coverage means only that every character is familiar. It explicitly does not mean the learner understands every word in the photo.
+
+At 100%, the capture page unlocks:
 
 ```
-┌──────────────────────────────────────┐
-│  Captures                    [⊞] [☰] │
-├──────────────────────────────────────┤
-│                                      │
-│  ┌────────┐ ┌────────┐ ┌────────┐   │
-│  │ [img]  │ │ [img]  │ │ [img]  │   │
-│  │        │ │        │ │        │   │
-│  │ 71% ▲  │ │ 34%    │ │ 92% ▲  │   │
-│  └────────┘ └────────┘ └────────┘   │
-│  Station     Ramen      Ward         │
-│  notice      menu       letter       │
-│  12 Mar      3 Apr      18 Apr       │
-│                                      │
-└──────────────────────────────────────┘
+You know every kanji in this announcement.
+Some combinations may still be new.
+
+[ Find new words ]
 ```
 
-The ▲ marks captures whose readability has risen meaningfully since capture — the ones worth revisiting.
+The button idempotently enqueues `CAPTURE_WORD_DISCOVERY`. A `GET` request never starts work or updates `last_revisited_at`.
 
-**Sorting options:** newest, most improved (`current − captured`, descending), least readable.
+The worker contract differs from the existing generic word-discovery prompt:
 
-**Filters:** all, unread since capture, archived.
+- input is canonical `fullText`, not one kanji and a known-word list;
+- return only lexical items actually present in the captured text;
+- return surface text, lemma, reading, meaning, position, and constituent kanji;
+- include kanji-plus-kana words such as `遅れる`, not only multi-kanji compounds;
+- do not suggest related vocabulary that is absent from the capture.
+
+The extraction is stored once per capture and pipeline version. "New to this learner" is computed later by joining against `user_words`; it is not embedded in the AI prompt or frozen in the task result.
+
+This means a word discovered in one capture immediately appears as already known or learning in every other capture containing it.
+
+Word coverage is `NOT_MEASURED` until discovery completes. Afterward, the initial implementation shows counts for new, learning, and familiar words without presenting another percentage. This avoids false precision while the extraction quality is still being evaluated; kanji coverage must not borrow a word-familiarity threshold.
+
+### Consuming discovery results
+
+After the optional task completes, the page shows only candidates not already in `UserWords` as new:
+
+```
+New combinations found
+
+運転見合わせ  うんてんみあわせ
+Service suspended
+
+振替輸送      ふりかえゆそう
+Alternative transportation
+
+[ Learn these 2 words ]
+```
+
+Results are selected by default but require the learner to press **Learn these words**. AI discovery never changes the curriculum merely because a capture was opened.
+
+On confirmation, one transaction:
+
+1. resolves or creates `WordMaster` by normalized lemma and reading;
+2. creates missing `UserWords` idempotently;
+3. preserves the capture-to-word associations;
+4. reuses global quizzes when they exist;
+5. enqueues quiz generation only for accepted new words without global quizzes;
+6. dispatches the quiz drainer after commit.
+
+Retries and repeated confirmations must not create duplicate user words, candidates, quiz jobs, or attempts.
+
+The existing `WordDiscoveryService` is infrastructure to reuse, not a compatible domain implementation. Today it is constructed but has no caller, suggests five generic words around one kanji, and immediately inserts every result into `UserWords`. Its prompt, request, persistence, and runtime entry point must become capture-specific.
 
 ---
 
-## 3.2.6 The revisit view
+## 3.2.6 Gallery and revisit experience
 
-Tapping a capture opens it in read mode. This is where the payoff lands.
+`/captures` becomes the permanent server-backed gallery. The device-local upload queue moves to `/capture-queue`, with `/capture-queue/{clientCaptureId}` for local recovery. Once the server owns an upload, the local route redirects to `/captures/{captureId}`.
 
-```
-┌────────────────────────────────────┐
-│  ← Station notice        12 Mar    │
-│                                    │
-│  ┌──────────────────────────────┐  │
-│  │        [original image]      │  │
-│  └──────────────────────────────┘  │
-│                                    │
-│  本日は電車が遅れております。      │
-│  ご迷惑をおかけしております。      │
-│                                    │
-│  ┌──────────────────────────────┐  │
-│  │   Tap to reveal translation  │  │
-│  └──────────────────────────────┘  │
-│                                    │
-│  When captured    14%  ▁▁          │
-│  Today            71%  ▆▆▆▆        │
-│                                    │
-└────────────────────────────────────┘
-```
+Gallery cards show `PROCESSING`, `READY`, and `NEEDS_ATTENTION` distinctly. Ready cards show title, date, thumbnail, captured kanji coverage when available, and current kanji coverage.
 
-**Translation hidden by default.** The user reads the Japanese first, then reveals to check. This is the self-test, and it is why giving the translation at capture time costs nothing — months later nobody remembers what a particular poster said.
+The gallery has three sorting tabs:
 
-**Word highlighting on the extracted text.** Segments the user can read at familiarity 3+ render in normal weight; segments below threshold render dimmed. The sentence visibly fills in over months, which is a stronger signal than the percentage alone.
+1. **Recent** — defaults to newest capture first; tapping the active tab reverses to oldest first.
+2. **Familiarity** — defaults to highest current kanji coverage first; tapping the active tab reverses to lowest coverage first, which is the most-challenging view.
+3. **Recently visited** — defaults to most recently revisited first; tapping the active tab reverses to never/least recently revisited first.
 
-**Tapping a segment** opens the word detail — reading, meaning, current familiarity, next review. Words not yet in `UserWords` offer "Add to learning", which routes into the normal word-encounter flow.
+Selecting an inactive tab applies that tab's default direction. Tapping the already-active tab reverses its direction. Each tab displays an ascending/descending indicator and exposes an accessible label such as "Familiarity, highest first. Activate to show lowest first."
 
-**No familiarity effect.** Revisiting is a mirror, not a drill. Reading a capture correctly does not advance anything, and struggling with one does not knock anything back. Same reasoning as maturity challenges — it exists to show progress, not to drive the queue.
+Ordering is server-authoritative and stable:
 
-`lastRevisitedAt` is set on open.
+- **Recent:** `(created_at, id)` in the selected direction.
+- **Familiarity:** `(current_kanji_coverage, familiar_kanji_count, created_at, id)` in the selected direction. `N/A` coverage always appears after numeric coverage in both directions.
+- **Recently visited:** `(last_revisited_at, created_at, id)` in the selected direction. In descending order, never-visited captures appear last; in ascending order, they appear first.
 
----
+Processing and `NEEDS_ATTENTION` cards remain discoverable in every tab. Because their familiarity is `N/A`, they sort after ready captures in the Familiarity tab. Archived captures are excluded from the three main tabs and opened through a separate archived view.
 
-## 3.2.7 Revisit prompts
+On revisit, translation is hidden by default. The learner first attempts to read the original, then reveals the translation to check understanding. Kanji and word state are informational; simply revisiting never changes familiarity.
 
-The gallery is passive — the user has to remember to go there. Surface captures actively when they cross a readability threshold.
+Opening the page does not mutate `last_revisited_at`. The client sends an explicit revisit command after the page is successfully displayed.
 
-```
-┌────────────────────────────────────┐
-│  📷 You can read this now          │
-│  Station notice · captured 12 Mar  │
-│  14% → 71%                         │
-│  [ Read it ]                       │
-└────────────────────────────────────┘
-```
+Revisit prompts use exactly two kanji-coverage milestones:
 
-**Trigger:** a daily job recomputes readability for non-archived captures and fires when one crosses 50%, 75%, or 90% for the first time, provided at least 14 days have passed since capture.
+- **60%:** enough of the material is familiar to make a revisit meaningfully different.
+- **100%:** every active detected kanji is familiar and capture word discovery is unlocked.
 
-**Rate limit:** at most one revisit prompt at a time, and no more than one per week. This is a moment of delight — showing three at once devalues all of them.
+A capture must be at least 14 days old. It fires only when live familiarity moves it from below to at-or-above a milestone; starting above a milestone does not fire it. A false-positive exclusion by itself does not create a learning celebration. If a pending 60% prompt reaches 100%, update the existing prompt to 100% instead of creating another.
 
-The card appears on the home screen alongside challenge badges, at lower priority than both consolidation and maturity.
-
-Track fired thresholds to avoid repeats:
-
-```graphql
-type PhotoSession @table {
-  # ... existing fields
-  firedThresholds: [Int!]! @default(expr: "[]")   # e.g. [50, 75]
-}
-```
+There is at most one pending revisit prompt for the user and no more than one newly surfaced prompt per week. If several captures are eligible, priority is: 100% before 60%, then greatest improvement from captured coverage, least recently revisited, oldest capture, and capture ID as the final stable tie-breaker. The prompt stays below consolidation and maturity work on the home screen.
 
 ---
 
-## 3.2.8 Storage and retention
+## 3.2.7 Storage and initial retention
 
-Images already go to Cloud Storage and `PhotoSession.imageUrl` already exists — nothing new is needed to retain them. What changes is that they are now user-facing and permanent rather than incidental.
+The private `storage_path` is the durable image pointer. API responses resolve short-lived signed URLs as needed.
 
-**Volume:** a few captures a week at 2–4MB each is roughly 0.5–1GB per user per year. Negligible cost.
+Generate a deterministic private thumbnail path during the client-side upload preparation already used for image optimization. Gallery rendering must not download full-resolution images.
 
-**Deletion:** `archived` hides a capture from the gallery while keeping its data, so an accidental archive is recoverable and the kanji learned from it are unaffected. Hard delete removes the storage object and nulls `imageUrl`, keeping the row so `UserWords.sourcePhotoId` references stay intact.
+Archiving hides a capture without affecting learned kanji, learned words, or source associations. The initial implementation provides archive and restore only. It does not expose a capture-level hard-delete API or label archive as delete.
 
-**Thumbnails.** Serving full-resolution images into a grid is wasteful on mobile data. Generate a thumbnail at upload and store its URL alongside the original:
+Pre-feature photo sessions are not reprocessed or backfilled. Only sessions created under the capture pipeline version appear in the permanent gallery. Existing photo activity may remain in operational history, but opening it does not enqueue new visual, translation, or word-discovery jobs.
 
-```graphql
-thumbnailUrl: String    # NEW — ~400px, generated at upload
-```
+Capture-level hard delete is deferred rather than rejected permanently. Photographs can contain addresses, government correspondence, medical information, or other sensitive text, so deletion should be designed before a broad public launch. Account-level data removal is a separate retention requirement and is not replaced by archive.
 
 ---
 
-## 3.2.9 Existing photos
-
-Captures made before this ships have `imageUrl` but no `fullText`, `translation`, or `segments`. Two options:
-
-**Lazy backfill (recommended).** When an old capture is opened and `segments` is null, run extraction on demand and store the result. The user waits a few seconds once, and you only pay for photos anyone actually revisits. `capturedReadability` is unavailable for these — show "—" rather than a fabricated number, since backfilling it would compute today's score and label it as the past, which is exactly backwards.
-
-**Bulk backfill.** A script re-running extraction across every stored image. Cleanest gallery, but pays for photos that will never be opened, and still cannot recover a true `capturedReadability`.
-
----
-
-## 3.2.10 API
+## 3.2.8 API contract
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/captures` | Paginated list — thumbnail, title, date, captured and current readability |
-| `GET` | `/api/captures/{id}` | Full capture — image, fullText, translation, segments with per-segment familiarity |
-| `PUT` | `/api/captures/{id}` | Update title, archived |
-| `DELETE` | `/api/captures/{id}` | Hard delete — removes storage object, nulls imageUrl |
-| `POST` | `/api/captures/{id}/backfill` | Run extraction on a pre-feature capture |
-| `GET` | `/api/captures/revisit-prompt` | Pending revisit prompt, or null |
+| `GET` | `/api/captures?tab={recent\|familiarity\|recentlyVisited}&direction={asc\|desc}` | Cursor-paginated gallery using the selected reversible tab order |
+| `GET` | `/api/captures/{id}` | Canonical capture, task stages, normalized kanji with backend-derived eligibility, and word candidates |
+| `PUT` | `/api/captures/{id}` | Update user-owned metadata such as title and archived state |
+| `PUT` | `/api/captures/{id}/kanji-decisions` | Validate membership and idempotently record exact initial or revisit selections |
+| `POST` | `/api/captures/{id}/revisited` | Explicitly record a successful revisit |
+| `POST` | `/api/captures/{id}/word-discovery` | Idempotently enqueue optional capture word discovery |
+| `PUT` | `/api/captures/{id}/word-decisions` | Accept selected new words and enqueue missing quiz generation |
+| `POST` | `/api/captures/{id}/tasks/{taskType}/retry` | Retry one failed task |
+| `GET` | `/api/captures/revisit-prompt` | Return the one pending prompt or null |
 
-**`GET /api/captures/{id}` response:**
+All write endpoints verify capture ownership. Selection, discovery, retry, and acceptance commands are idempotent. Each gallery tab uses its documented compound cursor and matching index; reversing direction must not duplicate or skip captures between pages.
 
-```json
-{
-  "id": "uuid",
-  "title": "Station notice",
-  "imageUrl": "https://...",
-  "capturedAt": "2026-03-12T09:14:00+09:00",
-  "capturedReadability": 0.14,
-  "currentReadability": 0.71,
-  "fullText": "本日は電車が遅れております。\nご迷惑をおかけしております。",
-  "translation": "Trains are delayed today.\nWe apologise for the trouble.",
-  "segments": [
-    { "text": "本日", "reading": "ほんじつ", "hasKanji": true, "wordMasterId": "uuid-a", "familiarity": 4, "readable": true },
-    { "text": "は", "reading": null, "hasKanji": false, "wordMasterId": null, "familiarity": null, "readable": null },
-    { "text": "電車", "reading": "でんしゃ", "hasKanji": true, "wordMasterId": "uuid-b", "familiarity": 5, "readable": true },
-    { "text": "遅れて", "reading": "おくれて", "hasKanji": true, "wordMasterId": "uuid-c", "familiarity": 1, "readable": false }
-  ]
-}
-```
+---
 
-Per-segment `familiarity` and `readable` are resolved server-side so the client renders highlighting without additional lookups.
+## 3.2.9 Settled decisions
+
+Settled:
+
+- Persist every AI-detected kanji; do not support manually adding AI-missed kanji in this iteration.
+- Let AI detect characters and content priority, but resolve canonical identity and learner eligibility in the backend.
+- Do not send mutable learner kanji state to the visual model.
+- Replace the disposable selector with the permanent capture detail page.
+- Let the learner add recommended kanji progressively across revisits.
+- Gate each new learning batch until the preceding capture-selected batch reaches familiarity 5.
+- Allow capture-specific false-positive exclusion and undo; continue to ignore AI-missed kanji.
+- Show `N/A` rather than 100% when a capture contains no resolved kanji, while still allowing translation and word discovery.
+- Add exactly one starter word per newly selected learning kanji.
+- Compute kanji coverage from live `user_kanji` familiarity, with mastery at 5.
+- Keep kanji coverage separate from word understanding.
+- Use separate visual-analysis and translation models.
+- Make word discovery an optional asynchronous task triggered after 100% kanji coverage.
+- Extract only words actually present in canonical capture text.
+- Compute whether a word is new in the database rather than asking AI to decide.
+- Require explicit **Learn these words** confirmation before changing the curriculum.
+- Show word-state counts without a word-coverage percentage in the initial implementation.
+- Migrate `WordMaster` identity from spelling-only to normalized `(lemma, reading)` before capture word discovery.
+- Generate or reuse quizzes only for newly accepted capture words.
+- Use the database queue plus Cloud Run Jobs, without another broker.
+- Do not backfill or reprocess pre-feature photo sessions.
+- Provide archive and restore only; defer capture-level hard delete.
+- Use only 60% and 100% revisit-prompt milestones.
+- Use reversible Recent, Familiarity, and Recently visited gallery tabs.
+
+No product-contract decision remains open for the initial implementation. Mockup validation may refine labels, placement, and explanatory copy without changing these behaviors.
+
+---
+
+## 3.2.10 Capture verification contract
+
+Automated integration tests must cover these boundaries:
+
+- an extracted character resolves to the seeded canonical `kanji_master.id`, regardless of AI-supplied metadata;
+- repeated observations of one character create one `photo_session_kanji` row and one coverage unit;
+- an unresolved or malformed character cannot become selectable;
+- a learner can exclude and restore a false-positive kanji without changing global kanji progress;
+- excluded false positives do not count toward coverage or block word discovery;
+- a no-kanji capture reports `N/A`, remains ready, and permits word discovery;
+- only familiarity-driven crossings at 60% and 100% create revisit prompts;
+- a pending 60% prompt upgrades in place when the same capture reaches 100%;
+- false-positive exclusion alone does not create a revisit prompt;
+- a model result that gives highest priority to a familiar kanji is overridden by the backend;
+- a kanji already at familiarity 5 is returned as `FAMILIAR`, visible, and not selectable;
+- a kanji already at familiarity 0–4 is returned as `LEARNING`, visible, and not selectable;
+- a kanji learned through another capture changes this capture's read model without rerunning AI;
+- a new batch remains unavailable until the preceding capture-selected learning batch reaches familiarity 5;
+- selecting three kanji creates at most three starter words;
+- repeating a selection command creates no duplicate decision, word, quiz job, or attempt;
+- a stale selection never resets an existing kanji's familiarity, tier, or next review;
+- submitting another user's capture or a kanji absent from the capture is rejected before any learning state changes;
+- reversing each gallery tab preserves complete, duplicate-free cursor pagination;
+- Familiarity always places `N/A` after numeric coverage;
+- Recently visited places never-visited captures last when descending and first when ascending.
 
 ---
 
 ## Definition of Done
 
-- [ ] `PhotoSession` gains `fullText`, `translation`, `segments`, `title`, `capturedReadability`, `archived`, `lastRevisitedAt`, `firedThresholds`, `thumbnailUrl`
-- [ ] Photo analysis prompt extended to return fullText, translation, title, segments — no new AI call
-- [ ] Ktor resolves `wordMasterId` per segment against `WordMaster` after extraction
-- [ ] Unmatched segments correctly count as unreadable
-- [ ] Thumbnail generated at upload
-- [ ] "Read it" screen shown after kanji selection, skippable
-- [ ] `capturedReadability` snapshotted at capture time
-- [ ] Readability counts only `hasKanji` segments, threshold familiarity >= 3
-- [ ] Gallery lists captures with thumbnail, title, date, current readability
-- [ ] Gallery sortable by newest, most improved, least readable
-- [ ] Revisit view hides translation behind tap-to-reveal
-- [ ] Extracted text renders readable segments normal, unreadable segments dimmed
-- [ ] Tapping a segment opens word detail; unknown words offer "Add to learning"
-- [ ] Revisiting has no effect on familiarity in either direction
-- [ ] `lastRevisitedAt` set on open
-- [ ] Daily job recomputes readability and fires threshold crossings at 50/75/90
-- [ ] Revisit prompt requires 14+ days since capture
-- [ ] At most one revisit prompt at a time, max one per week
-- [ ] `firedThresholds` prevents repeat prompts for the same threshold
-- [ ] Revisit prompt sits below consolidation and maturity in home screen priority
-- [ ] Archive hides from gallery without data loss; hard delete removes storage object
-- [ ] Lazy backfill runs extraction on old captures when first opened
-- [ ] Pre-feature captures show "—" for captured readability, not a fabricated value
-- [ ] Verified: a capture from months ago shows a meaningfully higher current readability
+- [ ] Required visual-analysis and translation tasks use separate configurable models
+- [ ] Capture readiness is derived from required task completion
+- [ ] Optional word discovery does not demote a ready capture
+- [ ] Extracted characters are normalized, validated, resolved only through unique `kanji_master.character`, and deduplicated
+- [ ] Unresolved characters are retained as diagnostic evidence but are not selectable or counted in coverage
+- [ ] Every resolved detected kanji is normalized into `photo_session_kanji` in the fenced completion transaction
+- [ ] Visual analysis receives no mutable learner-known-kanji list
+- [ ] Recommendation order supports repeatable batches of three
+- [ ] Initial and revisit selections are retained separately
+- [ ] Capture detail shows familiar, learning, and not-started kanji using live state
+- [ ] False-positive exclusion is reversible, capture-specific, and excluded from coverage
+- [ ] A no-kanji capture shows `N/A`, remains ready, and can run word discovery
+- [ ] Already-learning and familiar kanji remain visible but are never selectable or recommended next
+- [ ] Backend eligibility overrides contradictory AI recommendation metadata
+- [ ] Kanji coverage uses distinct detected kanji and familiarity 5
+- [ ] `captured_kanji_coverage` is snapshotted automatically for new capture-pipeline sessions
+- [ ] Selection verifies capture ownership and rejects kanji outside the capture
+- [ ] A stale or repeated selection is an idempotent no-op and never resets existing learning progress
+- [ ] The next capture batch remains gated until the preceding capture-selected batch is familiar
+- [ ] Each newly selected learning kanji creates exactly one starter word
+- [ ] Selecting the next batch continues the existing kanji learning flow
+- [ ] 100% kanji coverage unlocks capture-specific word discovery
+- [ ] Word discovery returns only lexical items actually present in canonical `fullText`
+- [ ] Word candidates are normalized and retained per capture
+- [ ] New/learning/familiar word state is computed live from `user_words`
+- [ ] Initial word progress uses counts and does not claim a percentage
+- [ ] `WordMaster` identity and uniqueness migrate from spelling-only to normalized `(lemma, reading)`
+- [ ] Discovery results require explicit learner confirmation before creating `UserWords`
+- [ ] Accepting new words creates no duplicate `UserWords` or quiz jobs
+- [ ] Existing global quizzes are reused; generation runs only when quizzes are missing
+- [ ] Permanent gallery replaces `/captures` local-queue semantics
+- [ ] Upload queue and recovery routes move to `/capture-queue`
+- [ ] Processing and failed captures remain visible in gallery and activity drawer
+- [ ] Gallery provides reversible Recent, Familiarity, and Recently visited tabs with visible and accessible direction state
+- [ ] Each gallery direction uses stable cursor pagination without duplicates or omissions
+- [ ] Familiarity `N/A` and never-visited ordering follow the documented tab rules
+- [ ] Revisit hides translation initially and never alters familiarity
+- [ ] Explicit revisit command records `last_revisited_at`; `GET` remains read-only
+- [ ] Revisit prompts fire only at familiarity-driven 60% and 100% crossings after the 14-day minimum
+- [ ] At most one prompt is pending and at most one is newly surfaced per week
+- [ ] A pending 60% prompt upgrades to 100% rather than duplicating
+- [ ] Archive and restore are available without presenting archive as deletion
+- [ ] Capture-level hard delete is absent from the initial API and UI
+- [ ] Immediate dispatch and scheduled draining recover stranded database work
+- [ ] Claim-token fencing prevents stale workers from publishing results
+- [ ] Pre-feature photo sessions are excluded from the permanent gallery and never enqueue backfill jobs

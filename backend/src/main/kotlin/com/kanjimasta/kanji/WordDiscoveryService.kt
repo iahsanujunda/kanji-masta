@@ -1,7 +1,6 @@
 package com.kanjimasta.kanji
 
 import com.kanjimasta.ai.AiModelConfigRepository
-import com.kanjimasta.ai.AiPrompts
 import com.kanjimasta.ai.OpenRouterClient
 import com.kanjimasta.jobs.JobAttemptTable
 import com.kanjimasta.quiz.QuizBankTable
@@ -27,7 +26,7 @@ class WordDiscoveryService(
 ) {
     suspend fun discover(request: WordDiscoveryRequest): Int {
         val model = modelConfigs.requireActive().wordDiscoveryModel
-        val prompt = AiPrompts.WORD_DISCOVERY.format(
+        val prompt = WordDiscoveryPrompts.WORD_DISCOVERY.format(
             request.character,
             request.knownWords.ifEmpty { listOf("(none)") }.joinToString("、"),
             request.character,

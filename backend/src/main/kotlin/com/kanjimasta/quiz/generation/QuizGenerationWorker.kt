@@ -1,6 +1,5 @@
 package com.kanjimasta.quiz.generation
 
-import com.kanjimasta.ai.AiPrompts
 import com.kanjimasta.ai.AiProviderException
 import com.kanjimasta.ai.OpenRouterClient
 import com.kanjimasta.quiz.QuizType
@@ -53,7 +52,7 @@ class QuizGenerationWorker(
             repository.fail(claim, "source_missing")
             return 0
         }
-        val prompt = AiPrompts.QUIZ_GENERATION.format(
+        val prompt = QuizGenerationPrompts.QUIZ_GENERATION.format(
             word,
             reading,
             claim.meanings.firstOrNull() ?: "?",
@@ -89,7 +88,7 @@ class QuizGenerationWorker(
             repository.fail(claim, "source_missing")
             return 0
         }
-        val prompt = AiPrompts.DISTRACTOR_REGENERATION.format(
+        val prompt = QuizGenerationPrompts.DISTRACTOR_REGENERATION.format(
             context.familiarity,
             context.quizType.name,
             context.prompt,

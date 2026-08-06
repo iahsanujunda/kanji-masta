@@ -1,36 +1,6 @@
-package com.kanjimasta.ai
+package com.kanjimasta.quiz.generation
 
-object AiPrompts {
-    const val PHOTO_ANALYSIS = """You are a Japanese kanji tutor for a conversational English speaker living in Japan.
-Analyze this image and extract all kanji visible.
-
-%s
-
-For each kanji return 5 example words commonly encountered in daily life in Japan
-(shops, stations, restaurants, signage, packaging). Prioritize words the user
-is likely to hear spoken AND see written — not textbook vocabulary.
-
-Mark up to 3 kanji as recommended:true — choose the ones most worth learning
-first based on how frequently they appear in everyday Japanese life.
-Prefer recommending kanji the learner does NOT already know.
-Only recommend known kanji if there are fewer than 3 unknown kanji in the image worth learning.
-
-Return ONLY a valid JSON array — no markdown, no preamble, no trailing commas:
-[
-  {
-    "character": "電",
-    "recommended": true,
-    "whyUseful": "Core kanji for anything electric — trains, phones, appliances",
-    "exampleWords": [
-      { "word": "電車", "reading": "でんしゃ", "meaning": "train" },
-      { "word": "電話", "reading": "でんわ", "meaning": "telephone" },
-      { "word": "電気", "reading": "でんき", "meaning": "electricity / lights" },
-      { "word": "電池", "reading": "でんち", "meaning": "battery" },
-      { "word": "充電", "reading": "じゅうでん", "meaning": "charging (a device)" }
-    ]
-  }
-]"""
-
+object QuizGenerationPrompts {
     const val QUIZ_GENERATION = """You are building quizzes for a Japanese learner living in Japan.
 They speak conversational Japanese but are learning to read kanji from real encounters.
 Target word: %s (%s) — meaning: %s
@@ -108,16 +78,4 @@ Previous distractor sets: %s
 
 Return ONLY a JSON array of exactly 3 distractors — no markdown, no preamble:
 ["option1", "option2", "option3"]"""
-
-    const val WORD_DISCOVERY = """The learner is studying the kanji: %s
-They already know these words well: %s
-
-Suggest 5 more common daily-life words containing %s that are
-NOT in the known list. Words the learner is likely to encounter in Japan
-(shops, stations, restaurants, signage, packaging).
-
-Return ONLY a valid JSON array — no markdown, no preamble:
-[
-  { "word": "会話", "reading": "かいわ", "meaning": "conversation" }
-]"""
 }

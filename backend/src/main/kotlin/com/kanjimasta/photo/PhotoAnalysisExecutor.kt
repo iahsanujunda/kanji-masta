@@ -1,6 +1,5 @@
 package com.kanjimasta.photo
 
-import com.kanjimasta.ai.AiPrompts
 import com.kanjimasta.ai.AiProviderException
 import com.kanjimasta.ai.OpenRouterClient
 import com.kanjimasta.photo.PhotoFailureCode
@@ -78,7 +77,7 @@ class PhotoAnalysisExecutor(
         }
         val result = try {
             openRouter.analyzeImage(
-                prompt = AiPrompts.PHOTO_ANALYSIS.format(knownSection),
+                prompt = PhotoPrompts.PHOTO_ANALYSIS.format(knownSection),
                 imageBytes = image.bytes,
                 contentType = image.contentType,
                 model = claim.modelId,

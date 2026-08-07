@@ -6,6 +6,7 @@ import com.kanjimasta.jobs.JobAttemptTable
 import com.kanjimasta.kanji.KanjiMasterTable
 import com.kanjimasta.kanji.WordMasterTable
 import com.kanjimasta.photo.PhotoSessionTable
+import com.kanjimasta.photo.PhotoSessionTaskTable
 import com.kanjimasta.quiz.QuizBankTable
 import com.kanjimasta.quiz.QuizDistractorTable
 import com.kanjimasta.quiz.generation.JobStatus
@@ -300,6 +301,41 @@ class AdminRepository(private val db: Database) {
         val before = getJob(type, id) ?: return@useTransaction JobCommandResult.NotFound
         if (before.status != "failed" && !before.stale) return@useTransaction JobCommandResult.Conflict
 
+        val requiredPhotoTask = if (type == "photo_analysis") {
+            db.from(PhotoSessionTaskTable)
+                .select(PhotoSessionTaskTable.id, PhotoSessionTaskTable.taskType)
+                .where {
+                    (PhotoSessionTaskTable.photoSessionId eq id) and
+                        (PhotoSessionTaskTable.requiredForReady eq true) and
+                        (PhotoSessionTaskTable.status inList listOf("FAILED", "PROCESSING", "PENDING"))
+                }
+                .orderBy(PhotoSessionTaskTable.createdAt.asc())
+                .limit(1)
+                .map { it[PhotoSessionTaskTable.id]!! to it[PhotoSessionTaskTable.taskType].orEmpty() }
+                .firstOrNull() ?: run {
+                    // Legacy photo rows predate capture tasks. Materialize the current pipeline
+                    // so an admin rerun enters the same task-scoped execution path.
+                    val visualTaskId = UUID.randomUUID()
+                    db.insert(PhotoSessionTaskTable) {
+                        set(it.id, visualTaskId)
+                        set(it.photoSessionId, id)
+                        set(it.taskType, "VISUAL_ANALYSIS")
+                        set(it.status, "PENDING")
+                        set(it.requiredForReady, true)
+                        set(it.pipelineVersion, 2)
+                    }
+                    db.insert(PhotoSessionTaskTable) {
+                        set(it.id, UUID.randomUUID())
+                        set(it.photoSessionId, id)
+                        set(it.taskType, "TRANSLATION")
+                        set(it.status, "BLOCKED")
+                        set(it.requiredForReady, true)
+                        set(it.pipelineVersion, 2)
+                    }
+                    visualTaskId to "VISUAL_ANALYSIS"
+                }
+        } else null
+
         val existingAttempts = getAttempts(type, id)
         if (existingAttempts.isEmpty()) {
             db.insert(JobAttemptTable) {
@@ -321,6 +357,7 @@ class AdminRepository(private val db: Database) {
         val sourceUpdated = when (type) {
             "photo_analysis" -> db.update(PhotoSessionTable) {
                 set(it.status, "PROCESSING")
+                set(it.processingStatus, "PROCESSING")
                 set(it.failureCode, null)
                 set(it.attempts, nextNumber)
                 where {
@@ -344,9 +381,34 @@ class AdminRepository(private val db: Database) {
         }
         if (sourceUpdated == 0) return@useTransaction JobCommandResult.Conflict
 
+        if (requiredPhotoTask != null) {
+            db.update(PhotoSessionTaskTable) {
+                set(it.status, "PENDING")
+                set(it.failureCode, null)
+                set(it.finishedAt, null)
+                set(it.claimedBy, null)
+                set(it.leaseUntil, null)
+                where { it.id eq requiredPhotoTask.first }
+            }
+            if (requiredPhotoTask.second == "VISUAL_ANALYSIS") {
+                db.update(PhotoSessionTaskTable) {
+                    set(it.status, "BLOCKED")
+                    set(it.failureCode, null)
+                    set(it.finishedAt, null)
+                    where {
+                        (it.photoSessionId eq id) and
+                            (it.taskType eq "TRANSLATION") and
+                            (it.status neq "DONE")
+                    }
+                }
+            }
+        }
+
         val activeConfig = getActiveModelConfig()
         val modelId = when (type) {
-            "photo_analysis" -> activeConfig?.photoAnalysisModel
+            "photo_analysis" -> if (requiredPhotoTask?.second == "TRANSLATION") {
+                activeConfig?.translationModel
+            } else activeConfig?.photoAnalysisModel
             "quiz_generation" -> activeConfig?.quizGenerationModel
             else -> null
         }
@@ -354,6 +416,7 @@ class AdminRepository(private val db: Database) {
             set(it.id, UUID.randomUUID())
             set(it.jobType, type)
             set(it.jobId, id)
+            if (requiredPhotoTask != null) set(it.taskId, requiredPhotoTask.first)
             set(it.attemptNumber, nextNumber)
             set(it.status, "pending")
             set(it.trigger, "admin_rerun")

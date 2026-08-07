@@ -6,6 +6,7 @@ x-kotlin-runtime: &kotlin-runtime
 x-job-environment: &job-environment
   DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres
   SUPABASE_URL: http://host.docker.internal:54321
+  SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
   OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
   OPENROUTER_REASONING_EFFORT: ${OPENROUTER_REASONING_EFFORT:-medium}
   OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-https://shuukanhq.com}
@@ -21,6 +22,7 @@ services:
     environment:
       <<: *job-environment
       LOCAL_JOB_JAR: /app/app.jar
+      LOCAL_JOB_DISPATCH_URL: http://127.0.0.1:8081
       LOCAL_JOB_DISPATCH_KEY: ${LOCAL_JOB_DISPATCH_KEY:-local-job-dispatch-key}
     ports:
       - "8081:8081"

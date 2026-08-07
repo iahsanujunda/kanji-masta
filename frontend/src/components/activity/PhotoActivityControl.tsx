@@ -254,7 +254,15 @@ function LocalActivityRow({ capture, onOpen }: { capture: LocalCapture; onOpen: 
 }
 
 function ServerActivityRow({ item, onOpen }: { item: PhotoActivityItem; onOpen: () => void }) {
-  const presentation = item.taskType === "CAPTURE_WORD_DISCOVERY"
+  const presentation = item.taskType === "TRANSLATION"
+    ? item.taskStatus === "failed"
+      ? { title: "Translation needs attention", subtitle: "Visual analysis is safely saved", tone: "danger" as const, icon: <ErrorOutlineIcon /> }
+      : { title: "Translation in progress", subtitle: item.kanjiCount == null ? "Visual analysis complete" : `Visual analysis complete · ${item.kanjiCount} kanji`, tone: "active" as const, icon: <HourglassTopOutlinedIcon /> }
+    : item.taskType === "VISUAL_ANALYSIS"
+      ? item.taskStatus === "failed"
+        ? { title: "Visual analysis needs attention", subtitle: "Tap to try again", tone: "danger" as const, icon: <ErrorOutlineIcon /> }
+        : { title: "Analysing photo", subtitle: "Safe to close the app", tone: "active" as const, icon: <HourglassTopOutlinedIcon /> }
+    : item.taskType === "CAPTURE_WORD_DISCOVERY"
     ? item.taskStatus === "pending" || item.taskStatus === "processing"
       ? { title: "Finding words", subtitle: "Your capture remains ready", tone: "active" as const, icon: <HourglassTopOutlinedIcon /> }
       : item.taskStatus === "failed"

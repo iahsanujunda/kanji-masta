@@ -2,6 +2,9 @@ package com.kanjimasta
 
 import com.kanjimasta.db.connectDatabase
 import com.kanjimasta.jobs.runLocalJobProcessServer
+import com.kanjimasta.jobs.CloudRunJobDispatcher
+import com.kanjimasta.jobs.LocalJobDispatcher
+import com.kanjimasta.jobs.JobDispatcher
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
@@ -24,18 +27,18 @@ private fun runPhotoJob() = withJobRuntime { runtime ->
         System.getenv("CLOUD_RUN_EXECUTION"),
         System.getenv("CLOUD_RUN_TASK_INDEX"),
     ).joinToString("/").ifBlank { "local-photo-job" }
-    val photoSessionId = System.getenv("PHOTO_SESSION_ID")?.takeIf(String::isNotBlank)?.let(UUID::fromString)
+    val captureTaskId = System.getenv("CAPTURE_TASK_ID")?.takeIf(String::isNotBlank)?.let(UUID::fromString)
     val wordTaskId = System.getenv("CAPTURE_WORD_TASK_ID")?.takeIf(String::isNotBlank)?.let(UUID::fromString)
-    require((photoSessionId == null) != (wordTaskId == null)) {
-        "photo-job requires exactly one of PHOTO_SESSION_ID or CAPTURE_WORD_TASK_ID"
+    require((captureTaskId == null) != (wordTaskId == null)) {
+        "photo-job requires exactly one of CAPTURE_TASK_ID or CAPTURE_WORD_TASK_ID"
     }
-    val succeeded = if (photoSessionId != null) {
+    val succeeded = if (captureTaskId != null) {
         val taskAttempt = System.getenv("CLOUD_RUN_TASK_ATTEMPT")?.toIntOrNull() ?: 0
-        runBlocking { runtime.photoExecutor.run(photoSessionId, taskAttempt, claimedBy) }
+        runBlocking { runtime.photoExecutor.run(captureTaskId, taskAttempt, claimedBy) }
     } else {
         runBlocking { runtime.captureWordDiscoveryExecutor.run(wordTaskId!!, claimedBy) }
     }
-    check(succeeded) { "Capture processing failed for ${photoSessionId ?: wordTaskId}" }
+    check(succeeded) { "Capture processing failed for ${captureTaskId ?: wordTaskId}" }
 }
 
 private fun runQuizJob(mode: String) = withJobRuntime { runtime ->
@@ -57,7 +60,21 @@ private fun withJobRuntime(block: (AiRuntime) -> Unit) {
         maximumPoolSize = System.getenv("HIKARI_MAX_POOL_SIZE")?.toIntOrNull() ?: 5,
     )
     try {
-        block(AiRuntime(database, httpClient, runtimeSettingsFromEnvironment()))
+        val cloudJob = System.getenv("PHOTO_ANALYSIS_JOB").orEmpty()
+        val localDispatchUrl = System.getenv("LOCAL_JOB_DISPATCH_URL").orEmpty()
+        val dispatcher: JobDispatcher = if (cloudJob.isNotBlank()) {
+            CloudRunJobDispatcher(httpClient, cloudJob)
+        } else if (localDispatchUrl.isNotBlank()) {
+            LocalJobDispatcher(
+                httpClient,
+                localDispatchUrl,
+                "photo-job",
+                System.getenv("LOCAL_JOB_DISPATCH_KEY").orEmpty(),
+            )
+        } else {
+            JobDispatcher { false }
+        }
+        block(AiRuntime(database, httpClient, runtimeSettingsFromEnvironment(), dispatcher))
     } finally {
         httpClient.close()
     }
@@ -65,7 +82,7 @@ private fun withJobRuntime(block: (AiRuntime) -> Unit) {
 
 internal fun sharedHttpClient(): HttpClient = HttpClient(CIO) {
     install(HttpTimeout) {
-        requestTimeoutMillis = System.getenv("OPENROUTER_TIMEOUT_SECONDS")?.toLongOrNull()?.times(1_000) ?: 120_000
+        requestTimeoutMillis = System.getenv("OPENROUTER_TIMEOUT_SECONDS")?.toLongOrNull()?.times(1_000) ?: 600_000
         connectTimeoutMillis = 10_000
     }
 }
@@ -76,9 +93,11 @@ internal fun runtimeSettingsFromEnvironment(): AiRuntimeSettings = AiRuntimeSett
     openRouterSiteUrl = System.getenv("OPENROUTER_SITE_URL").orEmpty(),
     openRouterAppName = System.getenv("OPENROUTER_APP_NAME") ?: "Kanji Masta",
     reasoningEffort = System.getenv("OPENROUTER_REASONING_EFFORT") ?: "medium",
-    jobLeaseSeconds = System.getenv("JOB_LEASE_SECONDS")?.toLongOrNull() ?: 300,
+    jobLeaseSeconds = System.getenv("JOB_LEASE_SECONDS")?.toLongOrNull() ?: 1_500,
     quizBatchSize = System.getenv("QUIZ_JOB_BATCH_SIZE")?.toIntOrNull() ?: 10,
     maxImageBytes = System.getenv("PHOTO_MAX_IMAGE_BYTES")?.toLongOrNull() ?: 10 * 1024 * 1024,
+    supabaseUrl = System.getenv("SUPABASE_URL").orEmpty(),
+    supabaseServiceRoleKey = System.getenv("SUPABASE_SERVICE_ROLE_KEY").orEmpty(),
 )
 
 private fun requiredEnvironment(name: String): String =

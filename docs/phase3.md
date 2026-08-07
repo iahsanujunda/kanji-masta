@@ -770,6 +770,17 @@ The database is the durable queue and source of truth. Cloud Run Jobs provide ex
 - Fence completion with the existing `job_attempt` claim token and lease pattern.
 - Snapshot pipeline version, model configuration version, and model ID on each task attempt.
 - Resolve fresh image access from private `storage_path` at execution time; do not treat an expiring signed URL as a durable job input.
+- Dispatch visual analysis and translation as independent executions of the same Cloud Run Job.
+  Visual completion durably publishes canonical text and kanji before it unblocks and dispatches
+  translation. A translation failure or retry therefore never downloads the image or calls the
+  visual model again.
+- Allow up to 10 minutes for each OpenRouter request. Each task owns its own fenced attempt, starts
+  with a 25-minute lease, and renews that lease while its provider request remains active. Each
+  Cloud Run execution retains its 24-hour outer timeout.
+- If dispatching translation fails after visual completion, the visual execution fails so the
+  platform retry can redispatch the already-persisted translation task without rerunning vision.
+- Retry OpenRouter `429` and `503` responses at most twice, honoring a bounded `Retry-After`;
+  persist client request expiry as `timed_out` rather than the generic `provider_failed`.
 
 Suggested executors:
 
@@ -815,7 +826,9 @@ Processing status and selection completion are separate. The current `INGESTED` 
 
 Unique key: `(photo_session_id, task_type, pipeline_version)`.
 
-`job_attempt.job_id` points to the task ID. Completing a task and publishing its normalized result must be one fenced transaction.
+`job_attempt.job_id` remains the photo-session aggregate key used by the Admin control plane, while
+nullable `job_attempt.task_id` identifies the exact capture task and enforces one active attempt per
+task. Completing a task and publishing its normalized result must be one fenced transaction.
 
 ### `photo_session_kanji`: every detected kanji
 

@@ -30,8 +30,9 @@ class PhotoRepository(private val db: Database) {
                 set(it.imageUrl, imageUrl)
                 if (storagePath != null) set(it.storagePath, storagePath)
             }
-            createInitialAttempt(checkNotNull(insertedId) { "Photo session insert did not return an id" })
-            createCaptureTasks(insertedId)
+            val persistedId = checkNotNull(insertedId) { "Photo session insert did not return an id" }
+            val visualTaskId = createCaptureTasks(persistedId)
+            createInitialAttempt(persistedId, visualTaskId)
             return@useTransaction PhotoSessionCreation(insertedId.toString(), created = true, shouldDispatch = true)
         }
 
@@ -50,8 +51,8 @@ class PhotoRepository(private val db: Database) {
         } ?: error("Photo session upsert did not return an id")
         val created = returnedId == id
         if (created) {
-            createInitialAttempt(returnedId)
-            createCaptureTasks(returnedId)
+            val visualTaskId = createCaptureTasks(returnedId)
+            createInitialAttempt(returnedId, visualTaskId)
         }
         val shouldDispatch = created || db.from(PhotoSessionTable)
             .select(PhotoSessionTable.status, PhotoSessionTable.attempts)
@@ -64,12 +65,13 @@ class PhotoRepository(private val db: Database) {
         PhotoSessionCreation(returnedId.toString(), created, shouldDispatch)
     }
 
-    private fun createInitialAttempt(sessionId: UUID) {
+    private fun createInitialAttempt(sessionId: UUID, taskId: UUID) {
         val config = AiModelConfigRepository(db).getActive()
         db.insert(JobAttemptTable) {
             set(it.id, UUID.randomUUID())
             set(it.jobType, "photo_analysis")
             set(it.jobId, sessionId)
+            set(it.taskId, taskId)
             set(it.attemptNumber, 1)
             set(it.status, "pending")
             set(it.trigger, "initial")
@@ -79,9 +81,10 @@ class PhotoRepository(private val db: Database) {
         }
     }
 
-    private fun createCaptureTasks(sessionId: UUID) {
+    private fun createCaptureTasks(sessionId: UUID): UUID {
+        val visualTaskId = UUID.randomUUID()
         db.insert(PhotoSessionTaskTable) {
-            set(it.id, UUID.randomUUID())
+            set(it.id, visualTaskId)
             set(it.photoSessionId, sessionId)
             set(it.taskType, "VISUAL_ANALYSIS")
             set(it.status, "PENDING")
@@ -96,7 +99,63 @@ class PhotoRepository(private val db: Database) {
             set(it.requiredForReady, true)
             set(it.pipelineVersion, 2)
         }
+        return visualTaskId
     }
+
+    fun pendingRequiredTask(sessionId: UUID): RequiredCaptureTask? = db.from(PhotoSessionTaskTable)
+        .select(PhotoSessionTaskTable.id, PhotoSessionTaskTable.taskType, PhotoSessionTaskTable.status)
+        .where {
+            (PhotoSessionTaskTable.photoSessionId eq sessionId) and
+                (PhotoSessionTaskTable.requiredForReady eq true) and
+                (PhotoSessionTaskTable.status inList listOf("PENDING", "PROCESSING"))
+        }
+        .orderBy(PhotoSessionTaskTable.createdAt.asc())
+        .limit(1)
+        .map { row ->
+            RequiredCaptureTask(
+                id = row[PhotoSessionTaskTable.id]!!,
+                type = row[PhotoSessionTaskTable.taskType].orEmpty(),
+                status = row[PhotoSessionTaskTable.status].orEmpty(),
+            )
+        }
+        .firstOrNull()
+
+    fun failedRequiredTask(sessionId: UUID, userId: String): RequiredCaptureTask? = db.from(PhotoSessionTaskTable)
+        .innerJoin(PhotoSessionTable, on = PhotoSessionTaskTable.photoSessionId eq PhotoSessionTable.id)
+        .select(PhotoSessionTaskTable.id, PhotoSessionTaskTable.taskType, PhotoSessionTaskTable.status)
+        .where {
+            (PhotoSessionTaskTable.photoSessionId eq sessionId) and
+                (PhotoSessionTable.userId eq userId) and
+                (PhotoSessionTaskTable.requiredForReady eq true) and
+                (PhotoSessionTaskTable.status eq "FAILED")
+        }
+        .orderBy(PhotoSessionTaskTable.createdAt.asc())
+        .limit(1)
+        .map { row ->
+            RequiredCaptureTask(
+                id = row[PhotoSessionTaskTable.id]!!,
+                type = row[PhotoSessionTaskTable.taskType].orEmpty(),
+                status = row[PhotoSessionTaskTable.status].orEmpty(),
+            )
+        }
+        .firstOrNull()
+
+    fun requiredTaskStates(sessionId: UUID, userId: String): List<CaptureTaskState> = db.from(PhotoSessionTaskTable)
+        .innerJoin(PhotoSessionTable, on = PhotoSessionTaskTable.photoSessionId eq PhotoSessionTable.id)
+        .select(PhotoSessionTaskTable.taskType, PhotoSessionTaskTable.status, PhotoSessionTaskTable.failureCode)
+        .where {
+            (PhotoSessionTaskTable.photoSessionId eq sessionId) and
+                (PhotoSessionTable.userId eq userId) and
+                (PhotoSessionTaskTable.requiredForReady eq true)
+        }
+        .orderBy(PhotoSessionTaskTable.createdAt.asc())
+        .map { row ->
+            CaptureTaskState(
+                taskType = row[PhotoSessionTaskTable.taskType].orEmpty(),
+                status = row[PhotoSessionTaskTable.status].orEmpty().lowercase(),
+                failureCode = row[PhotoSessionTaskTable.failureCode],
+            )
+        }
 
     fun validateCaptureSelection(sessionId: UUID, userId: String, kanjiIds: Set<UUID>): Boolean {
         if (kanjiIds.isEmpty()) return true
@@ -383,6 +442,45 @@ class PhotoRepository(private val db: Database) {
         }
     }
 
+    fun markRequiredTaskDispatchFailed(
+        taskId: UUID,
+        sessionId: UUID,
+        userId: String,
+        failureCode: String,
+    ) = db.useTransaction {
+        val ownsSession = db.from(PhotoSessionTable)
+            .select(PhotoSessionTable.id)
+            .where { (PhotoSessionTable.id eq sessionId) and (PhotoSessionTable.userId eq userId) }
+            .limit(1)
+            .totalRecordsInAllPages > 0
+        if (!ownsSession) return@useTransaction
+        db.update(PhotoSessionTaskTable) {
+            set(it.status, "FAILED")
+            set(it.failureCode, failureCode)
+            set(it.finishedAt, Instant.now())
+            where {
+                (it.id eq taskId) and
+                    (it.photoSessionId eq sessionId) and
+                    (it.status inList listOf("PENDING", "PROCESSING"))
+            }
+        }
+        db.update(JobAttemptTable) {
+            set(it.status, "failed")
+            set(it.failureCode, failureCode)
+            set(it.finishedAt, Instant.now())
+            where {
+                (it.taskId eq taskId) and
+                    (it.status inList listOf("pending", "processing"))
+            }
+        }
+        db.update(PhotoSessionTable) {
+            set(it.status, PhotoSessionStatus.FAILED.name)
+            set(it.processingStatus, "NEEDS_ATTENTION")
+            set(it.failureCode, failureCode)
+            where { (it.id eq sessionId) and (it.userId eq userId) }
+        }
+    }
+
     fun updateImageUrl(sessionId: UUID, userId: String, imageUrl: String) {
         db.update(PhotoSessionTable) {
             set(it.imageUrl, imageUrl)
@@ -390,13 +488,24 @@ class PhotoRepository(private val db: Database) {
         }
     }
 
-    fun prepareUserRetry(sessionId: UUID, userId: String): Boolean = db.useTransaction {
+    fun prepareUserRetry(sessionId: UUID, userId: String): RequiredCaptureTask? = db.useTransaction {
         val session = db.from(PhotoSessionTable)
             .select(PhotoSessionTable.status, PhotoSessionTable.attempts)
             .where { (PhotoSessionTable.id eq sessionId) and (PhotoSessionTable.userId eq userId) }
             .map { (it[PhotoSessionTable.status].orEmpty()) to (it[PhotoSessionTable.attempts] ?: 0) }
-            .firstOrNull() ?: return@useTransaction false
-        if (session.first !in setOf("FAILED", "ERROR")) return@useTransaction false
+            .firstOrNull() ?: return@useTransaction null
+        if (session.first !in setOf("FAILED", "ERROR")) return@useTransaction null
+        val failedTask = db.from(PhotoSessionTaskTable)
+            .select(PhotoSessionTaskTable.id, PhotoSessionTaskTable.taskType)
+            .where {
+                (PhotoSessionTaskTable.photoSessionId eq sessionId) and
+                    (PhotoSessionTaskTable.requiredForReady eq true) and
+                    (PhotoSessionTaskTable.status eq "FAILED")
+            }
+            .orderBy(PhotoSessionTaskTable.createdAt.asc())
+            .limit(1)
+            .map { row -> RequiredCaptureTask(row[PhotoSessionTaskTable.id]!!, row[PhotoSessionTaskTable.taskType].orEmpty(), "FAILED") }
+            .firstOrNull() ?: return@useTransaction null
         val config = AiModelConfigRepository(db).requireActive()
         val latestAttemptNumber = max(JobAttemptTable.attemptNumber).aliased("latest_photo_attempt")
         val nextAttemptNumber = (db.from(JobAttemptTable)
@@ -408,11 +517,12 @@ class PhotoRepository(private val db: Database) {
             set(it.id, UUID.randomUUID())
             set(it.jobType, "photo_analysis")
             set(it.jobId, sessionId)
+            set(it.taskId, failedTask.id)
             set(it.attemptNumber, nextAttemptNumber)
             set(it.status, "pending")
             set(it.trigger, "platform_retry")
             set(it.modelConfigVersion, config.version)
-            set(it.modelId, config.photoAnalysisModel)
+            set(it.modelId, if (failedTask.type == "TRANSLATION") config.translationModel else config.photoAnalysisModel)
             set(it.createdBy, userId)
         }
         db.update(PhotoSessionTable) {
@@ -427,19 +537,22 @@ class PhotoRepository(private val db: Database) {
             set(it.finishedAt, null)
             where {
                 (it.photoSessionId eq sessionId) and
-                    (it.taskType eq "VISUAL_ANALYSIS")
+                    (it.id eq failedTask.id)
             }
         }
-        db.update(PhotoSessionTaskTable) {
-            set(it.status, "BLOCKED")
-            set(it.failureCode, null)
-            set(it.finishedAt, null)
-            where {
-                (it.photoSessionId eq sessionId) and
-                    (it.taskType eq "TRANSLATION")
+        if (failedTask.type == "VISUAL_ANALYSIS") {
+            db.update(PhotoSessionTaskTable) {
+                set(it.status, "BLOCKED")
+                set(it.failureCode, null)
+                set(it.finishedAt, null)
+                where {
+                    (it.photoSessionId eq sessionId) and
+                        (it.taskType eq "TRANSLATION") and
+                        (it.status neq "DONE")
+                }
             }
         }
-        true
+        failedTask.copy(status = "PENDING")
     }
 
     private fun toPhotoSessionRow(row: QueryRowSet) = PhotoSessionRow(
@@ -467,6 +580,12 @@ data class PhotoSessionCreation(
     val id: String,
     val created: Boolean,
     val shouldDispatch: Boolean,
+)
+
+data class RequiredCaptureTask(
+    val id: UUID,
+    val type: String,
+    val status: String,
 )
 
 data class PhotoSessionRow(

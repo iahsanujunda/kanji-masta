@@ -43,6 +43,6 @@ openrouter:
   reasoningEffort: "$OPENROUTER_REASONING_EFFORT:medium"
 
 jobs:
-  leaseSeconds: "$JOB_LEASE_SECONDS:300"
+  leaseSeconds: "$JOB_LEASE_SECONDS:1500"
   quizBatchSize: "$QUIZ_JOB_BATCH_SIZE:10"
   maxImageBytes: "$PHOTO_MAX_IMAGE_BYTES:10485760"

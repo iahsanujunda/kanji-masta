@@ -31,48 +31,62 @@ class PhotoService(
         if (!creation.created) {
             logger.info("Reusing photo session={} for clientCaptureId={}", sessionId, clientCaptureId)
             if (creation.shouldDispatch) {
-                dispatchJob(sessionId, userId)
+                photoRepository.pendingRequiredTask(UUID.fromString(sessionId))?.let {
+                    dispatchTask(it, sessionId, userId)
+                }
             }
             return AnalyzePhotoResponse(sessionId = sessionId, status = PhotoSessionStatus.PROCESSING.apiValue)
         }
         logger.info("Created photo session={}, dispatching photo analysis", sessionId)
 
-        dispatchJob(sessionId, userId)
+        val task = checkNotNull(photoRepository.pendingRequiredTask(UUID.fromString(sessionId))) {
+            "New photo session is missing its visual-analysis task"
+        }
+        dispatchTask(task, sessionId, userId)
 
         return AnalyzePhotoResponse(sessionId = sessionId, status = PhotoSessionStatus.PROCESSING.apiValue)
     }
 
     suspend fun rerunAnalysis(sessionId: UUID, userId: String): Boolean {
         val session = photoRepository.getSession(sessionId, userId) ?: return false
-        val imageUrl = if (!session.storagePath.isNullOrBlank() && storageSigner != null) {
-            storageSigner.signPhoto(session.storagePath) ?: run {
-                photoRepository.markFailed(sessionId.toString(), userId, PhotoFailureCode.SOURCE_MISSING)
+        val task = photoRepository.pendingRequiredTask(sessionId) ?: return false
+        if (task.type == "VISUAL_ANALYSIS") {
+            val imageUrl = signedImageUrl(session) ?: run {
+                photoRepository.markRequiredTaskDispatchFailed(task.id, sessionId, userId, PhotoFailureCode.SOURCE_MISSING)
                 return false
             }
-        } else {
-            session.imageUrl
+            photoRepository.updateImageUrl(sessionId, userId, imageUrl)
         }
-        photoRepository.updateImageUrl(sessionId, userId, imageUrl)
-        return dispatchJob(sessionId.toString(), userId)
+        return dispatchTask(task, sessionId.toString(), userId)
     }
 
-    suspend fun retryCapture(sessionId: UUID, userId: String): Boolean {
+    suspend fun retryCapture(sessionId: UUID, userId: String, requestedTaskType: String? = null): Boolean {
         val session = photoRepository.getSession(sessionId, userId) ?: return false
-        val imageUrl = if (!session.storagePath.isNullOrBlank() && storageSigner != null) {
-            storageSigner.signPhoto(session.storagePath) ?: return false
-        } else session.imageUrl
-        if (!photoRepository.prepareUserRetry(sessionId, userId)) return false
-        photoRepository.updateImageUrl(sessionId, userId, imageUrl)
-        return dispatchJob(sessionId.toString(), userId)
+        val failedTask = photoRepository.failedRequiredTask(sessionId, userId) ?: return false
+        if (requestedTaskType != null && failedTask.type != requestedTaskType) return false
+        val imageUrl = if (failedTask.type == "VISUAL_ANALYSIS") signedImageUrl(session) ?: return false else null
+        val task = photoRepository.prepareUserRetry(sessionId, userId) ?: return false
+        if (imageUrl != null) photoRepository.updateImageUrl(sessionId, userId, imageUrl)
+        return dispatchTask(task, sessionId.toString(), userId)
     }
 
-    private suspend fun dispatchJob(sessionId: String, userId: String): Boolean {
-        val accepted = jobDispatcher.dispatch(mapOf("PHOTO_SESSION_ID" to sessionId))
+    private suspend fun dispatchTask(task: RequiredCaptureTask, sessionId: String, userId: String): Boolean {
+        val accepted = jobDispatcher.dispatch(mapOf("CAPTURE_TASK_ID" to task.id.toString()))
         if (!accepted) {
-            photoRepository.markFailed(sessionId, userId, PhotoFailureCode.DISPATCH_FAILED)
+            photoRepository.markRequiredTaskDispatchFailed(
+                task.id,
+                UUID.fromString(sessionId),
+                userId,
+                PhotoFailureCode.DISPATCH_FAILED,
+            )
         }
         return accepted
     }
+
+    private suspend fun signedImageUrl(session: PhotoSessionRow): String? =
+        if (!session.storagePath.isNullOrBlank() && storageSigner != null) {
+            storageSigner.signPhoto(session.storagePath)
+        } else session.imageUrl
 
     suspend fun getSessionResult(userId: String, sessionId: UUID): PhotoSessionResult? {
         val session = photoRepository.getSession(sessionId, userId) ?: return null
@@ -90,6 +104,14 @@ class PhotoService(
             return PhotoSessionResult(
                 sessionId = sessionId.toString(),
                 status = PhotoSessionStatus.INGESTED.apiValue,
+                storagePath = session.storagePath,
+            )
+        }
+
+        if (session.status == PhotoSessionStatus.PROCESSING) {
+            return PhotoSessionResult(
+                sessionId = sessionId.toString(),
+                status = PhotoSessionStatus.PROCESSING.apiValue,
                 storagePath = session.storagePath,
             )
         }
@@ -156,6 +178,8 @@ class PhotoService(
         val hasMore = sessions.size > limit
         val page = sessions.take(limit)
         val items = page.map { session ->
+            val requiredTask = photoRepository.pendingRequiredTask(UUID.fromString(session.id))
+                ?: photoRepository.failedRequiredTask(UUID.fromString(session.id), userId)
             val wordActivity = wordDiscoveryRepository?.activityState(
                 UUID.fromString(session.id),
                 session.pipelineVersion ?: 2,
@@ -168,8 +192,8 @@ class PhotoService(
                 updatedAt = session.updatedAt?.toString() ?: session.createdAt?.toString() ?: "",
                 kanjiCount = kanjiCount(session),
                 failureCode = session.failureCode,
-                taskType = wordActivity?.first,
-                taskStatus = wordActivity?.second?.lowercase(),
+                taskType = if (captureStatus(session) == "ready") wordActivity?.first else requiredTask?.type,
+                taskStatus = if (captureStatus(session) == "ready") wordActivity?.second?.lowercase() else requiredTask?.status?.lowercase(),
             )
         }
         val nextCursor = if (hasMore) page.lastOrNull()?.let { session ->
@@ -287,6 +311,7 @@ class PhotoService(
                     excluded = excluded,
                 )
             },
+            tasks = photoRepository.requiredTaskStates(sessionId, userId),
             wordDiscovery = wordDiscoveryRepository?.readState(
                 userId = userId,
                 sessionId = sessionId,
@@ -341,7 +366,7 @@ class PhotoService(
     }
 
     private fun kanjiCount(session: PhotoSessionRow): Int? {
-        if (session.status != PhotoSessionStatus.DONE || session.rawAiResponse == null) return null
+        if (session.rawAiResponse == null) return null
         return try {
             Json.parseToJsonElement(session.rawAiResponse).jsonArray.size
         } catch (_: Exception) {

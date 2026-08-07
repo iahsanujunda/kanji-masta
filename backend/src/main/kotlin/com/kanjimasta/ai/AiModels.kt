@@ -16,4 +16,17 @@ data class AiResult(
     val model: String,
 )
 
-class AiProviderException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
+enum class AiProviderFailure {
+    CONFIGURATION,
+    TIMEOUT,
+    HTTP,
+    INVALID_RESPONSE,
+}
+
+class AiProviderException(
+    message: String,
+    cause: Throwable? = null,
+    val failure: AiProviderFailure = AiProviderFailure.HTTP,
+    val statusCode: Int? = null,
+    val generationId: String? = null,
+) : RuntimeException(message, cause)

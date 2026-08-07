@@ -185,8 +185,16 @@ class PhotoIntegrationTest : com.kanjimasta.support.PersistenceTest() {
             val body = Json.parseToJsonElement(jobRequestBody).jsonObject
             val env = body["overrides"]!!.jsonObject["containerOverrides"]!!.jsonArray
                 .single().jsonObject["env"]!!.jsonArray.single().jsonObject
-            assertEquals("PHOTO_SESSION_ID", env["name"]?.jsonPrimitive?.content)
-            assertEquals(response.sessionId, env["value"]?.jsonPrimitive?.content)
+            assertEquals("CAPTURE_TASK_ID", env["name"]?.jsonPrimitive?.content)
+            val visualTaskId = TestDatabase.db.from(PhotoSessionTaskTable)
+                .select(PhotoSessionTaskTable.id)
+                .where {
+                    (PhotoSessionTaskTable.photoSessionId eq UUID.fromString(response.sessionId)) and
+                        (PhotoSessionTaskTable.taskType eq "VISUAL_ANALYSIS")
+                }
+                .map { it[PhotoSessionTaskTable.id].toString() }
+                .single()
+            assertEquals(visualTaskId, env["value"]?.jsonPrimitive?.content)
         } finally {
             httpClient.close()
         }

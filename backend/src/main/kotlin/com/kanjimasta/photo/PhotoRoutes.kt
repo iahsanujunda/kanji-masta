@@ -79,7 +79,14 @@ fun Route.photoRoutes(photoService: PhotoService) {
             val user = call.principal<AuthUser>()!!
             val sessionId = call.parameters["id"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
                 ?: return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "Capture not found"))
-            if (call.parameters["taskType"] != CaptureWordDiscoveryRepository.TASK_TYPE) {
+            val taskType = call.parameters["taskType"].orEmpty()
+            if (taskType in setOf("VISUAL_ANALYSIS", "TRANSLATION")) {
+                if (!photoService.retryCapture(sessionId, user.uid, taskType)) {
+                    return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "Capture task cannot be retried"))
+                }
+                return@post call.respond(HttpStatusCode.Accepted, mapOf("status" to "processing"))
+            }
+            if (taskType != CaptureWordDiscoveryRepository.TASK_TYPE) {
                 return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Unsupported task type"))
             }
             when (val result = photoService.startWordDiscovery(user.uid, sessionId)) {

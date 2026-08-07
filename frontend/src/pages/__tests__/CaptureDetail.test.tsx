@@ -57,6 +57,34 @@ describe("CaptureDetail", () => {
     await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith("/api/captures/capture-1/revisited", { method: "POST" }));
   });
 
+  it("retries translation independently after visual analysis is saved", async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === "/api/captures/capture-1") return Promise.resolve({
+        ...capture,
+        status: "needs_attention",
+        translation: null,
+        tasks: [
+          { taskType: "VISUAL_ANALYSIS", status: "done", failureCode: null },
+          { taskType: "TRANSLATION", status: "failed", failureCode: "provider_failed" },
+        ],
+      });
+      return Promise.resolve({});
+    });
+    renderWithProviders(
+      <Routes><Route path="/captures/:sessionId" element={<CaptureDetailPage />} /></Routes>,
+      { route: "/captures/capture-1" },
+    );
+
+    expect(await screen.findByText("Translation needs attention")).toBeInTheDocument();
+    expect(screen.getByText(/will not analyse the photo again/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Retry translation" }));
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      "/api/captures/capture-1/tasks/TRANSLATION/retry",
+      { method: "POST" },
+    );
+  });
+
   it("starts discovery at full kanji coverage and enrolls only exact new candidates", async () => {
     const user = userEvent.setup();
     const mastered = {

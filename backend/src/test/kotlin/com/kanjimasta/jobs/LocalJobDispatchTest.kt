@@ -32,7 +32,7 @@ class LocalJobDispatchTest {
             path = request.url.encodedPath
             key = request.headers[LOCAL_JOB_KEY_HEADER].orEmpty()
             sessionId = Json.parseToJsonElement((request.body as TextContent).text)
-                .jsonObject["environment"]!!.jsonObject["PHOTO_SESSION_ID"]!!.jsonPrimitive.content
+                .jsonObject["environment"]!!.jsonObject["CAPTURE_TASK_ID"]!!.jsonPrimitive.content
             respond(
                 content = "{}",
                 status = HttpStatusCode.Accepted,
@@ -41,7 +41,7 @@ class LocalJobDispatchTest {
         })
 
         val accepted = LocalJobDispatcher(http, "http://job-dispatcher:8081", "photo-job", "secret")
-            .dispatch(mapOf("PHOTO_SESSION_ID" to "11f9968e-a307-4495-a7f7-14d13169e10d"))
+            .dispatch(mapOf("CAPTURE_TASK_ID" to "11f9968e-a307-4495-a7f7-14d13169e10d"))
 
         assertTrue(accepted)
         assertEquals("/v1/jobs/photo-job", path)
@@ -76,12 +76,12 @@ class LocalJobDispatchTest {
         val response = client.post("/v1/jobs/photo-job") {
             header(LOCAL_JOB_KEY_HEADER, "secret")
             contentType(ContentType.Application.Json)
-            setBody("""{"environment":{"PHOTO_SESSION_ID":"11f9968e-a307-4495-a7f7-14d13169e10d"}}""")
+            setBody("""{"environment":{"CAPTURE_TASK_ID":"11f9968e-a307-4495-a7f7-14d13169e10d"}}""")
         }
 
         assertEquals(HttpStatusCode.Accepted, response.status)
         assertEquals("photo-job", launchedRole)
-        assertEquals("11f9968e-a307-4495-a7f7-14d13169e10d", launchedEnvironment["PHOTO_SESSION_ID"])
+        assertEquals("11f9968e-a307-4495-a7f7-14d13169e10d", launchedEnvironment["CAPTURE_TASK_ID"])
     }
 
     @Test

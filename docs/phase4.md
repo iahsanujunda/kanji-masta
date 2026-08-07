@@ -4,9 +4,19 @@ _Splitting the feedback panel into a data layer and a reasoning layer_
 
 ---
 
+## Mockup
+
+- [Quiz feedback composition](mockups/phase4-quiz-feedback.svg) — all five quiz types plus the missing-explanation fallback, using the established Phase 3 mobile session shell and theme tokens
+
+The mockup is the visual contract for information hierarchy and state parity. The API and sourcing rules in this document remain authoritative for data behavior.
+
+---
+
 ## The problem
 
-The feedback panel renders only `QuizBank.explanation`, which is AI-generated. That explanation inconsistently restates the word's English meaning — sometimes it does, sometimes it does not:
+The current feedback panel does not render `QuizBank.explanation`. It renders fixed outcome copy, shows `QuizBank.answer` only after a non-positive result, and shows the kanji breakdown only after a non-positive result. Although the session card already carries the word, reading, canonical meaning, and explanation, those fields are not composed into learner-facing feedback.
+
+Once explanations are rendered, the generated text also has an inconsistency to fix: it sometimes restates the word's English meaning and sometimes does not:
 
 | Quiz type | Current example explanation | Restates meaning? |
 |-----------|----------------------------|-------------------|
@@ -16,9 +26,11 @@ The feedback panel renders only `QuizBank.explanation`, which is AI-generated. T
 | `bold_word_meaning` | 電車 literally means electric vehicle — the standard word for train | Yes |
 | `fill_in_the_blank` | 電車 fits here — asking where to transfer trains | No |
 
-The result is that some feedback panels show the meaning and some do not, purely by accident of generation.
+Without an explicit data layer, whether useful meaning context appears depends on the quiz type and outcome. Rendering the existing explanation as-is would add a second problem: some rows would duplicate the meaning while others would not.
 
-The meaning is already in the database — `WordMaster.reading` and `WordMaster.meanings` are populated at extraction time. It should be rendered from there, consistently, on every quiz type. The AI explanation then has one job: explain *why*, never *what*.
+The needed facts are already available. Word discovery selects a concise contextual meaning from the captured text, stores it in `WordMaster.meanings`, and quiz generation writes the selected answer to `QuizBank.answer`. `SessionCardResponse` already exposes `word`, `reading`, `meaning`, and `explanation`; `SessionFeedback` exposes `correctAnswer` and `explanation`. No new database query or schema field is required for the core change.
+
+The feedback sheet should render those facts consistently on every quiz type. The AI explanation then has one job: explain *why*, never *what*.
 
 ---
 
@@ -48,7 +60,22 @@ Two layers, clearly separated:
 
 **Reasoning layer** — `QuizBank.explanation`, which must never duplicate any of the three fields above.
 
-This also means the incorrect state gets the meaning for free, which it currently lacks. A user who fails 市民 sees what it actually means, not just a reading breakdown.
+The outcome title remains (`Correct!`, `Not quite`, `Learned!`, and so on). The existing generic outcome sentence becomes a fallback used only when an explanation is absent. The failure-only `Answer:` row is removed because the identity line contains the correct answer for every quiz type: its meaning for meaning quizzes, its reading for reading recognition, and its word for reverse reading/fill in the blank.
+
+This also means the incorrect state gets the meaning for free, which it currently lacks. A user who fails 市民 sees what it actually means, not just a reading breakdown. The data and reasoning layers render for positive, neutral, and negative outcomes alike.
+
+### As-built data path
+
+The quiz page retains the answered `SessionCard` while the answer command returns `SessionFeedback`. The feedback sheet can therefore compose the display without another backend lookup:
+
+| Display value | Existing response field |
+|---------------|-------------------------|
+| Word | `answeredCard.word` |
+| Reading | `answeredCard.reading` |
+| Canonical/contextual meaning | `answeredCard.meaning` or `feedback.correctAnswer` per rule below |
+| Reasoning | `feedback.explanation`, falling back to `answeredCard.explanation` |
+
+`feedbackMeaning()` belongs in the frontend feedback composition layer. Moving it to Kotlin would only be necessary if feedback must later become self-contained without the answered card.
 
 ### Meaning sourcing rule
 
@@ -62,15 +89,25 @@ Two quiz types test the meaning directly, which means the generator already pick
 | 3 | `bold_word_meaning` | `QuizBank.answer` |
 | 4 | `fill_in_the_blank` | `WordMaster.meanings[0]` |
 
-```kotlin
-fun feedbackMeaning(quiz: QuizBank, word: WordMaster): String =
-    when (quiz.quizType) {
-        MEANING_RECALL, BOLD_WORD_MEANING -> quiz.answer
-        else -> word.meanings.first()
-    }
+In the current frontend contract, implement the rule as:
+
+```ts
+function feedbackMeaning(card: SessionCard, feedback: SessionFeedback): string {
+  const answerIsMeaning =
+    card.quizType === "MEANING_RECALL" ||
+    card.quizType === "BOLD_WORD_MEANING";
+
+  return answerIsMeaning
+    ? feedback.correctAnswer || card.meaning
+    : card.meaning;
+}
 ```
 
-This solves polysemy for free. A word whose stored `meanings[0]` does not match the sense used in a tier 3 sentence will still render the contextually correct gloss, because the generator chose it when writing that quiz.
+`WordMaster.meanings` is allowed to be empty. The UI must omit the meaning segment when both sources are blank rather than calling `first()` or rendering a dangling separator.
+
+This preserves the context-specific gloss selected by the existing pipeline. Capture word discovery asks for the meaning of the word as it appears in the captured text and stores that gloss in `WordMaster.meanings`; quiz generation then writes the meaning answer into the tier 0 and tier 3 rows. Using `QuizBank.answer` prevents the feedback layer from replacing that selected answer with a different canonical display value.
+
+This is not full polysemy support. The current discovery contract returns one `meaning`, and the `WordMaster` identity conflict path does not merge a later sense into an existing word. Tracking multiple senses of the same lemma and reading, or generating separate quizzes per sense, is a future vocabulary-model change and is not a Phase 4 prerequisite.
 
 The identity line renders the same shape regardless — `電車 · でんしゃ · train` — only the source of the third field varies.
 
@@ -184,8 +221,7 @@ The data layer above it already says "train". Restating it wastes the line.
 You are building quizzes for a Japanese learner living in Japan.
 They speak conversational Japanese but are learning to read kanji from real encounters.
 
-Target word: {word} ({reading}) — meaning: {meaning}
-This word contains these kanji: {kanjiList}
+Target word: {word} ({reading}) — discovered meaning: {meaning}
 
 Generate exactly 5 quizzes, one of each type below.
 
@@ -288,20 +324,32 @@ English meaning of the target word.
 
 The closing self-check line matters. Without it the model reliably slips the meaning back into `meaning_recall` and `bold_word_meaning`, because both have the meaning as their answer field and the pull toward restating it is strong.
 
+### Generation response validation
+
+Prompt instructions are not validation. Before publishing rows, the Kotlin worker must reject a response unless it has:
+
+- exactly five quizzes;
+- exactly one of every `QuizType`;
+- non-blank `prompt`, `target`, `answer`, and `explanation`;
+- exactly three distinct distractors that do not equal the answer;
+- null furigana for word-level types and non-blank furigana for sentence types; and
+- explanations of no more than 20 whitespace-delimited words.
+
+The no-restated-meaning rule and standalone-gloss quality still require prompt-level instructions plus a real generation acceptance check; they cannot be reliably proven with a simple string validator.
+
 ---
 
-## 4. Optional — sentence translations
+## 4. Deferred — sentence translations
 
 For `bold_word_meaning` and `fill_in_the_blank`, the user often does not understand the whole sentence, only the target word. The explanation now describes the situation, which helps, but a full translation would help more.
 
-If you want it, add a field:
+If selected, add a nullable `prompt_translation` column through the actual application stack:
 
-```graphql
-type QuizBank @table {
-  # ... existing fields
-  promptTranslation: String    # NEW — full English of prompt, sentence types only
-}
+```sql
+ALTER TABLE quiz_bank ADD COLUMN prompt_translation text;
 ```
+
+Then map it through `QuizBankTable`, `GeneratedQuiz`, the generation parser/repository, `SessionCardResponse`, the frontend `SessionCard` type, and `FeedbackSheet`.
 
 And to the prompt, for the two sentence types only:
 
@@ -317,7 +365,7 @@ The speaker is complaining that their ride is running late
 「電車、遅れてるじゃん。」The train's running late.
 ```
 
-This is worth doing, but it is a separate change — it requires regenerating existing rows to backfill, whereas the explanation rework can ship without touching existing data.
+**Decision:** defer sentence translations to a separate enhancement. They are useful but are not needed to make feedback facts reliable. Phase 4 does not add `prompt_translation`, change the schema, or backfill existing rows.
 
 ---
 
@@ -329,31 +377,61 @@ The distractor regen cycle does not touch `QuizBank.explanation` (it only create
 
 **Leave them.** New words get clean explanations, old ones look slightly redundant. Costs nothing.
 
-**Regenerate on demand.** Reuse the existing `POST /api/admin/quizzes/{id}/regenerate` endpoint from iteration 2.6 to fix individual offenders as you notice them in the telemetry triage inbox.
+**Build explanation-only regeneration on demand.** There is no existing `POST /api/admin/quizzes/{id}/regenerate` route. The current admin API supports listing and deleting quizzes, while `REGEN` quiz jobs only create a new distractor set. A new content-refresh operation should update the answer/explanation in place so quiz IDs, session references, distractors, and serve telemetry survive.
 
-**Bulk regenerate.** A script that re-enqueues `QuizGenerationJob` rows for every word in `QuizBank`. Cleanest result, but it pays the full generation cost again for the whole bank and resets `servedCount` telemetry on the replaced rows.
+**Bulk refresh in place.** Run the same content-refresh operation for every existing word. This pays the full generation cost but should preserve row IDs and `servedCount`; deleting and replacing rows would unnecessarily disturb references and telemetry.
 
-Given your telemetry work in 2.6, the middle option fits naturally — bad explanations tend to show up alongside bad win rates, so you would be reviewing those quizzes anyway.
+The planned Phase 2.6 win-rate/flag triage inbox is not present in the current code, so Phase 4 must not depend on it.
+
+**Decision:** leave existing rows unchanged for the initial release. Mild duplication is accepted. If it becomes materially distracting, add an in-place content-refresh operation later; Phase 4 does not add on-demand or bulk regeneration.
+
+---
+
+## 6. Decisions before implementation
+
+### Settled by the current architecture
+
+- Keep the contextual gloss selected by capture word discovery; full multi-sense vocabulary modelling is outside Phase 4.
+- Implement feedback composition in the frontend using the retained answered card and returned feedback. No new core API field or database lookup is needed.
+- Render the outcome title, identity line, and explanation for every outcome.
+- Remove the failure-only `Answer:` row. Use the generic outcome sentence only when no explanation exists.
+- Remove the failure-only kanji breakdown from answer feedback. The generated explanation owns the reasoning role; kanji breakdown remains available on introduction cards.
+- Omit a missing meaning segment safely; never assume `WordMaster.meanings[0]` exists.
+- Remove the unsupported `{kanjiList}` prompt input unless a later change adds a real kanji breakdown to the generation claim.
+- Add structural generation-response validation rather than relying on prompt compliance alone.
+- Defer sentence translations to a separate enhancement; Phase 4 has no schema migration.
+- Leave historical explanations unchanged initially; do not add content regeneration in this phase.
+
+### Open decisions
+
+None. Phase 4 can begin without a schema migration or a content-regeneration prerequisite.
 
 ---
 
 ## Definition of Done
 
-- [ ] Feedback panel renders word, reading, and meaning from DB fields, not from `explanation`
+- [ ] Feedback panel renders word, reading, meaning, and AI reasoning from the existing session card/feedback contract
 - [ ] Meaning sourced from `QuizBank.answer` for `meaning_recall` and `bold_word_meaning`
 - [ ] Meaning sourced from `WordMaster.meanings[0]` for the other three types
-- [ ] `feedbackMeaning()` helper implemented and used by all card types
-- [ ] Data layer shown identically on correct and incorrect states
+- [ ] Missing/blank meaning handled without a crash or dangling separator
+- [ ] Frontend `feedbackMeaning()` helper implemented and used by all quiz types
+- [ ] Data and reasoning layers shown on positive, neutral, and negative states
 - [ ] Incorrect state now shows the meaning, which it previously lacked
+- [ ] Existing failure-only `Answer:` row removed
+- [ ] Failure-only kanji breakdown removed from answer feedback and retained on introduction cards
+- [ ] Fixed outcome sentence used only as a fallback when no explanation exists
 - [ ] Generation prompt includes the no-restating-meaning constraint
 - [ ] Generation prompt requires clean standalone glosses in `answer` for the two meaning-testing types
 - [ ] Prompt specifies what each of the 5 explanation types should cover
 - [ ] Prompt includes the closing self-check line
 - [ ] All 5 example explanations in the prompt comply with the rule
 - [ ] Explanations capped at 20 words
+- [ ] Worker requires exactly five quizzes with exactly one of each `QuizType`
+- [ ] Worker rejects blank required fields, invalid furigana shape, and invalid distractor sets
 - [ ] Verified: a newly generated `meaning_recall` explanation gives derivation without stating the English meaning
 - [ ] Verified: a newly generated `bold_word_meaning` explanation describes the situation, not the word
 - [ ] Verified: a newly generated `bold_word_meaning` answer is a standalone gloss, not a sentence fragment
-- [ ] Verified: a polysemous word renders the contextually correct meaning at tier 3
-- [ ] Decided: whether to add `promptTranslation` for sentence types
-- [ ] Decided: leave, on-demand regenerate, or bulk regenerate for existing explanations
+- [ ] Verified: tier 3 renders the contextual gloss stored in `QuizBank.answer`
+- [x] Sentence translations deferred; no Phase 4 schema migration
+- [x] Existing explanations left unchanged for the initial release
+- [x] Kanji breakdown removed from answer feedback and retained on introduction cards

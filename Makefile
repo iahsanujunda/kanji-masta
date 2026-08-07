@@ -1,4 +1,7 @@
 -include .env
+
+# Accept Supabase's current server-secret naming while keeping the deployed runtime name stable.
+PROD_SUPABASE_SERVICE_ROLE_KEY ?= $(PROD_SUPABASE_KEY)
 export
 
 OPENROUTER_SITE_URL ?= https://shuukanhq.com
@@ -44,11 +47,11 @@ supabase-reset: ## Reset Supabase DB (reapply migrations + seed)
 backend: ## Start the Ktor API and mandatory local Job dispatcher as separate processes
 	docker compose up --build --remove-orphans backend job-dispatcher
 
-photo-job: ## Run one pending photo by PHOTO_SESSION_ID using the shared Kotlin artifact
+photo-job: ## Run one pending capture task by CAPTURE_TASK_ID using the shared Kotlin artifact
 	cd backend && \
 	DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
 	OPENROUTER_API_KEY=$(OPENROUTER_API_KEY) \
-	PHOTO_SESSION_ID=$(PHOTO_SESSION_ID) \
+	CAPTURE_TASK_ID=$(CAPTURE_TASK_ID) \
 	./gradlew run --args=photo-job
 
 quiz-job: ## Drain a bounded quiz batch using the shared Kotlin artifact
@@ -141,6 +144,7 @@ publish-kotlin-image: ## Test, build, and push the shared Kotlin image under an 
 deploy-photo-job: publish-kotlin-image ## Deploy only the Kotlin photo-analysis Cloud Run Job
 	$(eval BACKEND_SERVICE_ACCOUNT := $(shell gcloud run services describe kanji-masta-backend --region $(CLOUD_RUN_REGION) --format='value(spec.template.spec.serviceAccountName)'))
 	test -n "$(BACKEND_SERVICE_ACCOUNT)"
+	test -n "$(PROD_SUPABASE_SERVICE_ROLE_KEY)"
 	@image_digest=$$(gcloud artifacts docker images describe $(BACKEND_IMAGE) --format='value(image_summary.digest)'); \
 		test -n "$$image_digest"; \
 		image_ref="$(BACKEND_IMAGE_REPOSITORY)@$$image_digest"; \
@@ -151,7 +155,7 @@ deploy-photo-job: publish-kotlin-image ## Deploy only the Kotlin photo-analysis 
 		--task-timeout=24h \
 		--max-retries=1 \
 		--memory=1Gi \
-		--set-env-vars "DATABASE_URL=$(PROD_SUPABASE_DB_URI),OPENROUTER_API_KEY=$(OPENROUTER_API_KEY),OPENROUTER_REASONING_EFFORT=$(OPENROUTER_REASONING_EFFORT),OPENROUTER_SITE_URL=$(OPENROUTER_SITE_URL),OPENROUTER_APP_NAME=$(OPENROUTER_APP_NAME),HIKARI_MAX_POOL_SIZE=5,JOB_LEASE_SECONDS=300,PHOTO_MAX_IMAGE_BYTES=10485760,JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=55 -XX:MaxDirectMemorySize=128m -XX:+ExitOnOutOfMemoryError"
+		--set-env-vars "DATABASE_URL=$(PROD_SUPABASE_DB_URI),SUPABASE_URL=$(PROD_SUPABASE_URL),SUPABASE_SERVICE_ROLE_KEY=$(PROD_SUPABASE_SERVICE_ROLE_KEY),PHOTO_ANALYSIS_JOB=$(PHOTO_ANALYSIS_JOB_RESOURCE),OPENROUTER_API_KEY=$(OPENROUTER_API_KEY),OPENROUTER_REASONING_EFFORT=$(OPENROUTER_REASONING_EFFORT),OPENROUTER_SITE_URL=$(OPENROUTER_SITE_URL),OPENROUTER_APP_NAME=$(OPENROUTER_APP_NAME),OPENROUTER_TIMEOUT_SECONDS=600,HIKARI_MAX_POOL_SIZE=5,JOB_LEASE_SECONDS=1500,PHOTO_MAX_IMAGE_BYTES=10485760,JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=55 -XX:MaxDirectMemorySize=128m -XX:+ExitOnOutOfMemoryError"
 	gcloud run jobs add-iam-policy-binding $(PHOTO_ANALYSIS_JOB) --region $(CLOUD_RUN_REGION) --member serviceAccount:$(BACKEND_SERVICE_ACCOUNT) --role roles/run.developer
 	@$(call _mark-deploy,photo-job)
 
@@ -176,6 +180,7 @@ deploy-kotlin-jobs: deploy-photo-job deploy-quiz-job ## Deploy both Kotlin Cloud
 	@$(call _mark-deploy,kotlin-jobs)
 
 deploy-backend: publish-kotlin-image ## Deploy a tagged Kotlin backend revision with no production traffic
+	test -n "$(PROD_SUPABASE_SERVICE_ROLE_KEY)"
 	@image_digest=$$(gcloud artifacts docker images describe $(BACKEND_IMAGE) --format='value(image_summary.digest)'); \
 		test -n "$$image_digest"; \
 		image_ref="$(BACKEND_IMAGE_REPOSITORY)@$$image_digest"; \

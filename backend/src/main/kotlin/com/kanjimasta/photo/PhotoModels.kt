@@ -117,7 +117,15 @@ data class CaptureDetail(
     val coveragePercent: Int? = null,
     val batchGateSatisfied: Boolean,
     val kanji: List<CaptureKanjiItem>,
+    val tasks: List<CaptureTaskState> = emptyList(),
     val wordDiscovery: CaptureWordDiscovery,
+)
+
+@Serializable
+data class CaptureTaskState(
+    val taskType: String,
+    val status: String,
+    val failureCode: String? = null,
 )
 
 @Serializable

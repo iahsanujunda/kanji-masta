@@ -1,7 +1,9 @@
 package com.kanjimasta.photo
 
 import com.kanjimasta.ai.AiProviderException
+import com.kanjimasta.ai.AiProviderFailure
 import com.kanjimasta.ai.OpenRouterClient
+import com.kanjimasta.jobs.JobDispatcher
 import com.kanjimasta.photo.PhotoFailureCode
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.timeout
@@ -20,6 +22,12 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
 import java.util.UUID
@@ -29,7 +37,9 @@ class PhotoAnalysisExecutor(
     private val repository: PhotoAnalysisRepository,
     private val openRouter: OpenRouterClient,
     private val httpClient: HttpClient,
-    private val leaseSeconds: Long = 300,
+    private val jobDispatcher: JobDispatcher,
+    private val storageSigner: SupabaseStorageSigner? = null,
+    private val leaseSeconds: Long = 1_500,
     private val maxImageBytes: Long = 10 * 1024 * 1024,
 ) {
     init {
@@ -37,15 +47,45 @@ class PhotoAnalysisExecutor(
     }
 
     suspend fun run(
+        taskId: UUID,
+        taskAttempt: Int = 0,
+        claimedBy: String = "local-photo-job",
+    ): Boolean {
+        val claim = repository.claim(taskId, taskAttempt, claimedBy, leaseSeconds)
+        if (claim == null) {
+            val downstreamTask = repository.pendingTranslationForVisual(taskId)
+                ?: return true.also { logger.info("Capture task {} has no claimable work", taskId) }
+            return dispatchTask(downstreamTask)
+        }
+
+        return withLeaseHeartbeat(claim) {
+            when (claim.taskType) {
+                "VISUAL_ANALYSIS" -> processVisual(claim)
+                "TRANSLATION" -> processTranslation(claim)
+                else -> error("Unsupported required capture task '${claim.taskType}'")
+            }
+        }
+    }
+
+    suspend fun runLegacySession(
         sessionId: UUID,
         taskAttempt: Int = 0,
         claimedBy: String = "local-photo-job",
     ): Boolean {
-        val claim = repository.claim(sessionId, taskAttempt, claimedBy, leaseSeconds)
-            ?: return true.also { logger.info("Photo session {} has no claimable work", sessionId) }
+        val taskId = repository.pendingRequiredTaskForSession(sessionId)
+            ?: return true.also { logger.info("Legacy photo session {} has no pending required task", sessionId) }
+        return run(taskId, taskAttempt, claimedBy)
+    }
 
+    private suspend fun processVisual(claim: PhotoAnalysisClaim): Boolean {
+        val imageUrl = if (!claim.storagePath.isNullOrBlank() && storageSigner != null) {
+            storageSigner.signPhoto(claim.storagePath, expiresInSeconds = 900) ?: run {
+                repository.fail(claim, PhotoFailureCode.SOURCE_MISSING)
+                return false
+            }
+        } else claim.imageUrl
         val image = try {
-            val response = httpClient.get(rewriteLocalhost(claim.imageUrl)) {
+            val response = httpClient.get(rewriteLocalhost(imageUrl)) {
                 timeout {
                     requestTimeoutMillis = 30_000
                     socketTimeoutMillis = 30_000
@@ -63,8 +103,10 @@ class PhotoAnalysisExecutor(
                 ),
                 contentType = response.contentType()?.toString() ?: "image/jpeg",
             )
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
-            logger.error("Failed to download image for session={}", sessionId, error)
+            logger.error("Failed to download image for session={}", claim.sessionId, error)
             repository.fail(claim, PhotoFailureCode.PROVIDER_FAILED)
             return false
         }
@@ -77,11 +119,8 @@ class PhotoAnalysisExecutor(
                 model = claim.modelId,
             )
         } catch (error: AiProviderException) {
-            logger.error("Photo analysis failed for session={}: {}", sessionId, error.message)
-            val failure = if (error.message?.contains("JSON", ignoreCase = true) == true ||
-                error.message?.contains("message content", ignoreCase = true) == true
-            ) PhotoFailureCode.INVALID_RESPONSE else PhotoFailureCode.PROVIDER_FAILED
-            repository.fail(claim, failure)
+            logProviderFailure("analysis", claim.sessionId, error)
+            repository.fail(claim, failureCode(error))
             return false
         }
         repository.recordProviderCost(claim, result.costMicrodollars)
@@ -89,7 +128,7 @@ class PhotoAnalysisExecutor(
         val visual = try {
             parseVisualResult(result.data)
         } catch (error: Exception) {
-            logger.error("Photo response validation failed for session={}", sessionId, error)
+            logger.error("Photo response validation failed for session={}", claim.sessionId, error)
             repository.fail(claim, PhotoFailureCode.INVALID_RESPONSE, result.costMicrodollars)
             return false
         }
@@ -97,30 +136,70 @@ class PhotoAnalysisExecutor(
             repository.fail(claim, PhotoFailureCode.INVALID_RESPONSE, result.costMicrodollars)
             return false
         }
-        repository.markTranslationProcessing(claim)
+        val translationTaskId = repository.completeVisual(
+            claim = claim,
+            fullText = visual.fullText,
+            enrichedJson = visual.enriched.toString(),
+            costMicrodollars = result.costMicrodollars,
+        ) ?: return false
+        return dispatchTask(translationTaskId)
+    }
+
+    private suspend fun processTranslation(claim: PhotoAnalysisClaim): Boolean {
+        val fullText = claim.fullText.orEmpty()
+        if (fullText.isBlank()) {
+            repository.fail(claim, PhotoFailureCode.SOURCE_MISSING)
+            return false
+        }
         val translation = try {
             openRouter.completeText(
-                prompt = PhotoPrompts.TRANSLATION.format(visual.fullText),
-                model = repository.translationModel(),
+                prompt = PhotoPrompts.TRANSLATION.format(fullText),
+                model = claim.modelId,
             )
         } catch (error: AiProviderException) {
-            logger.error("Photo translation failed for session={}: {}", sessionId, error.message)
-            repository.fail(claim, PhotoFailureCode.PROVIDER_FAILED, result.costMicrodollars)
+            logProviderFailure("translation", claim.sessionId, error)
+            repository.fail(claim, failureCode(error))
             return false
         }
         val translatedText = translation.data.firstOrNull()?.jsonObject
             ?.get("translation")?.jsonPrimitive?.contentOrNull.orEmpty()
         if (translatedText.isBlank()) {
-            repository.fail(claim, PhotoFailureCode.INVALID_RESPONSE, result.costMicrodollars + translation.costMicrodollars)
+            repository.fail(claim, PhotoFailureCode.INVALID_RESPONSE, translation.costMicrodollars)
             return false
         }
-        return repository.complete(
-            claim = claim,
-            fullText = visual.fullText,
-            translation = translatedText,
-            enrichedJson = visual.enriched.toString(),
-            costMicrodollars = result.costMicrodollars + translation.costMicrodollars,
-        )
+        return repository.completeTranslation(claim, translatedText, translation.costMicrodollars)
+    }
+
+    private suspend fun dispatchTask(taskId: UUID): Boolean {
+        val accepted = jobDispatcher.dispatch(mapOf(CAPTURE_TASK_ID_ENV to taskId.toString()))
+        if (!accepted) repository.markDispatchFailed(taskId)
+        return accepted
+    }
+
+    private suspend fun withLeaseHeartbeat(
+        claim: PhotoAnalysisClaim,
+        block: suspend () -> Boolean,
+    ): Boolean = coroutineScope {
+        val heartbeatIntervalSeconds = (leaseSeconds / 3).coerceIn(30, 300)
+        val heartbeat = launch {
+            while (isActive) {
+                delay(heartbeatIntervalSeconds * 1_000)
+                val renewed = try {
+                    repository.renewLease(claim, leaseSeconds)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    logger.error("Failed to renew photo lease for session={}", claim.sessionId, error)
+                    continue
+                }
+                check(renewed) { "Lost photo claim for session=${claim.sessionId}" }
+            }
+        }
+        try {
+            block()
+        } finally {
+            heartbeat.cancelAndJoin()
+        }
     }
 
     private fun parseVisualResult(data: JsonArray): VisualResult {
@@ -129,6 +208,24 @@ class PhotoAnalysisExecutor(
         val items = envelope?.get("kanji") as? JsonArray
             ?: throw IllegalArgumentException("Visual analysis did not return a kanji array")
         return VisualResult(fullText, enrich(items))
+    }
+
+    private fun failureCode(error: AiProviderException): String = when (error.failure) {
+        AiProviderFailure.TIMEOUT -> PhotoFailureCode.TIMED_OUT
+        AiProviderFailure.INVALID_RESPONSE -> PhotoFailureCode.INVALID_RESPONSE
+        else -> PhotoFailureCode.PROVIDER_FAILED
+    }
+
+    private fun logProviderFailure(stage: String, sessionId: UUID, error: AiProviderException) {
+        logger.error(
+            "Photo {} failed for session={} failure={} status={} generationId={}",
+            stage,
+            sessionId,
+            error.failure,
+            error.statusCode,
+            error.generationId,
+            error,
+        )
     }
 
     private fun enrich(items: JsonArray): JsonArray {
@@ -189,5 +286,6 @@ class PhotoAnalysisExecutor(
 
     private companion object {
         val logger = LoggerFactory.getLogger(PhotoAnalysisExecutor::class.java)
+        const val CAPTURE_TASK_ID_ENV = "CAPTURE_TASK_ID"
     }
 }

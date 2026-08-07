@@ -37,7 +37,7 @@ export interface RecentScanItem {
 
 export interface PhotoActivityItem extends RecentScanItem {
   updatedAt: string;
-  taskType?: "CAPTURE_WORD_DISCOVERY" | null;
+  taskType?: "VISUAL_ANALYSIS" | "TRANSLATION" | "CAPTURE_WORD_DISCOVERY" | null;
   taskStatus?: "pending" | "processing" | "done" | "failed" | null;
 }
 
@@ -94,7 +94,14 @@ export interface CaptureDetail extends Omit<CaptureSummary, "readyAt" | "lastRev
   translationLanguage: string;
   batchGateSatisfied: boolean;
   kanji: CaptureKanjiItem[];
+  tasks: CaptureTaskState[];
   wordDiscovery: CaptureWordDiscovery;
+}
+
+export interface CaptureTaskState {
+  taskType: "VISUAL_ANALYSIS" | "TRANSLATION";
+  status: "blocked" | "pending" | "processing" | "failed" | "done";
+  failureCode: string | null;
 }
 
 export interface CaptureWordDiscovery {

@@ -7,6 +7,7 @@ object JobAttemptTable : Table<Nothing>("job_attempt") {
     val id = uuid("id").primaryKey()
     val jobType = text("job_type")
     val jobId = uuid("job_id")
+    val taskId = uuid("task_id")
     val attemptNumber = int("attempt_number")
     val status = text("status")
     val trigger = text("trigger")

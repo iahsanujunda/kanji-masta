@@ -88,12 +88,15 @@ feature's tables/enums but must not import another feature's Service/Repository/
 ```text
 1. Frontend uploads a photo to private Supabase Storage.
 2. POST /api/photo/analyze creates photo_session and pending job_attempt atomically.
-3. The web role dispatches photo-analysis-kotlin with PHOTO_SESSION_ID.
-4. photo-job claims the attempt with a lease and random claim token.
-5. It downloads the signed image and calls the active OpenRouter vision model.
-6. It enriches recognized characters from kanji_master.
-7. A claim-fenced transaction writes photo_session, job_attempt, and user_cost.
-8. Frontend polling observes DONE or FAILED.
+3. The web role dispatches `photo-analysis-kotlin` with the pending visual `CAPTURE_TASK_ID`.
+4. `photo-job` claims the visual attempt with a renewable lease and random claim token, signs the
+   durable storage path, and calls the active OpenRouter vision model.
+5. It enriches recognized characters from `kanji_master` and commits text, kanji, cost, and visual
+   completion in one claim-fenced transaction.
+6. The completed visual task unblocks and dispatches a separate translation task execution.
+7. Translation reads the persisted text, owns its own attempt and lease, and never receives the image.
+8. Frontend polling observes READY only after both required tasks finish, or NEEDS_ATTENTION for the
+   exact failed task.
 ```
 
 The browser request returns after durable enqueue and Job dispatch; it never waits for the AI
@@ -206,7 +209,10 @@ QUIZ_JOB_BATCH_SIZE
 
 The web role additionally uses `PHOTO_ANALYSIS_JOB`, `QUIZ_GENERATION_JOB`, CORS, auth,
 Resend, admin, and temporary internal-cleanup configuration. `photo-job` receives
-`PHOTO_SESSION_ID` per execution.
+`CAPTURE_TASK_ID` per required visual-analysis or translation execution (or
+`CAPTURE_WORD_TASK_ID` for optional word discovery). During rollout, the job also accepts the
+legacy aggregate `PHOTO_SESSION_ID` and resolves its pending required task; new dispatches never
+use that compatibility input.
 
 ## Build, test, and deployment
 

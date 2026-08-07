@@ -58,7 +58,7 @@ make test-frontend
 make test-frontend-e2e
 make quiz-job
 make check-regen
-make photo-job PHOTO_SESSION_ID=<uuid>
+make photo-job CAPTURE_TASK_ID=<uuid>
 make psql
 make reset-all
 make check-deploy

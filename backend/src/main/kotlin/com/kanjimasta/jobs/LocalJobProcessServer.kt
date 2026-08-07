@@ -42,7 +42,11 @@ class JavaJobProcessLauncher(private val jarPath: String) : LocalJobProcessLaunc
     override fun launch(role: String, environment: Map<String, String>): Long {
         val arguments = when (role) {
             "photo-job" -> {
-                val acceptedKeys = setOf(setOf("PHOTO_SESSION_ID"), setOf("CAPTURE_WORD_TASK_ID"))
+                val acceptedKeys = setOf(
+                    setOf("CAPTURE_TASK_ID"),
+                    setOf("PHOTO_SESSION_ID"),
+                    setOf("CAPTURE_WORD_TASK_ID"),
+                )
                 require(environment.keys in acceptedKeys) {
                     "photo-job requires exactly one capture job identifier"
                 }

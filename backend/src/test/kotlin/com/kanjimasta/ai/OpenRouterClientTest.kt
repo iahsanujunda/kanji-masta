@@ -3,8 +3,10 @@ package com.kanjimasta.ai
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.http.content.TextContent
 import kotlinx.coroutines.runBlocking
@@ -55,8 +57,78 @@ class OpenRouterClientTest {
         })
         val client = OpenRouterClient(http, "test-key")
 
-        assertFailsWith<AiProviderException> {
+        val error = assertFailsWith<AiProviderException> {
             client.completeText("prompt", "text/model")
         }
+        assertEquals(AiProviderFailure.INVALID_RESPONSE, error.failure)
+    }
+
+    @Test
+    fun `transient responses honor retry-after and retry at most twice`() = runBlocking {
+        var calls = 0
+        val http = HttpClient(MockEngine {
+            calls++
+            when (calls) {
+                1 -> respond(
+                    "temporarily unavailable",
+                    HttpStatusCode.ServiceUnavailable,
+                    headersOf(HttpHeaders.RetryAfter, "0"),
+                )
+                2 -> respond(
+                    "rate limited",
+                    HttpStatusCode.TooManyRequests,
+                    headersOf(HttpHeaders.RetryAfter, "0"),
+                )
+                else -> respond("""{"choices":[{"message":{"content":"[]"}}]}""")
+            }
+        })
+        val client = OpenRouterClient(http, "test-key")
+
+        client.completeText("prompt", "text/model")
+
+        assertEquals(3, calls)
+    }
+
+    @Test
+    fun `final transient response exposes status and generation id`() = runBlocking {
+        var calls = 0
+        val http = HttpClient(MockEngine {
+            calls++
+            respond(
+                "still unavailable",
+                HttpStatusCode.ServiceUnavailable,
+                headersOf(
+                    HttpHeaders.RetryAfter to listOf("0"),
+                    "X-Generation-Id" to listOf("generation-123"),
+                ),
+            )
+        })
+        val client = OpenRouterClient(http, "test-key")
+
+        val error = assertFailsWith<AiProviderException> {
+            client.completeText("prompt", "text/model")
+        }
+
+        assertEquals(3, calls)
+        assertEquals(AiProviderFailure.HTTP, error.failure)
+        assertEquals(503, error.statusCode)
+        assertEquals("generation-123", error.generationId)
+    }
+
+    @Test
+    fun `request timeout is classified explicitly and is not retried`() = runBlocking {
+        var calls = 0
+        val http = HttpClient(MockEngine { request ->
+            calls++
+            throw HttpRequestTimeoutException(request)
+        })
+        val client = OpenRouterClient(http, "test-key")
+
+        val error = assertFailsWith<AiProviderException> {
+            client.completeText("prompt", "text/model")
+        }
+
+        assertEquals(1, calls)
+        assertEquals(AiProviderFailure.TIMEOUT, error.failure)
     }
 }

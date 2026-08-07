@@ -6,6 +6,8 @@ import com.kanjimasta.photo.CaptureWordDiscoveryExecutor
 import com.kanjimasta.photo.CaptureWordDiscoveryRepository
 import com.kanjimasta.photo.PhotoAnalysisExecutor
 import com.kanjimasta.photo.PhotoAnalysisRepository
+import com.kanjimasta.photo.SupabaseStorageSigner
+import com.kanjimasta.jobs.JobDispatcher
 import com.kanjimasta.quiz.generation.QuizGenerationRepository
 import com.kanjimasta.quiz.generation.QuizGenerationWorker
 import io.ktor.client.HttpClient
@@ -20,12 +22,15 @@ data class AiRuntimeSettings(
     val jobLeaseSeconds: Long = 300,
     val quizBatchSize: Int = 10,
     val maxImageBytes: Long = 10 * 1024 * 1024,
+    val supabaseUrl: String = "",
+    val supabaseServiceRoleKey: String = "",
 )
 
 class AiRuntime(
     database: Database,
     httpClient: HttpClient,
     settings: AiRuntimeSettings,
+    photoJobDispatcher: JobDispatcher,
 ) {
     private val modelConfigs = AiModelConfigRepository(database)
     private val openRouter = OpenRouterClient(
@@ -41,6 +46,10 @@ class AiRuntime(
         repository = PhotoAnalysisRepository(database, modelConfigs),
         openRouter = openRouter,
         httpClient = httpClient,
+        jobDispatcher = photoJobDispatcher,
+        storageSigner = if (settings.supabaseUrl.isNotBlank() && settings.supabaseServiceRoleKey.isNotBlank()) {
+            SupabaseStorageSigner(httpClient, settings.supabaseUrl, settings.supabaseServiceRoleKey)
+        } else null,
         leaseSeconds = settings.jobLeaseSeconds,
         maxImageBytes = settings.maxImageBytes,
     )

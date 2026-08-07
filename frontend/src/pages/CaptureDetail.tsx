@@ -84,7 +84,10 @@ export default function CaptureDetailPage() {
     },
   });
   const retryMutation = useMutation({
-    mutationFn: () => apiFetch(`/api/captures/${sessionId}/retry`, { method: "POST" }),
+    mutationFn: (taskType?: "VISUAL_ANALYSIS" | "TRANSLATION") => apiFetch(
+      taskType ? `/api/captures/${sessionId}/tasks/${taskType}/retry` : `/api/captures/${sessionId}/retry`,
+      { method: "POST" },
+    ),
     onSuccess: () => query.refetch(),
   });
   const wordDiscoveryMutation = useMutation({
@@ -131,26 +134,38 @@ export default function CaptureDetailPage() {
   }
 
   const capture = query.data;
+  const activeRequiredTask = capture.tasks?.find((task) => task.status === "pending" || task.status === "processing");
+  const failedRequiredTask = capture.tasks?.find((task) => task.status === "failed");
   if (capture.status === "processing") {
+    const translating = activeRequiredTask?.taskType === "TRANSLATION";
     return (
       <PageShell title="Capture">
         <Box sx={{ px: 3, py: 8, textAlign: "center" }} role="status">
           <HourglassTopOutlinedIcon sx={{ fontSize: 38, color: "#818cf8", mb: 1.5 }} />
-          <Typography variant="h6" fontWeight={800}>Analysing your capture</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 3 }}>Progress remains available in Activity. It is safe to leave this page.</Typography>
+          <Typography variant="h6" fontWeight={800}>{translating ? "Translation in progress" : "Analysing your capture"}</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 3 }}>
+            {translating
+              ? `Visual analysis is complete${capture.totalKanji > 0 ? ` · ${capture.totalKanji} kanji found` : ""}. Translation runs independently.`
+              : "Progress remains available in Activity. It is safe to leave this page."}
+          </Typography>
           <LinearProgress sx={{ borderRadius: 2, bgcolor: "#1a1a24" }} />
         </Box>
       </PageShell>
     );
   }
   if (capture.status === "needs_attention") {
+    const translationFailed = failedRequiredTask?.taskType === "TRANSLATION";
     return (
       <PageShell title="Capture">
         <Box role="alert" sx={{ px: 3, py: 8, textAlign: "center" }}>
           <ErrorOutlineIcon sx={{ fontSize: 38, color: "error.light", mb: 1.5 }} />
-          <Typography variant="h6" fontWeight={800}>Capture needs attention</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 2.5 }}>Retry keeps this photo and reruns only its required processing chain.</Typography>
-          <Button variant="contained" disabled={retryMutation.isPending} onClick={() => retryMutation.mutate()} sx={primaryButtonSx}>{retryMutation.isPending ? "Retrying…" : "Retry processing"}</Button>
+          <Typography variant="h6" fontWeight={800}>{translationFailed ? "Translation needs attention" : "Capture needs attention"}</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 2.5 }}>
+            {translationFailed
+              ? "Your visual analysis is safely saved. Retry runs translation only and will not analyse the photo again."
+              : "Retry keeps this photo and reruns only the failed visual-analysis task."}
+          </Typography>
+          <Button variant="contained" disabled={retryMutation.isPending} onClick={() => retryMutation.mutate(failedRequiredTask?.taskType)} sx={primaryButtonSx}>{retryMutation.isPending ? "Retrying…" : translationFailed ? "Retry translation" : "Retry processing"}</Button>
           {retryMutation.isError && <Typography role="alert" variant="body2" color="error.light" sx={{ mt: 1.5 }}>This capture could not be retried yet.</Typography>}
           <Button onClick={() => navigate("/home")} sx={{ minHeight: 48, mt: 1 }}>Back to Home</Button>
         </Box>

@@ -1,6 +1,7 @@
 package com.kanjimasta.photo
 
 import com.kanjimasta.ai.AiModelConfigRepository
+import com.kanjimasta.ai.ActiveAiModelConfig
 import com.kanjimasta.jobs.JobAttemptTable
 import com.kanjimasta.kanji.KanjiMasterTable
 import com.kanjimasta.photo.PhotoFailureCode
@@ -24,13 +25,17 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 data class PhotoAnalysisClaim(
+    val taskId: UUID,
+    val taskType: String,
     val sessionId: UUID,
     val userId: String,
     val imageUrl: String,
+    val storagePath: String?,
     val attemptId: UUID,
     val claimToken: UUID,
     val modelConfigVersion: Long?,
     val modelId: String,
+    val fullText: String?,
 )
 
 data class KanjiReference(
@@ -46,50 +51,76 @@ class PhotoAnalysisRepository(
     private val db: Database,
     private val modelConfigs: AiModelConfigRepository = AiModelConfigRepository(db),
 ) {
-    fun translationModel(): String = modelConfigs.requireActive().translationModel
+    fun pendingRequiredTaskForSession(sessionId: UUID): UUID? = db.from(PhotoSessionTaskTable)
+        .select(PhotoSessionTaskTable.id)
+        .where {
+            (PhotoSessionTaskTable.photoSessionId eq sessionId) and
+                (PhotoSessionTaskTable.requiredForReady eq true) and
+                (PhotoSessionTaskTable.status inList listOf("PENDING", "PROCESSING"))
+        }
+        .orderBy(PhotoSessionTaskTable.createdAt.asc())
+        .limit(1)
+        .map { it[PhotoSessionTaskTable.id] }
+        .firstOrNull()
 
     fun recordProviderCost(claim: PhotoAnalysisClaim, cost: Long) {
         db.useTransaction { recordCost(claim, cost) }
     }
 
     fun claim(
-        sessionId: UUID,
+        taskId: UUID,
         taskAttempt: Int,
         claimedBy: String,
         leaseSeconds: Long,
     ): PhotoAnalysisClaim? = db.useTransaction {
-        val session = db.from(PhotoSessionTable)
+        val task = db.from(PhotoSessionTaskTable)
+            .innerJoin(PhotoSessionTable, on = PhotoSessionTaskTable.photoSessionId eq PhotoSessionTable.id)
             .select(
+                PhotoSessionTaskTable.id,
+                PhotoSessionTaskTable.taskType,
+                PhotoSessionTaskTable.status,
+                PhotoSessionTaskTable.pipelineVersion,
                 PhotoSessionTable.id,
                 PhotoSessionTable.userId,
                 PhotoSessionTable.imageUrl,
+                PhotoSessionTable.storagePath,
                 PhotoSessionTable.status,
                 PhotoSessionTable.attempts,
+                PhotoSessionTable.fullText,
             )
-            .where { PhotoSessionTable.id eq sessionId }
+            .where { PhotoSessionTaskTable.id eq taskId }
             .locking(LockingMode.FOR_UPDATE)
             .map { row ->
-                SessionSnapshot(
-                    id = row[PhotoSessionTable.id]!!,
+                TaskSnapshot(
+                    id = row[PhotoSessionTaskTable.id]!!,
+                    type = row[PhotoSessionTaskTable.taskType].orEmpty(),
+                    status = row[PhotoSessionTaskTable.status].orEmpty(),
+                    pipelineVersion = row[PhotoSessionTaskTable.pipelineVersion] ?: 2,
+                    sessionId = row[PhotoSessionTable.id]!!,
                     userId = row[PhotoSessionTable.userId].orEmpty(),
                     imageUrl = row[PhotoSessionTable.imageUrl].orEmpty(),
-                    status = row[PhotoSessionTable.status].orEmpty(),
-                    attempts = row[PhotoSessionTable.attempts] ?: 0,
+                    storagePath = row[PhotoSessionTable.storagePath],
+                    sessionStatus = row[PhotoSessionTable.status].orEmpty(),
+                    sessionAttempts = row[PhotoSessionTable.attempts] ?: 0,
+                    fullText = row[PhotoSessionTable.fullText],
                 )
             }
             .firstOrNull() ?: return@useTransaction null
 
-        if (session.status in TERMINAL_PHOTO_STATUSES) return@useTransaction null
+        require(task.type in REQUIRED_TASK_TYPES) { "Unsupported required capture task '${task.type}'" }
+        if (task.status in TERMINAL_TASK_STATUSES || task.status == "BLOCKED") return@useTransaction null
+        if (task.sessionStatus in setOf("DONE", "INGESTED")) return@useTransaction null
 
-        var attempt = latestAttempt(sessionId, lock = true)
+        var attempt = latestAttempt(taskId, lock = true)
         if (attempt?.status == "processing") {
             val platformRetry = taskAttempt > 0 && attempt.claimedBy == claimedBy
             val leaseExpired = attempt.leaseUntil?.isBefore(Instant.now()) == true
             if (!platformRetry && !leaseExpired) return@useTransaction null
             terminalizeExpired(attempt.id)
             attempt = createAttempt(
-                jobId = sessionId,
-                attemptNumber = attempt.attemptNumber + 1,
+                sessionId = task.sessionId,
+                taskId = task.id,
+                attemptNumber = nextAttemptNumber(task.sessionId),
                 trigger = if (platformRetry) "platform_retry" else "reconciler",
                 modelConfigVersion = attempt.modelConfigVersion,
                 modelId = attempt.modelId,
@@ -97,18 +128,19 @@ class PhotoAnalysisRepository(
         } else if (attempt != null && attempt.status != "pending") {
             return@useTransaction null
         } else if (attempt == null) {
-            val config = modelConfigs.getActive()
+            val config = modelConfigs.requireActive()
             attempt = createAttempt(
-                jobId = sessionId,
-                attemptNumber = session.attempts.coerceAtLeast(0) + 1,
+                sessionId = task.sessionId,
+                taskId = task.id,
+                attemptNumber = nextAttemptNumber(task.sessionId),
                 trigger = "reconciler",
-                modelConfigVersion = config?.version,
-                modelId = config?.photoAnalysisModel,
+                modelConfigVersion = config.version,
+                modelId = modelFor(task.type, config),
             )
         }
 
         val fallbackConfig = if (attempt.modelId == null) modelConfigs.requireActive() else null
-        val modelId = attempt.modelId ?: fallbackConfig!!.photoAnalysisModel
+        val modelId = attempt.modelId ?: modelFor(task.type, fallbackConfig!!)
         val modelConfigVersion = attempt.modelConfigVersion ?: fallbackConfig?.version
         val token = UUID.randomUUID()
         val now = Instant.now()
@@ -126,29 +158,54 @@ class PhotoAnalysisRepository(
 
         db.update(PhotoSessionTable) {
             set(it.status, PhotoSessionStatus.PROCESSING.name)
+            set(it.processingStatus, "PROCESSING")
             set(it.failureCode, null)
             set(it.attempts, attempt.attemptNumber)
-            where { it.id eq sessionId }
+            where { it.id eq task.sessionId }
         }
         db.update(PhotoSessionTaskTable) {
             set(it.status, "PROCESSING")
             set(it.claimedBy, claimedBy)
             set(it.leaseUntil, now.plusSeconds(leaseSeconds))
+            set(it.failureCode, null)
             where {
-                (it.photoSessionId eq sessionId) and
-                    (it.taskType eq "VISUAL_ANALYSIS") and
-                    (it.pipelineVersion eq 2)
+                (it.id eq task.id) and (it.status eq "PENDING")
             }
         }
         PhotoAnalysisClaim(
-            sessionId = sessionId,
-            userId = session.userId,
-            imageUrl = session.imageUrl,
+            taskId = task.id,
+            taskType = task.type,
+            sessionId = task.sessionId,
+            userId = task.userId,
+            imageUrl = task.imageUrl,
+            storagePath = task.storagePath,
             attemptId = attempt.id,
             claimToken = token,
             modelConfigVersion = modelConfigVersion,
             modelId = modelId,
+            fullText = task.fullText,
         )
+    }
+
+    fun renewLease(claim: PhotoAnalysisClaim, leaseSeconds: Long): Boolean = db.useTransaction {
+        val leaseUntil = Instant.now().plusSeconds(leaseSeconds)
+        val renewed = db.update(JobAttemptTable) {
+            set(it.leaseUntil, leaseUntil)
+            where {
+                (it.id eq claim.attemptId) and
+                    (it.status eq "processing") and
+                    (it.claimToken eq claim.claimToken)
+            }
+        }
+        if (renewed != 1) return@useTransaction false
+        db.update(PhotoSessionTaskTable) {
+            set(it.leaseUntil, leaseUntil)
+            where {
+                (it.id eq claim.taskId) and
+                    (it.status eq "PROCESSING")
+            }
+        }
+        true
     }
 
     fun knownKanji(userId: String): List<String> = db.from(UserKanjiTable)
@@ -175,41 +232,70 @@ class PhotoAnalysisRepository(
             .associateBy { it.character }
     }
 
-    fun markTranslationProcessing(claim: PhotoAnalysisClaim) {
-        db.useTransaction {
-            if (!ownsActiveClaim(claim)) return@useTransaction
-            db.update(PhotoSessionTaskTable) {
-                set(it.status, "DONE")
-                set(it.finishedAt, Instant.now())
-                where {
-                    (it.photoSessionId eq claim.sessionId) and
-                        (it.taskType eq "VISUAL_ANALYSIS") and
-                        (it.pipelineVersion eq 2)
-                }
-            }
-            db.update(PhotoSessionTaskTable) {
-                set(it.status, "PROCESSING")
-                where {
-                    (it.photoSessionId eq claim.sessionId) and
-                        (it.taskType eq "TRANSLATION") and
-                        (it.pipelineVersion eq 2)
-                }
-            }
-        }
-    }
-
-    fun complete(
+    fun completeVisual(
         claim: PhotoAnalysisClaim,
         fullText: String,
-        translation: String,
         enrichedJson: String,
         costMicrodollars: Long,
-    ): Boolean =
-        db.useTransaction {
+    ): UUID? = db.useTransaction {
+            require(claim.taskType == "VISUAL_ANALYSIS") { "Visual completion requires a visual claim" }
+            recordCost(claim, costMicrodollars)
+            if (!ownsActiveClaim(claim) || fullText.isBlank()) return@useTransaction null
+            publishKanji(claim.sessionId, enrichedJson)
+            db.update(PhotoSessionTable) {
+                set(it.rawAiResponse, enrichedJson)
+                set(it.fullText, fullText)
+                set(it.costMicrodollars, sessionCost(claim.sessionId) + costMicrodollars)
+                where { it.id eq claim.sessionId }
+            }
+            completeTask(claim)
+            terminalize(claim, "done", null)
+
+            val translationTask = db.from(PhotoSessionTaskTable)
+                .select(PhotoSessionTaskTable.id, PhotoSessionTaskTable.status)
+                .where {
+                    (PhotoSessionTaskTable.photoSessionId eq claim.sessionId) and
+                        (PhotoSessionTaskTable.taskType eq "TRANSLATION") and
+                        (PhotoSessionTaskTable.pipelineVersion eq 2)
+                }
+                .locking(LockingMode.FOR_UPDATE)
+                .map { it[PhotoSessionTaskTable.id]!! to it[PhotoSessionTaskTable.status].orEmpty() }
+                .firstOrNull() ?: return@useTransaction null
+            if (translationTask.second == "DONE") return@useTransaction null
+            if (translationTask.second !in setOf("PENDING", "PROCESSING")) {
+                db.update(PhotoSessionTaskTable) {
+                    set(it.status, "PENDING")
+                    set(it.failureCode, null)
+                    set(it.finishedAt, null)
+                    set(it.claimedBy, null)
+                    set(it.leaseUntil, null)
+                    where { it.id eq translationTask.first }
+                }
+            }
+            if (latestAttempt(translationTask.first, lock = true)?.status !in setOf("pending", "processing")) {
+                val config = modelConfigs.requireActive()
+                createAttempt(
+                    sessionId = claim.sessionId,
+                    taskId = translationTask.first,
+                    attemptNumber = nextAttemptNumber(claim.sessionId),
+                    trigger = "initial",
+                    modelConfigVersion = config.version,
+                    modelId = config.translationModel,
+                )
+            }
+            syncSessionAttemptCount(claim.sessionId)
+            translationTask.first
+        }
+
+    fun completeTranslation(
+        claim: PhotoAnalysisClaim,
+        translation: String,
+        costMicrodollars: Long,
+    ): Boolean = db.useTransaction {
+            require(claim.taskType == "TRANSLATION") { "Translation completion requires a translation claim" }
             recordCost(claim, costMicrodollars)
             if (!ownsActiveClaim(claim)) return@useTransaction false
-            val hasResult = fullText.isNotBlank() && translation.isNotBlank()
-            if (hasResult) publishKanji(claim.sessionId, enrichedJson)
+            val hasResult = !claim.fullText.isNullOrBlank() && translation.isNotBlank()
             val activeKanji = db.from(PhotoSessionKanjiTable)
                 .select(PhotoSessionKanjiTable.kanjiMasterId)
                 .where {
@@ -227,27 +313,17 @@ class PhotoAnalysisRepository(
                 .totalRecordsInAllPages
             val capturedCoverage = if (activeKanji.isEmpty()) null else familiarKanji.toFloat() / activeKanji.size
             db.update(PhotoSessionTable) {
-                set(it.rawAiResponse, enrichedJson)
                 set(it.status, if (hasResult) PhotoSessionStatus.DONE.name else PhotoSessionStatus.FAILED.name)
                 set(it.processingStatus, if (hasResult) "READY" else "NEEDS_ATTENTION")
-                set(it.fullText, fullText)
                 set(it.translation, translation)
                 set(it.translationLanguage, "en")
                 set(it.readyAt, if (hasResult) Instant.now() else null)
                 set(it.capturedKanjiCoverage, capturedCoverage)
                 set(it.failureCode, if (hasResult) null else PhotoFailureCode.INVALID_RESPONSE)
-                set(it.costMicrodollars, costMicrodollars)
+                set(it.costMicrodollars, sessionCost(claim.sessionId) + costMicrodollars)
                 where { it.id eq claim.sessionId }
             }
-            db.update(PhotoSessionTaskTable) {
-                set(it.status, if (hasResult) "DONE" else "FAILED")
-                set(it.finishedAt, Instant.now())
-                where {
-                    (it.photoSessionId eq claim.sessionId) and
-                        (it.taskType eq "TRANSLATION") and
-                        (it.pipelineVersion eq 2)
-                }
-            }
+            if (hasResult) completeTask(claim) else failTask(claim, PhotoFailureCode.INVALID_RESPONSE)
             terminalize(claim, if (hasResult) "done" else "failed", if (hasResult) null else PhotoFailureCode.INVALID_RESPONSE)
             hasResult
         }
@@ -260,21 +336,102 @@ class PhotoAnalysisRepository(
                 set(it.status, PhotoSessionStatus.FAILED.name)
                 set(it.processingStatus, "NEEDS_ATTENTION")
                 set(it.failureCode, failureCode)
-                if (costMicrodollars > 0) set(it.costMicrodollars, costMicrodollars)
+                if (costMicrodollars > 0) set(it.costMicrodollars, sessionCost(claim.sessionId) + costMicrodollars)
                 where { it.id eq claim.sessionId }
             }
-            db.update(PhotoSessionTaskTable) {
-                set(it.status, "FAILED")
-                set(it.failureCode, failureCode)
-                set(it.finishedAt, Instant.now())
-                where {
-                    (it.photoSessionId eq claim.sessionId) and
-                        (it.status inList listOf("PENDING", "PROCESSING", "BLOCKED"))
-                }
-            }
+            failTask(claim, failureCode)
             terminalize(claim, "failed", failureCode)
             true
         }
+
+    fun pendingTranslationForVisual(visualTaskId: UUID): UUID? = db.useTransaction {
+        val visual = db.from(PhotoSessionTaskTable)
+            .select(PhotoSessionTaskTable.photoSessionId, PhotoSessionTaskTable.pipelineVersion)
+            .where {
+                (PhotoSessionTaskTable.id eq visualTaskId) and
+                    (PhotoSessionTaskTable.taskType eq "VISUAL_ANALYSIS") and
+                    (PhotoSessionTaskTable.status eq "DONE")
+            }
+            .map { it[PhotoSessionTaskTable.photoSessionId]!! to (it[PhotoSessionTaskTable.pipelineVersion] ?: 2) }
+            .firstOrNull() ?: return@useTransaction null
+        val translation = db.from(PhotoSessionTaskTable)
+            .select(PhotoSessionTaskTable.id, PhotoSessionTaskTable.status, PhotoSessionTaskTable.failureCode)
+            .where {
+                (PhotoSessionTaskTable.photoSessionId eq visual.first) and
+                    (PhotoSessionTaskTable.pipelineVersion eq visual.second) and
+                    (PhotoSessionTaskTable.taskType eq "TRANSLATION")
+            }
+            .limit(1)
+            .locking(LockingMode.FOR_UPDATE)
+            .map {
+                Triple(
+                    it[PhotoSessionTaskTable.id]!!,
+                    it[PhotoSessionTaskTable.status].orEmpty(),
+                    it[PhotoSessionTaskTable.failureCode],
+                )
+            }
+            .firstOrNull() ?: return@useTransaction null
+        if (translation.second == "PENDING") return@useTransaction translation.first
+        if (translation.second != "FAILED" || translation.third != PhotoFailureCode.DISPATCH_FAILED) {
+            return@useTransaction null
+        }
+
+        val config = modelConfigs.requireActive()
+        db.update(PhotoSessionTaskTable) {
+            set(it.status, "PENDING")
+            set(it.failureCode, null)
+            set(it.finishedAt, null)
+            set(it.claimedBy, null)
+            set(it.leaseUntil, null)
+            where { it.id eq translation.first }
+        }
+        createAttempt(
+            sessionId = visual.first,
+            taskId = translation.first,
+            attemptNumber = nextAttemptNumber(visual.first),
+            trigger = "platform_retry",
+            modelConfigVersion = config.version,
+            modelId = config.translationModel,
+        )
+        db.update(PhotoSessionTable) {
+            set(it.status, PhotoSessionStatus.PROCESSING.name)
+            set(it.processingStatus, "PROCESSING")
+            set(it.failureCode, null)
+            where { it.id eq visual.first }
+        }
+        syncSessionAttemptCount(visual.first)
+        translation.first
+    }
+
+    fun markDispatchFailed(taskId: UUID): Boolean = db.useTransaction {
+        val task = db.from(PhotoSessionTaskTable)
+            .select(PhotoSessionTaskTable.photoSessionId)
+            .where { (PhotoSessionTaskTable.id eq taskId) and (PhotoSessionTaskTable.status eq "PENDING") }
+            .locking(LockingMode.FOR_UPDATE)
+            .map { it[PhotoSessionTaskTable.photoSessionId] }
+            .firstOrNull() ?: return@useTransaction false
+        db.update(PhotoSessionTaskTable) {
+            set(it.status, "FAILED")
+            set(it.failureCode, PhotoFailureCode.DISPATCH_FAILED)
+            set(it.finishedAt, Instant.now())
+            where { (it.id eq taskId) and (it.status eq "PENDING") }
+        }
+        db.update(JobAttemptTable) {
+            set(it.status, "failed")
+            set(it.failureCode, PhotoFailureCode.DISPATCH_FAILED)
+            set(it.finishedAt, Instant.now())
+            where {
+                (it.taskId eq taskId) and (it.status eq "pending")
+            }
+        }
+        db.update(PhotoSessionTable) {
+            set(it.status, PhotoSessionStatus.FAILED.name)
+            set(it.processingStatus, "NEEDS_ATTENTION")
+            set(it.failureCode, PhotoFailureCode.DISPATCH_FAILED)
+            where { (it.id eq task) and (it.status eq PhotoSessionStatus.PROCESSING.name) }
+        }
+        true
+    }
 
     private fun recordCost(claim: PhotoAnalysisClaim, cost: Long) {
         if (cost <= 0 || claim.userId.isBlank()) return
@@ -311,6 +468,32 @@ class PhotoAnalysisRepository(
         }
     }
 
+    private fun completeTask(claim: PhotoAnalysisClaim) {
+        db.update(PhotoSessionTaskTable) {
+            set(it.status, "DONE")
+            set(it.failureCode, null)
+            set(it.finishedAt, Instant.now())
+            set(it.leaseUntil, null)
+            where { (it.id eq claim.taskId) and (it.status eq "PROCESSING") }
+        }
+    }
+
+    private fun failTask(claim: PhotoAnalysisClaim, failureCode: String) {
+        db.update(PhotoSessionTaskTable) {
+            set(it.status, "FAILED")
+            set(it.failureCode, failureCode)
+            set(it.finishedAt, Instant.now())
+            set(it.leaseUntil, null)
+            where { (it.id eq claim.taskId) and (it.status eq "PROCESSING") }
+        }
+    }
+
+    private fun sessionCost(sessionId: UUID): Long = db.from(PhotoSessionTable)
+        .select(PhotoSessionTable.costMicrodollars)
+        .where { PhotoSessionTable.id eq sessionId }
+        .map { it[PhotoSessionTable.costMicrodollars] ?: 0L }
+        .firstOrNull() ?: 0L
+
     private fun ownsActiveClaim(claim: PhotoAnalysisClaim): Boolean = db.from(JobAttemptTable)
         .select(JobAttemptTable.id)
         .where {
@@ -335,12 +518,12 @@ class PhotoAnalysisRepository(
         }
     }
 
-    private fun latestAttempt(jobId: UUID, lock: Boolean): AttemptSnapshot? {
+    private fun latestAttempt(taskId: UUID, lock: Boolean): AttemptSnapshot? {
         var query = db.from(JobAttemptTable)
             .select()
             .where {
                 (JobAttemptTable.jobType eq "photo_analysis") and
-                    (JobAttemptTable.jobId eq jobId)
+                    (JobAttemptTable.taskId eq taskId)
             }
             .orderBy(JobAttemptTable.attemptNumber.desc())
             .limit(1)
@@ -359,7 +542,8 @@ class PhotoAnalysisRepository(
     }
 
     private fun createAttempt(
-        jobId: UUID,
+        sessionId: UUID,
+        taskId: UUID,
         attemptNumber: Int,
         trigger: String,
         modelConfigVersion: Long?,
@@ -369,7 +553,8 @@ class PhotoAnalysisRepository(
         db.insert(JobAttemptTable) {
             set(it.id, id)
             set(it.jobType, "photo_analysis")
-            set(it.jobId, jobId)
+            set(it.jobId, sessionId)
+            set(it.taskId, taskId)
             set(it.attemptNumber, attemptNumber)
             set(it.status, "pending")
             set(it.trigger, trigger)
@@ -378,6 +563,28 @@ class PhotoAnalysisRepository(
             set(it.createdBy, "system")
         }
         return AttemptSnapshot(id, attemptNumber, "pending", modelConfigVersion, modelId, null, null)
+    }
+
+    private fun nextAttemptNumber(sessionId: UUID): Int {
+        val latest = max(JobAttemptTable.attemptNumber).aliased("latest_photo_attempt")
+        return (db.from(JobAttemptTable)
+            .select(latest)
+            .where { (JobAttemptTable.jobType eq "photo_analysis") and (JobAttemptTable.jobId eq sessionId) }
+            .map { it[latest] }
+            .firstOrNull() ?: 0) + 1
+    }
+
+    private fun syncSessionAttemptCount(sessionId: UUID) {
+        db.update(PhotoSessionTable) {
+            set(it.attempts, nextAttemptNumber(sessionId) - 1)
+            where { it.id eq sessionId }
+        }
+    }
+
+    private fun modelFor(taskType: String, config: ActiveAiModelConfig): String = when (taskType) {
+        "VISUAL_ANALYSIS" -> config.photoAnalysisModel
+        "TRANSLATION" -> config.translationModel
+        else -> error("Unsupported required capture task '$taskType'")
     }
 
     private fun terminalizeExpired(attemptId: UUID) {
@@ -389,12 +596,18 @@ class PhotoAnalysisRepository(
         }
     }
 
-    private data class SessionSnapshot(
+    private data class TaskSnapshot(
         val id: UUID,
+        val type: String,
+        val status: String,
+        val pipelineVersion: Int,
+        val sessionId: UUID,
         val userId: String,
         val imageUrl: String,
-        val status: String,
-        val attempts: Int,
+        val storagePath: String?,
+        val sessionStatus: String,
+        val sessionAttempts: Int,
+        val fullText: String?,
     )
 
     private data class AttemptSnapshot(
@@ -408,6 +621,7 @@ class PhotoAnalysisRepository(
     )
 
     private companion object {
-        val TERMINAL_PHOTO_STATUSES = setOf("DONE", "INGESTED", "FAILED", "ERROR")
+        val REQUIRED_TASK_TYPES = setOf("VISUAL_ANALYSIS", "TRANSLATION")
+        val TERMINAL_TASK_STATUSES = setOf("DONE", "FAILED")
     }
 }

@@ -36,6 +36,7 @@ data class QuizGenerationClaim(
     val claimToken: UUID,
     val modelConfigVersion: Long?,
     val modelId: String,
+    val reasoningEffort: String,
 )
 
 data class GeneratedQuiz(
@@ -127,9 +128,9 @@ class QuizGenerationRepository(
             )
         }
 
-        val fallbackConfig = if (attempt.modelId == null) modelConfigs.requireActive() else null
-        val modelId = attempt.modelId ?: fallbackConfig!!.quizGenerationModel
-        val modelConfigVersion = attempt.modelConfigVersion ?: fallbackConfig?.version
+        val resolvedConfig = attempt.modelConfigVersion?.let(modelConfigs::get) ?: modelConfigs.requireActive()
+        val modelId = attempt.modelId ?: resolvedConfig.quizGenerationModel
+        val modelConfigVersion = attempt.modelConfigVersion ?: resolvedConfig.version
         val token = UUID.randomUUID()
         val now = Instant.now()
         val attemptUpdated = db.update(JobAttemptTable) {
@@ -166,6 +167,7 @@ class QuizGenerationRepository(
             claimToken = token,
             modelConfigVersion = modelConfigVersion,
             modelId = modelId,
+            reasoningEffort = resolvedConfig.quizGenerationReasoning,
         )
     }
 

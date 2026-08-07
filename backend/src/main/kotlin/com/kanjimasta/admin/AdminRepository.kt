@@ -33,9 +33,13 @@ class AdminRepository(private val db: Database) {
         val version = db.insertReturning(AiModelConfigTable, AiModelConfigTable.version) {
             set(it.status, "active")
             set(it.photoAnalysisModel, request.photoAnalysisModel)
+            set(it.photoAnalysisReasoning, request.photoAnalysisReasoning)
             set(it.quizGenerationModel, request.quizGenerationModel)
+            set(it.quizGenerationReasoning, request.quizGenerationReasoning)
             set(it.wordDiscoveryModel, request.wordDiscoveryModel)
+            set(it.wordDiscoveryReasoning, request.wordDiscoveryReasoning)
             set(it.translationModel, request.translationModel)
+            set(it.translationReasoning, request.translationReasoning)
             set(it.validationStatus, "passed")
             set(it.failureCode, null)
             set(it.createdBy, adminUserId)
@@ -69,9 +73,13 @@ class AdminRepository(private val db: Database) {
         version = row[AiModelConfigTable.version] ?: 0,
         status = row[AiModelConfigTable.status] ?: "rejected",
         photoAnalysisModel = row[AiModelConfigTable.photoAnalysisModel] ?: "",
+        photoAnalysisReasoning = row[AiModelConfigTable.photoAnalysisReasoning] ?: "",
         quizGenerationModel = row[AiModelConfigTable.quizGenerationModel] ?: "",
+        quizGenerationReasoning = row[AiModelConfigTable.quizGenerationReasoning] ?: "",
         wordDiscoveryModel = row[AiModelConfigTable.wordDiscoveryModel] ?: "",
+        wordDiscoveryReasoning = row[AiModelConfigTable.wordDiscoveryReasoning] ?: "",
         translationModel = row[AiModelConfigTable.translationModel] ?: "",
+        translationReasoning = row[AiModelConfigTable.translationReasoning] ?: "",
         validationStatus = row[AiModelConfigTable.validationStatus] ?: "failed",
         failureCode = row[AiModelConfigTable.failureCode],
         createdBy = row[AiModelConfigTable.createdBy] ?: "system",

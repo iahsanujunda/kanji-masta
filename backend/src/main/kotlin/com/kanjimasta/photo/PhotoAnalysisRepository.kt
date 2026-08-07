@@ -35,6 +35,7 @@ data class PhotoAnalysisClaim(
     val claimToken: UUID,
     val modelConfigVersion: Long?,
     val modelId: String,
+    val reasoningEffort: String,
     val fullText: String?,
 )
 
@@ -139,9 +140,9 @@ class PhotoAnalysisRepository(
             )
         }
 
-        val fallbackConfig = if (attempt.modelId == null) modelConfigs.requireActive() else null
-        val modelId = attempt.modelId ?: modelFor(task.type, fallbackConfig!!)
-        val modelConfigVersion = attempt.modelConfigVersion ?: fallbackConfig?.version
+        val resolvedConfig = attempt.modelConfigVersion?.let(modelConfigs::get) ?: modelConfigs.requireActive()
+        val modelId = attempt.modelId ?: modelFor(task.type, resolvedConfig)
+        val modelConfigVersion = attempt.modelConfigVersion ?: resolvedConfig.version
         val token = UUID.randomUUID()
         val now = Instant.now()
         val claimed = db.update(JobAttemptTable) {
@@ -183,6 +184,7 @@ class PhotoAnalysisRepository(
             claimToken = token,
             modelConfigVersion = modelConfigVersion,
             modelId = modelId,
+            reasoningEffort = reasoningFor(task.type, resolvedConfig),
             fullText = task.fullText,
         )
     }
@@ -584,6 +586,12 @@ class PhotoAnalysisRepository(
     private fun modelFor(taskType: String, config: ActiveAiModelConfig): String = when (taskType) {
         "VISUAL_ANALYSIS" -> config.photoAnalysisModel
         "TRANSLATION" -> config.translationModel
+        else -> error("Unsupported required capture task '$taskType'")
+    }
+
+    private fun reasoningFor(taskType: String, config: ActiveAiModelConfig): String = when (taskType) {
+        "VISUAL_ANALYSIS" -> config.photoAnalysisReasoning
+        "TRANSLATION" -> config.translationReasoning
         else -> error("Unsupported required capture task '$taskType'")
     }
 

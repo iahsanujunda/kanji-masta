@@ -14,7 +14,7 @@ class AdminService(
         ModelsResponse(modelCatalogGateway.search(workload, query))
 
     suspend fun saveModelConfig(request: ModelConfigRequest, adminUserId: String): ModelConfigItem? {
-        val validation = modelCatalogGateway.validate(request.asWorkloads())
+        val validation = modelCatalogGateway.validate(request.asSelections())
         if (!validation.valid) return null
         return adminRepository.saveActiveModelConfig(request, adminUserId)
     }

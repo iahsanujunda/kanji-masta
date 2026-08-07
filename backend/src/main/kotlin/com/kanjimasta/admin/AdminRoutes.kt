@@ -33,7 +33,11 @@ fun Route.adminRoutes(adminService: AdminService, adminUserId: String) {
             val admin = requireAdmin(adminUserId) ?: return@put
             val request = runCatching { call.receive<ModelConfigRequest>() }.getOrNull()
                 ?: return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid model configuration"))
-            if (request.asWorkloads().values.any { it.isBlank() || it.length > 240 }) {
+            if (request.asSelections().values.any {
+                    it.modelId.isBlank() || it.modelId.length > 240 ||
+                        it.reasoningEffort.isBlank() || it.reasoningEffort.length > 20
+                }
+            ) {
                 return@put call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid model configuration"))
             }
             val config = adminService.saveModelConfig(request, admin.uid)

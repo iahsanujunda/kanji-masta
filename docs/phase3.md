@@ -781,6 +781,17 @@ The database is the durable queue and source of truth. Cloud Run Jobs provide ex
   platform retry can redispatch the already-persisted translation task without rerunning vision.
 - Retry OpenRouter `429` and `503` responses at most twice, honoring a bounded `Retry-After`;
   persist client request expiry as `timed_out` rather than the generic `provider_failed`.
+- Accept a single complete `json` Markdown fence around an otherwise valid provider array, while
+  continuing to reject preambles, trailing prose, malformed JSON, and non-array responses. Extract
+  and persist provider usage cost before content validation so invalid responses remain billable in
+  the local attempt ledger.
+- Store a reasoning level alongside each workload model. In Admin, model selection comes first;
+  reasoning selection then shows only the levels advertised by that model. Changing a model clears
+  an incompatible reasoning choice. Photo-analysis model search is additionally pre-filtered to
+  models advertising image input. Implemented by
+  `20260807020000_ai_model_reasoning_config.sql`, with the pure frontend selection rules isolated in
+  `frontend/src/pages/admin/modelConfig.ts`. See
+  `docs/mockups/admin-model-reasoning-config.svg`.
 
 Suggested executors:
 

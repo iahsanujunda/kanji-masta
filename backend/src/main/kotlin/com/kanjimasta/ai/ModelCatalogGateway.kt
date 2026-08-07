@@ -12,8 +12,14 @@ data class CatalogModel(
     val contextLength: Int? = null,
     val supportedParameters: List<String> = emptyList(),
     val reasoningEfforts: List<String> = emptyList(),
+    val defaultReasoningEffort: String? = null,
     val promptPrice: String? = null,
     val completionPrice: String? = null,
+)
+
+data class ModelSelection(
+    val modelId: String,
+    val reasoningEffort: String,
 )
 
 data class ModelValidationResult(
@@ -23,12 +29,14 @@ data class ModelValidationResult(
 
 interface ModelCatalogGateway {
     suspend fun search(workload: String, query: String?): List<CatalogModel>
-    suspend fun validate(models: Map<String, String>): ModelValidationResult
+    suspend fun validate(selections: Map<String, ModelSelection>): ModelValidationResult
 }
 
 object UnavailableModelCatalogGateway : ModelCatalogGateway {
     override suspend fun search(workload: String, query: String?): List<CatalogModel> = emptyList()
 
-    override suspend fun validate(models: Map<String, String>): ModelValidationResult =
+    override suspend fun validate(selections: Map<String, ModelSelection>): ModelValidationResult =
         ModelValidationResult(valid = false, failureCode = "catalog_unavailable")
 }
+
+val SUPPORTED_REASONING_EFFORTS = setOf("none", "minimal", "low", "medium", "high", "xhigh", "max")

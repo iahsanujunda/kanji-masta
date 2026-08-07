@@ -57,7 +57,7 @@ class QuizGenerationWorker(
             reading,
             claim.meanings.firstOrNull() ?: "?",
         )
-        val result = openRouter.completeText(prompt, claim.modelId)
+        val result = openRouter.completeText(prompt, claim.modelId, reasoningEffort = claim.reasoningEffort)
         repository.recordProviderCost(claim, result.costMicrodollars)
         val quizzes = try {
             result.data.map { element ->
@@ -100,7 +100,7 @@ class QuizGenerationWorker(
                 context.previousDistractors,
             ),
         )
-        val result = openRouter.completeText(prompt, claim.modelId)
+        val result = openRouter.completeText(prompt, claim.modelId, reasoningEffort = claim.reasoningEffort)
         repository.recordProviderCost(claim, result.costMicrodollars)
         val distractors = try {
             result.data.mapNotNull { it.jsonPrimitive.contentOrNull }

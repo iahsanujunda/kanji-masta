@@ -43,9 +43,11 @@ class CaptureWordDiscoveryExecutorIntegrationTest : PersistenceTest() {
         val task = (CaptureWordDiscoveryRepository(db).enqueue("word-user", sessionId)
             as CaptureWordDiscoveryEnqueueResult.Accepted).value
         var requestedModel = ""
+        var requestedReasoning = ""
         val http = HttpClient(MockEngine { request ->
-            requestedModel = Json.parseToJsonElement((request.body as TextContent).text)
-                .jsonObject["model"]!!.jsonPrimitive.content
+            val requestBody = Json.parseToJsonElement((request.body as TextContent).text).jsonObject
+            requestedModel = requestBody["model"]!!.jsonPrimitive.content
+            requestedReasoning = requestBody["reasoning"]!!.jsonObject["effort"]!!.jsonPrimitive.content
             val content = """[
                 {"surfaceText":"運転見合わせ","lemma":"運転見合わせ","reading":"ウンテンミアワセ","meaning":"service suspension"},
                 {"surfaceText":"運転見合わせ","lemma":"運転見合わせ","reading":"うんてんみあわせ","meaning":"suspension"},
@@ -64,6 +66,7 @@ class CaptureWordDiscoveryExecutorIntegrationTest : PersistenceTest() {
         assertTrue(executor.run(task.taskId, claimedBy = "word-execution"))
 
         assertEquals("discovery/model", requestedModel)
+        assertEquals("low", requestedReasoning)
         val rows = db.from(PhotoSessionWordTable).select().map { row ->
             Triple(
                 row[PhotoSessionWordTable.normalizedLemma],
@@ -91,6 +94,7 @@ class CaptureWordDiscoveryExecutorIntegrationTest : PersistenceTest() {
             set(it.translationModel, "translation/model")
             set(it.quizGenerationModel, "quiz/model")
             set(it.wordDiscoveryModel, "discovery/model")
+            set(it.wordDiscoveryReasoning, "low")
             set(it.validationStatus, "passed")
             set(it.createdBy, "test")
         }

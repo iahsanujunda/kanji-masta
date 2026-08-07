@@ -36,6 +36,7 @@ data class CaptureWordDiscoveryClaim(
     val attemptId: UUID,
     val claimToken: UUID,
     val modelId: String,
+    val reasoningEffort: String,
 )
 
 data class CapturedWordPublication(
@@ -223,12 +224,14 @@ class CaptureWordDiscoveryRepository(
                 Attempt(
                     id = row[JobAttemptTable.id]!!,
                     status = row[JobAttemptTable.status].orEmpty(),
+                    modelConfigVersion = row[JobAttemptTable.modelConfigVersion],
                     modelId = row[JobAttemptTable.modelId],
                 )
             }
             .firstOrNull() ?: return@useTransaction null
         if (attempt.status != "pending") return@useTransaction null
-        val modelId = attempt.modelId ?: modelConfigs.requireActive().wordDiscoveryModel
+        val resolvedConfig = attempt.modelConfigVersion?.let(modelConfigs::get) ?: modelConfigs.requireActive()
+        val modelId = attempt.modelId ?: resolvedConfig.wordDiscoveryModel
         val token = UUID.randomUUID()
         val now = Instant.now()
         val attemptUpdated = db.update(JobAttemptTable) {
@@ -257,6 +260,7 @@ class CaptureWordDiscoveryRepository(
             attemptId = attempt.id,
             claimToken = token,
             modelId = modelId,
+            reasoningEffort = resolvedConfig.wordDiscoveryReasoning,
         )
     }
 
@@ -657,7 +661,12 @@ class CaptureWordDiscoveryRepository(
         val fullText: String,
     )
 
-    private data class Attempt(val id: UUID, val status: String, val modelId: String?)
+    private data class Attempt(
+        val id: UUID,
+        val status: String,
+        val modelConfigVersion: Long?,
+        val modelId: String?,
+    )
 
     private data class RetryAttempt(
         val attemptNumber: Int,

@@ -39,15 +39,18 @@ class OpenRouterCatalogClient(
             .toList()
     }
 
-    override suspend fun validate(models: Map<String, String>): ModelValidationResult {
+    override suspend fun validate(selections: Map<String, ModelSelection>): ModelValidationResult {
         val catalog = runCatching { getCatalog() }.getOrElse {
             return ModelValidationResult(false, "catalog_unavailable")
         }
         for (workload in REQUIRED_WORKLOADS) {
-            val modelId = models[workload] ?: return ModelValidationResult(false, "incomplete_config")
-            val model = catalog.firstOrNull { it.id == modelId }
+            val selection = selections[workload] ?: return ModelValidationResult(false, "incomplete_config")
+            val model = catalog.firstOrNull { it.id == selection.modelId }
                 ?: return ModelValidationResult(false, "model_unavailable")
             if (!model.supports(workload)) return ModelValidationResult(false, "unsupported_model")
+            if (selection.reasoningEffort !in model.reasoningEfforts) {
+                return ModelValidationResult(false, "unsupported_reasoning")
+            }
         }
         return ModelValidationResult(true)
     }
@@ -83,7 +86,9 @@ class OpenRouterCatalogClient(
                 outputModalities = architecture.stringList("output_modalities"),
                 contextLength = item["context_length"]?.jsonPrimitive?.intOrNull,
                 supportedParameters = item.stringList("supported_parameters"),
-                reasoningEfforts = reasoning.stringList("supported_efforts"),
+                reasoningEfforts = reasoning.stringList("supported_efforts")
+                    .filter { it in SUPPORTED_REASONING_EFFORTS },
+                defaultReasoningEffort = reasoning.stringOrNull("default_effort"),
                 promptPrice = pricing.stringOrNull("prompt"),
                 completionPrice = pricing.stringOrNull("completion"),
             )
@@ -94,12 +99,11 @@ class OpenRouterCatalogClient(
         val supportsStructuredResponse = supportedParameters.any {
             it == "structured_outputs" || it == "response_format"
         }
-        val supportsMediumReasoning = "reasoning" in supportedParameters &&
-            (reasoningEfforts.isEmpty() || "medium" in reasoningEfforts)
+        val supportsReasoningSelection = "reasoning" in supportedParameters && reasoningEfforts.isNotEmpty()
         return inputModalities.containsAll(requiredInputs) &&
             "text" in outputModalities &&
             supportsStructuredResponse &&
-            supportsMediumReasoning
+            supportsReasoningSelection
     }
 
     private fun JsonObject.string(key: String): String = getValue(key).jsonPrimitive.content

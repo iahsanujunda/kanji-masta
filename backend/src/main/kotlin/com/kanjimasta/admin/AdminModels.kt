@@ -1,6 +1,7 @@
 package com.kanjimasta.admin
 
 import com.kanjimasta.ai.CatalogModel
+import com.kanjimasta.ai.ModelSelection
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -9,15 +10,19 @@ data class ModelsResponse(val models: List<CatalogModel>)
 @Serializable
 data class ModelConfigRequest(
     val photoAnalysisModel: String,
+    val photoAnalysisReasoning: String,
     val quizGenerationModel: String,
+    val quizGenerationReasoning: String,
     val wordDiscoveryModel: String,
+    val wordDiscoveryReasoning: String,
     val translationModel: String = wordDiscoveryModel,
+    val translationReasoning: String = wordDiscoveryReasoning,
 ) {
-    fun asWorkloads(): Map<String, String> = mapOf(
-        "photo_analysis" to photoAnalysisModel,
-        "quiz_generation" to quizGenerationModel,
-        "word_discovery" to wordDiscoveryModel,
-        "translation" to translationModel,
+    fun asSelections(): Map<String, ModelSelection> = mapOf(
+        "photo_analysis" to ModelSelection(photoAnalysisModel, photoAnalysisReasoning),
+        "quiz_generation" to ModelSelection(quizGenerationModel, quizGenerationReasoning),
+        "word_discovery" to ModelSelection(wordDiscoveryModel, wordDiscoveryReasoning),
+        "translation" to ModelSelection(translationModel, translationReasoning),
     )
 }
 
@@ -26,9 +31,13 @@ data class ModelConfigItem(
     val version: Long,
     val status: String,
     val photoAnalysisModel: String,
+    val photoAnalysisReasoning: String,
     val quizGenerationModel: String,
+    val quizGenerationReasoning: String,
     val wordDiscoveryModel: String,
+    val wordDiscoveryReasoning: String,
     val translationModel: String,
+    val translationReasoning: String,
     val validationStatus: String,
     val failureCode: String? = null,
     val createdBy: String,

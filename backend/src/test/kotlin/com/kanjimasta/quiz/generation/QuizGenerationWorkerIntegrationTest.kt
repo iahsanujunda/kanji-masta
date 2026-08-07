@@ -40,6 +40,7 @@ class QuizGenerationWorkerIntegrationTest : PersistenceTest() {
         }.awaitAll()
 
         assertEquals(1, claims.count { it != null })
+        assertEquals("max", claims.single { it != null }!!.reasoningEffort)
         assertEquals(1, db.from(JobAttemptTable).select()
             .where { JobAttemptTable.status eq "processing" }.totalRecordsInAllPages)
     }
@@ -89,6 +90,7 @@ class QuizGenerationWorkerIntegrationTest : PersistenceTest() {
             set(it.status, "active")
             set(it.photoAnalysisModel, "vision/model")
             set(it.quizGenerationModel, "quiz/model")
+            set(it.quizGenerationReasoning, "max")
             set(it.wordDiscoveryModel, "discovery/model")
             set(it.validationStatus, "passed")
             set(it.createdBy, "test")

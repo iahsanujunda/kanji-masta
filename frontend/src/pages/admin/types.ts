@@ -69,6 +69,7 @@ export interface CatalogModel {
   contextLength?: number | null;
   supportedParameters: string[];
   reasoningEfforts?: string[];
+  defaultReasoningEffort?: string | null;
   promptPrice?: string | null;
   completionPrice?: string | null;
 }
@@ -77,9 +78,13 @@ export interface ModelConfig {
   version: number;
   status: "draft" | "active" | "superseded" | "rejected";
   photoAnalysisModel: string;
+  photoAnalysisReasoning: string;
   quizGenerationModel: string;
+  quizGenerationReasoning: string;
   wordDiscoveryModel: string;
+  wordDiscoveryReasoning: string;
   translationModel?: string;
+  translationReasoning?: string;
   validationStatus: "pending" | "passed" | "failed";
   failureCode?: string | null;
   createdAt: string;

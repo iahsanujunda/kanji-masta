@@ -20,6 +20,64 @@ import kotlin.test.assertFailsWith
 
 class OpenRouterClientTest {
     @Test
+    fun `completion accepts one json code fence around the entire array`() = runBlocking {
+        val fenced = """
+            ```json
+            [{"value":1}]
+            ```
+        """.trimIndent()
+        val http = HttpClient(MockEngine {
+            respond(
+                """{"choices":[{"message":{"content":${Json.encodeToString(fenced)}}}]}""",
+                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+            )
+        })
+        val client = OpenRouterClient(http, "test-key")
+
+        val result = client.completeText("prompt", "text/model")
+
+        assertEquals(1, result.data.single().jsonObject["value"]?.jsonPrimitive?.content?.toInt())
+    }
+
+    @Test
+    fun `completion rejects a json fence with surrounding prose`() = runBlocking {
+        val fenced = """
+            Here is the result:
+            ```json
+            [{"value":1}]
+            ```
+        """.trimIndent()
+        val http = HttpClient(MockEngine {
+            respond("""{"choices":[{"message":{"content":${Json.encodeToString(fenced)}}}]}""")
+        })
+        val client = OpenRouterClient(http, "test-key")
+
+        val error = assertFailsWith<AiProviderException> {
+            client.completeText("prompt", "text/model")
+        }
+
+        assertEquals(AiProviderFailure.INVALID_RESPONSE, error.failure)
+    }
+
+    @Test
+    fun `completion rejects incomplete or repeated json fences`() = runBlocking {
+        val invalidContents = listOf(
+            "```json\n[]",
+            "```json\n[]\n```\ntrailing",
+            "```json\n[]\n```\n```json\n[]\n```",
+        )
+        for (content in invalidContents) {
+            val http = HttpClient(MockEngine {
+                respond("""{"choices":[{"message":{"content":${Json.encodeToString(content)}}}]}""")
+            })
+            val error = assertFailsWith<AiProviderException> {
+                OpenRouterClient(http, "test-key").completeText("prompt", "text/model")
+            }
+            assertEquals(AiProviderFailure.INVALID_RESPONSE, error.failure)
+        }
+    }
+
+    @Test
     fun `image completion uses requested database model and records provider cost`() = runBlocking {
         var requestBody = ""
         var authorization = ""
@@ -51,6 +109,21 @@ class OpenRouterClientTest {
     }
 
     @Test
+    fun `text completion can request the quiz reasoning effort`() = runBlocking {
+        var requestBody = ""
+        val http = HttpClient(MockEngine { request ->
+            requestBody = (request.body as TextContent).text
+            respond("""{"choices":[{"message":{"content":"[]"}}]}""")
+        })
+        val client = OpenRouterClient(http, "test-key", reasoningEffort = "medium")
+
+        client.completeText("prompt", "deepseek/deepseek-v4-flash-0731", reasoningEffort = "high")
+
+        val body = Json.parseToJsonElement(requestBody).jsonObject
+        assertEquals("high", body["reasoning"]?.jsonObject?.get("effort")?.jsonPrimitive?.content)
+    }
+
+    @Test
     fun `non-array completion is rejected`() = runBlocking {
         val http = HttpClient(MockEngine {
             respond("""{"choices":[{"message":{"content":"{\"value\":1}"}}]}""")
@@ -61,6 +134,23 @@ class OpenRouterClientTest {
             client.completeText("prompt", "text/model")
         }
         assertEquals(AiProviderFailure.INVALID_RESPONSE, error.failure)
+    }
+
+    @Test
+    fun `invalid completion retains provider usage cost`() = runBlocking {
+        val http = HttpClient(MockEngine {
+            respond(
+                """{"choices":[{"message":{"content":"not-json"}}],"usage":{"cost":"0.012345"}}""",
+            )
+        })
+        val client = OpenRouterClient(http, "test-key")
+
+        val error = assertFailsWith<AiProviderException> {
+            client.completeText("prompt", "text/model")
+        }
+
+        assertEquals(AiProviderFailure.INVALID_RESPONSE, error.failure)
+        assertEquals(12_345, error.costMicrodollars)
     }
 
     @Test

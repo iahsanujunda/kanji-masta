@@ -25,6 +25,7 @@ class CaptureWordDiscoveryExecutor(
             openRouter.completeText(
                 CaptureWordDiscoveryPrompts.DISCOVER.format(claim.fullText),
                 claim.modelId,
+                reasoningEffort = claim.reasoningEffort,
             )
         } catch (error: AiProviderException) {
             logger.error("Capture word discovery failed for task={}: {}", taskId, error.message)

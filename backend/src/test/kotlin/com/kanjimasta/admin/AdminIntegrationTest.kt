@@ -9,6 +9,7 @@ import com.kanjimasta.ai.UserCostTable
 import com.kanjimasta.ai.CatalogModel
 import com.kanjimasta.ai.ModelCatalogGateway
 import com.kanjimasta.ai.ModelValidationResult
+import com.kanjimasta.ai.ModelSelection
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
@@ -27,7 +28,7 @@ class AdminIntegrationTest : com.kanjimasta.support.PersistenceTest() {
     fun `submitting a valid model configuration activates atomically and drives status`() = testApplication {
         val catalog = object : ModelCatalogGateway {
             override suspend fun search(workload: String, query: String?) = emptyList<CatalogModel>()
-            override suspend fun validate(models: Map<String, String>) = ModelValidationResult(true)
+            override suspend fun validate(selections: Map<String, ModelSelection>) = ModelValidationResult(true)
         }
         application {
             testModule(
@@ -48,8 +49,11 @@ class AdminIntegrationTest : com.kanjimasta.support.PersistenceTest() {
             setBody(
                 """{
                   "photoAnalysisModel":"vision/model",
+                  "photoAnalysisReasoning":"medium",
                   "quizGenerationModel":"text/model",
-                  "wordDiscoveryModel":"text/model"
+                  "quizGenerationReasoning":"high",
+                  "wordDiscoveryModel":"text/model",
+                  "wordDiscoveryReasoning":"medium"
                 }""".trimIndent(),
             )
         }
@@ -66,7 +70,7 @@ class AdminIntegrationTest : com.kanjimasta.support.PersistenceTest() {
     fun `photo rerun snapshots the active configuration model`() = testApplication {
         val catalog = object : ModelCatalogGateway {
             override suspend fun search(workload: String, query: String?) = emptyList<CatalogModel>()
-            override suspend fun validate(models: Map<String, String>) = ModelValidationResult(true)
+            override suspend fun validate(selections: Map<String, ModelSelection>) = ModelValidationResult(true)
         }
         application { testModule(TestDatabase.db, modelCatalogGateway = catalog) }
         val client = jsonClient()
@@ -74,7 +78,7 @@ class AdminIntegrationTest : com.kanjimasta.support.PersistenceTest() {
             header(HttpHeaders.Authorization, "Bearer test-token")
             contentType(ContentType.Application.Json)
             setBody(
-                """{"photoAnalysisModel":"vision/v2","quizGenerationModel":"text/v2","wordDiscoveryModel":"text/v2"}""",
+                """{"photoAnalysisModel":"vision/v2","photoAnalysisReasoning":"low","quizGenerationModel":"text/v2","quizGenerationReasoning":"high","wordDiscoveryModel":"text/v2","wordDiscoveryReasoning":"medium"}""",
             )
         }
         val version = Json.parseToJsonElement(saved.bodyAsText()).jsonObject["version"]!!.jsonPrimitive.long
@@ -107,7 +111,7 @@ class AdminIntegrationTest : com.kanjimasta.support.PersistenceTest() {
         var validationPasses = true
         val catalog = object : ModelCatalogGateway {
             override suspend fun search(workload: String, query: String?) = emptyList<CatalogModel>()
-            override suspend fun validate(models: Map<String, String>) =
+            override suspend fun validate(selections: Map<String, ModelSelection>) =
                 ModelValidationResult(validationPasses, if (validationPasses) null else "unsupported_model")
         }
         application { testModule(TestDatabase.db, modelCatalogGateway = catalog) }
@@ -115,7 +119,7 @@ class AdminIntegrationTest : com.kanjimasta.support.PersistenceTest() {
         suspend fun submit(photo: String) = client.put("/api/admin/model-config") {
                 header(HttpHeaders.Authorization, "Bearer test-token")
                 contentType(ContentType.Application.Json)
-                setBody("""{"photoAnalysisModel":"$photo","quizGenerationModel":"text/model","wordDiscoveryModel":"text/model"}""")
+                setBody("""{"photoAnalysisModel":"$photo","photoAnalysisReasoning":"medium","quizGenerationModel":"text/model","quizGenerationReasoning":"high","wordDiscoveryModel":"text/model","wordDiscoveryReasoning":"medium"}""")
             }
 
         assertEquals(HttpStatusCode.OK, submit("vision/one").status)
@@ -148,7 +152,7 @@ class AdminIntegrationTest : com.kanjimasta.support.PersistenceTest() {
                     completionPrice = "0.000002",
                 ),
             )
-            override suspend fun validate(models: Map<String, String>) = ModelValidationResult(true)
+            override suspend fun validate(selections: Map<String, ModelSelection>) = ModelValidationResult(true)
         }
         application { testModule(TestDatabase.db, modelCatalogGateway = catalog) }
 

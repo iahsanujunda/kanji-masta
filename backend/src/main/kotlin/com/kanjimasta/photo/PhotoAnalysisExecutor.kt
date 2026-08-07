@@ -117,10 +117,11 @@ class PhotoAnalysisExecutor(
                 imageBytes = image.bytes,
                 contentType = image.contentType,
                 model = claim.modelId,
+                reasoningEffort = claim.reasoningEffort,
             )
         } catch (error: AiProviderException) {
             logProviderFailure("analysis", claim.sessionId, error)
-            repository.fail(claim, failureCode(error))
+            repository.fail(claim, failureCode(error), error.costMicrodollars)
             return false
         }
         repository.recordProviderCost(claim, result.costMicrodollars)
@@ -155,10 +156,11 @@ class PhotoAnalysisExecutor(
             openRouter.completeText(
                 prompt = PhotoPrompts.TRANSLATION.format(fullText),
                 model = claim.modelId,
+                reasoningEffort = claim.reasoningEffort,
             )
         } catch (error: AiProviderException) {
             logProviderFailure("translation", claim.sessionId, error)
-            repository.fail(claim, failureCode(error))
+            repository.fail(claim, failureCode(error), error.costMicrodollars)
             return false
         }
         val translatedText = translation.data.firstOrNull()?.jsonObject

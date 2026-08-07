@@ -25,7 +25,18 @@ const job = {
   createdAt: "2026-08-05T00:00:00Z",
   updatedAt: "2026-08-05T00:01:00Z",
 };
-const activeModelConfig = { version: 1, status: "active", validationStatus: "passed", photoAnalysisModel: "vision/current", quizGenerationModel: "text/current", wordDiscoveryModel: "text/current", createdAt: job.createdAt };
+const activeModelConfig = {
+  version: 1,
+  status: "active",
+  validationStatus: "passed",
+  photoAnalysisModel: "vision/current",
+  photoAnalysisReasoning: "medium",
+  quizGenerationModel: "text/current",
+  quizGenerationReasoning: "high",
+  wordDiscoveryModel: "text/current",
+  wordDiscoveryReasoning: "medium",
+  createdAt: job.createdAt,
+};
 let modelConfigs = [activeModelConfig];
 
 function installApi() {
@@ -35,7 +46,7 @@ function installApi() {
     if (path.startsWith("/api/admin/jobs")) return Promise.resolve({ jobs: [job, { ...job, id: "quiz-1", type: "quiz_generation", status: "done", summary: "Quiz generation · 駅" }], counts: { pending: 0, processing: 1, done: 1, failed: 0 } });
     if (path === "/api/admin/model-config" && init?.method === "PUT") return mockModelSave(JSON.parse(String(init.body)));
     if (path === "/api/admin/model-config") return Promise.resolve({ configs: modelConfigs });
-    if (path.startsWith("/api/admin/models")) return Promise.resolve({ models: [{ id: "qwen/qwen-vision", canonicalSlug: "qwen/qwen-vision", name: "Qwen Vision", inputModalities: ["text", "image"], outputModalities: ["text"], supportedParameters: ["structured_outputs"] }] });
+    if (path.startsWith("/api/admin/models")) return Promise.resolve({ models: [{ id: "qwen/qwen-vision", canonicalSlug: "qwen/qwen-vision", name: "Qwen Vision", inputModalities: ["text", "image"], outputModalities: ["text"], supportedParameters: ["structured_outputs", "reasoning"], reasoningEfforts: ["high", "medium", "low"], defaultReasoningEffort: "medium" }] });
     if (path === "/api/admin/invites") return Promise.resolve({ invites: [] });
     if (path === "/api/admin/cost") return Promise.resolve({ totalMicrodollars: 0, totalDollars: "0.00", byUser: [], byDay: [] });
     return Promise.resolve({});
@@ -47,7 +58,7 @@ describe("Admin control plane", () => {
     mockApiFetch.mockReset();
     mockModelSave.mockReset();
     modelConfigs = [activeModelConfig];
-    mockModelSave.mockResolvedValue({ version: 2, status: "active", validationStatus: "passed", photoAnalysisModel: "qwen/qwen-vision", quizGenerationModel: "text/current", wordDiscoveryModel: "text/current", createdAt: job.createdAt });
+    mockModelSave.mockResolvedValue({ ...activeModelConfig, version: 2, photoAnalysisModel: "qwen/qwen-vision", photoAnalysisReasoning: "low" });
     installApi();
   });
 
@@ -76,8 +87,8 @@ describe("Admin control plane", () => {
 
     renderWithProviders(<Admin />);
 
-    expect(await screen.findByText("No active model configuration. Choose all four models, then submit.")).toBeInTheDocument();
-    expect(screen.getAllByText("Choose model")).toHaveLength(4);
+    expect(await screen.findByText("No active model configuration. Choose a model and reasoning level for all four workloads.")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Change .* model/ })).toHaveLength(4);
     expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
   });
 
@@ -97,6 +108,7 @@ describe("Admin control plane", () => {
     const user = userEvent.setup();
     renderWithProviders(<Admin />);
     await user.click(await screen.findByRole("button", { name: "Change Photo analysis model" }));
+    expect(await screen.findByText("Image input · required")).toBeInTheDocument();
     const input = await screen.findByRole("textbox", { name: "Search OpenRouter models" });
     await user.type(input, "q");
     await new Promise((resolve) => window.setTimeout(resolve, 350));
@@ -116,21 +128,27 @@ describe("Admin control plane", () => {
 
     await user.click(await screen.findByRole("button", { name: "Change Photo analysis model" }));
     await user.click(await screen.findByRole("button", { name: /Qwen Vision/ }));
+    expect(await screen.findByRole("dialog", { name: "Choose reasoning level" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /low/i }));
     const submit = screen.getByRole("button", { name: "Submit" });
     await user.click(submit);
 
     expect(within(submit).getByRole("progressbar")).toBeInTheDocument();
     expect(submit).toBeDisabled();
 
-    finishSave({ version: 2, status: "active", validationStatus: "passed", photoAnalysisModel: "qwen/qwen-vision", quizGenerationModel: "text/current", wordDiscoveryModel: "text/current", createdAt: job.createdAt });
+    finishSave({ ...activeModelConfig, version: 2, photoAnalysisModel: "qwen/qwen-vision", photoAnalysisReasoning: "low" });
 
     expect(await screen.findByText("Model configuration saved.")).toBeInTheDocument();
     expect(screen.getByText("qwen/qwen-vision")).toBeInTheDocument();
     expect(mockModelSave).toHaveBeenCalledWith({
       photoAnalysisModel: "qwen/qwen-vision",
+      photoAnalysisReasoning: "low",
       translationModel: "text/current",
+      translationReasoning: "medium",
       quizGenerationModel: "text/current",
+      quizGenerationReasoning: "high",
       wordDiscoveryModel: "text/current",
+      wordDiscoveryReasoning: "medium",
     });
   });
 
@@ -141,9 +159,10 @@ describe("Admin control plane", () => {
 
     await user.click(await screen.findByRole("button", { name: "Change Photo analysis model" }));
     await user.click(await screen.findByRole("button", { name: /Qwen Vision/ }));
+    await user.click(screen.getByRole("button", { name: /low/i }));
     await user.click(screen.getByRole("button", { name: "Submit" }));
 
-    expect(await screen.findByText("The selected models are not valid.")).toBeInTheDocument();
+    expect(await screen.findByText("The selected models or reasoning levels are not valid.")).toBeInTheDocument();
     expect(screen.getByText("qwen/qwen-vision")).toBeInTheDocument();
     expect(screen.queryByText("Model configuration saved.")).not.toBeInTheDocument();
   });

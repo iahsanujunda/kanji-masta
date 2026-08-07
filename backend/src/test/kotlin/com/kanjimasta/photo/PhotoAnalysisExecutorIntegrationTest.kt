@@ -41,7 +41,7 @@ class PhotoAnalysisExecutorIntegrationTest : PersistenceTest() {
             userId = "photo-user",
             imageUrl = "https://images.test/photo.jpg",
         )
-        val requestedModels = mutableListOf<String>()
+        val requestedModels = mutableListOf<Pair<String, String>>()
         val http = HttpClient(MockEngine { request ->
             if (request.url.host == "images.test") {
                 respond(
@@ -49,11 +49,14 @@ class PhotoAnalysisExecutorIntegrationTest : PersistenceTest() {
                     headers = headersOf(HttpHeaders.ContentType, ContentType.Image.JPEG.toString()),
                 )
             } else {
-                val requestedModel = Json.parseToJsonElement((request.body as TextContent).text)
-                    .jsonObject["model"]!!.jsonPrimitive.content
-                requestedModels += requestedModel
+                val requestBody = Json.parseToJsonElement((request.body as TextContent).text).jsonObject
+                val requestedModel = requestBody["model"]!!.jsonPrimitive.content
+                val reasoning = requestBody["reasoning"]!!.jsonObject["effort"]!!.jsonPrimitive.content
+                requestedModels += requestedModel to reasoning
                 val content = if (requestedModel == "vision/model") {
-                    "[{\"fullText\":\"本日は運休です\",\"kanji\":[{\"character\":\"日\",\"recommendationRank\":0,\"whyUseful\":\"daily\",\"exampleWords\":[]}]}]"
+                    """```json
+                        |[{"fullText":"本日は運休です","kanji":[{"character":"日","recommendationRank":0,"whyUseful":"daily","exampleWords":[]}]}]
+                        |```""".trimMargin()
                 } else {
                     "[{\"translation\":\"Service is suspended today.\"}]"
                 }
@@ -78,13 +81,13 @@ class PhotoAnalysisExecutorIntegrationTest : PersistenceTest() {
 
         assertTrue(executor.run(visualTaskId, claimedBy = "photo-execution"))
 
-        assertEquals(listOf("vision/model"), requestedModels)
+        assertEquals(listOf("vision/model" to "low"), requestedModels)
         assertEquals("PROCESSING", db.from(PhotoSessionTable).select(PhotoSessionTable.status)
             .where { PhotoSessionTable.id eq UUID.fromString(session.id) }
             .map { it[PhotoSessionTable.status] }.single())
         assertEquals(1, dispatchedTasks.size)
         assertTrue(executor.run(dispatchedTasks.single(), claimedBy = "translation-execution"))
-        assertEquals(listOf("vision/model", "translation/model"), requestedModels)
+        assertEquals(listOf("vision/model" to "low", "translation/model" to "minimal"), requestedModels)
         val result = db.from(PhotoSessionTable).select()
             .where { PhotoSessionTable.id eq UUID.fromString(session.id) }
             .map { Triple(it[PhotoSessionTable.status], it[PhotoSessionTable.costMicrodollars], it[PhotoSessionTable.rawAiResponse]) }
@@ -161,6 +164,46 @@ class PhotoAnalysisExecutorIntegrationTest : PersistenceTest() {
         assertEquals("DONE", db.from(PhotoSessionTable).select(PhotoSessionTable.status)
             .where { PhotoSessionTable.id eq UUID.fromString(session.id) }
             .map { it[PhotoSessionTable.status] }.single())
+    }
+
+    @Test
+    fun `invalid visual response records provider cost before failing`() = runBlocking {
+        seedConfigurationAndKanji()
+        val session = PhotoRepository(db).createSession(
+            userId = "invalid-response-cost-user",
+            imageUrl = "https://images.test/photo.jpg",
+        )
+        val http = HttpClient(MockEngine { request ->
+            if (request.url.host == "images.test") {
+                respond(
+                    content = byteArrayOf(1, 2, 3),
+                    headers = headersOf(HttpHeaders.ContentType, ContentType.Image.JPEG.toString()),
+                )
+            } else {
+                respond(
+                    """{"choices":[{"message":{"content":"not-json"}}],"usage":{"cost":"0.004"}}""",
+                    headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                )
+            }
+        })
+        val executor = PhotoAnalysisExecutor(
+            PhotoAnalysisRepository(db, AiModelConfigRepository(db)),
+            OpenRouterClient(http, "test-key", "https://openrouter.test"),
+            http,
+            JobDispatcher { true },
+        )
+
+        assertFalse(executor.run(requiredTaskId(session.id, "VISUAL_ANALYSIS"), claimedBy = "visual-execution"))
+
+        assertEquals(4_000, db.from(UserCostTable)
+            .select(UserCostTable.costMicrodollars)
+            .map { it[UserCostTable.costMicrodollars] }
+            .single())
+        assertEquals(4_000, db.from(PhotoSessionTable)
+            .select(PhotoSessionTable.costMicrodollars)
+            .where { PhotoSessionTable.id eq UUID.fromString(session.id) }
+            .map { it[PhotoSessionTable.costMicrodollars] }
+            .single())
     }
 
     @Test
@@ -244,11 +287,30 @@ class PhotoAnalysisExecutorIntegrationTest : PersistenceTest() {
             userId = "lease-photo-user",
             imageUrl = "https://images.test/photo.jpg",
         )
+        db.update(AiModelConfigTable) {
+            set(it.status, "superseded")
+            where { it.status eq "active" }
+        }
+        db.insert(AiModelConfigTable) {
+            set(it.status, "active")
+            set(it.photoAnalysisModel, "vision/new")
+            set(it.photoAnalysisReasoning, "max")
+            set(it.quizGenerationModel, "quiz/new")
+            set(it.quizGenerationReasoning, "max")
+            set(it.wordDiscoveryModel, "discovery/new")
+            set(it.wordDiscoveryReasoning, "max")
+            set(it.translationModel, "translation/new")
+            set(it.translationReasoning, "max")
+            set(it.validationStatus, "passed")
+            set(it.createdBy, "test")
+        }
         val repository = PhotoAnalysisRepository(db, AiModelConfigRepository(db))
         val visualTaskId = requiredTaskId(session.id, "VISUAL_ANALYSIS")
         val claim = assertNotNull(
             repository.claim(visualTaskId, taskAttempt = 0, claimedBy = "photo-execution", leaseSeconds = 1),
         )
+        assertEquals("vision/model", claim.modelId)
+        assertEquals("low", claim.reasoningEffort)
         val originalLease = db.from(JobAttemptTable)
             .select(JobAttemptTable.leaseUntil)
             .map { it[JobAttemptTable.leaseUntil] }
@@ -276,9 +338,13 @@ class PhotoAnalysisExecutorIntegrationTest : PersistenceTest() {
         db.insert(AiModelConfigTable) {
             set(it.status, "active")
             set(it.photoAnalysisModel, "vision/model")
+            set(it.photoAnalysisReasoning, "low")
             set(it.quizGenerationModel, "quiz/model")
+            set(it.quizGenerationReasoning, "high")
             set(it.wordDiscoveryModel, "discovery/model")
+            set(it.wordDiscoveryReasoning, "medium")
             set(it.translationModel, "translation/model")
+            set(it.translationReasoning, "minimal")
             set(it.validationStatus, "passed")
             set(it.createdBy, "test")
         }

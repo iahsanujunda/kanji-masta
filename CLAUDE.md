@@ -7,6 +7,8 @@ Commits MUST follow [Conventional Commits](https://www.conventionalcommits.org/)
 
 Max header: 100 chars.
 
+Never amend an existing commit. Every correction or follow-up must be recorded as a new commit so the original history remains available for debugging and investigation. Do not rewrite published or local commit history with rebase, reset, or force-push unless the user explicitly requests that exact history operation; `git commit --amend` is prohibited even when the prior commit has not been pushed.
+
 ## Code Patterns
 
 ### Backend (Ktor + Kotlin)

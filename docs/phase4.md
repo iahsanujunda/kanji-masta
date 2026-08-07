@@ -247,7 +247,7 @@ What each explanation should cover:
 - fill_in_the_blank: why this word fits this context and why the other
   options do not.
 
-Keep explanations under 20 words. Brief and memorable, not academic.
+Keep explanations to 20 words or fewer. Brief and memorable, not academic.
 
 IMPORTANT — answer format for meaning_recall and bold_word_meaning:
 The "answer" field for these two types is displayed directly to the learner as
@@ -410,28 +410,28 @@ None. Phase 4 can begin without a schema migration or a content-regeneration pre
 
 ## Definition of Done
 
-- [ ] Feedback panel renders word, reading, meaning, and AI reasoning from the existing session card/feedback contract
-- [ ] Meaning sourced from `QuizBank.answer` for `meaning_recall` and `bold_word_meaning`
-- [ ] Meaning sourced from `WordMaster.meanings[0]` for the other three types
-- [ ] Missing/blank meaning handled without a crash or dangling separator
-- [ ] Frontend `feedbackMeaning()` helper implemented and used by all quiz types
-- [ ] Data and reasoning layers shown on positive, neutral, and negative states
-- [ ] Incorrect state now shows the meaning, which it previously lacked
-- [ ] Existing failure-only `Answer:` row removed
-- [ ] Failure-only kanji breakdown removed from answer feedback and retained on introduction cards
-- [ ] Fixed outcome sentence used only as a fallback when no explanation exists
-- [ ] Generation prompt includes the no-restating-meaning constraint
-- [ ] Generation prompt requires clean standalone glosses in `answer` for the two meaning-testing types
-- [ ] Prompt specifies what each of the 5 explanation types should cover
-- [ ] Prompt includes the closing self-check line
-- [ ] All 5 example explanations in the prompt comply with the rule
-- [ ] Explanations capped at 20 words
-- [ ] Worker requires exactly five quizzes with exactly one of each `QuizType`
-- [ ] Worker rejects blank required fields, invalid furigana shape, and invalid distractor sets
+- [x] Feedback panel renders word, reading, meaning, and AI reasoning from the existing session card/feedback contract
+- [x] Meaning sourced from `QuizBank.answer` for `meaning_recall` and `bold_word_meaning`
+- [x] Meaning sourced from `WordMaster.meanings[0]` for the other three types
+- [x] Missing/blank meaning handled without a crash or dangling separator
+- [x] Frontend `feedbackMeaning()` helper implemented and used by all quiz types
+- [x] Data and reasoning layers shown on positive, neutral, and negative states
+- [x] Incorrect state now shows the meaning, which it previously lacked
+- [x] Existing failure-only `Answer:` row removed
+- [x] Failure-only kanji breakdown removed from answer feedback and retained on introduction cards
+- [x] Fixed outcome sentence used only as a fallback when no explanation exists
+- [x] Generation prompt includes the no-restating-meaning constraint
+- [x] Generation prompt requires clean standalone glosses in `answer` for the two meaning-testing types
+- [x] Prompt specifies what each of the 5 explanation types should cover
+- [x] Prompt includes the closing self-check line
+- [x] All 5 example explanations in the prompt comply with the rule
+- [x] Explanations capped at 20 words
+- [x] Worker requires exactly five quizzes with exactly one of each `QuizType`
+- [x] Worker rejects blank required fields, invalid furigana shape, and invalid distractor sets
 - [ ] Verified: a newly generated `meaning_recall` explanation gives derivation without stating the English meaning
 - [ ] Verified: a newly generated `bold_word_meaning` explanation describes the situation, not the word
 - [ ] Verified: a newly generated `bold_word_meaning` answer is a standalone gloss, not a sentence fragment
-- [ ] Verified: tier 3 renders the contextual gloss stored in `QuizBank.answer`
+- [x] Verified: tier 3 renders the contextual gloss stored in `QuizBank.answer`
 - [x] Sentence translations deferred; no Phase 4 schema migration
 - [x] Existing explanations left unchanged for the initial release
 - [x] Kanji breakdown removed from answer feedback and retained on introduction cards

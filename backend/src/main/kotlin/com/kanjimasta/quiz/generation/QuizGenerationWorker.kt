@@ -4,11 +4,63 @@ import com.kanjimasta.ai.AiProviderException
 import com.kanjimasta.ai.OpenRouterClient
 import com.kanjimasta.quiz.QuizType
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.slf4j.LoggerFactory
+
+internal fun parseAndValidateGeneratedQuizzes(data: JsonArray): List<GeneratedQuiz> {
+    require(data.size == QuizType.entries.size) { "AI must return exactly five quizzes" }
+    val quizzes = data.map { element ->
+        val item = element.jsonObject
+        GeneratedQuiz(
+            quizType = parseQuizType(item.getValue("quiz_type").jsonPrimitive.content),
+            prompt = item["prompt"]?.jsonPrimitive?.contentOrNull.orEmpty().trim(),
+            target = item["target"]?.jsonPrimitive?.contentOrNull.orEmpty().trim(),
+            answer = item["answer"]?.jsonPrimitive?.contentOrNull.orEmpty().trim(),
+            furigana = item["furigana"]?.jsonPrimitive?.contentOrNull?.trim(),
+            explanation = item["explanation"]?.jsonPrimitive?.contentOrNull?.trim(),
+            distractors = item["distractors"]?.jsonArray
+                ?.mapNotNull { it.jsonPrimitive.contentOrNull?.trim() }.orEmpty(),
+        )
+    }
+    require(quizzes.map { it.quizType }.toSet() == QuizType.entries.toSet()) {
+        "AI must return exactly one quiz of every type"
+    }
+    quizzes.forEach { quiz ->
+        require(quiz.prompt.isNotBlank()) { "Quiz prompt must not be blank" }
+        require(quiz.target.isNotBlank()) { "Quiz target must not be blank" }
+        require(quiz.answer.isNotBlank()) { "Quiz answer must not be blank" }
+        val explanation = requireNotNull(quiz.explanation?.takeIf { it.isNotBlank() }) {
+            "Quiz explanation must not be blank"
+        }
+        require(explanation.split(Regex("\\s+")).size <= 20) { "Quiz explanation must be at most twenty words" }
+        require(quiz.distractors.size == 3) { "Quiz must have exactly three distractors" }
+        require(quiz.distractors.none { it.isBlank() }) { "Quiz distractors must not be blank" }
+        require(quiz.distractors.distinctBy { it.lowercase() }.size == 3) { "Quiz distractors must be distinct" }
+        require(quiz.distractors.none { it.equals(quiz.answer, ignoreCase = true) }) {
+            "Quiz distractors must not equal the answer"
+        }
+        val sentenceType = quiz.quizType == QuizType.BOLD_WORD_MEANING || quiz.quizType == QuizType.FILL_IN_THE_BLANK
+        if (sentenceType) {
+            require(!quiz.furigana.isNullOrBlank()) { "Sentence quiz furigana must not be blank" }
+        } else {
+            require(quiz.furigana == null) { "Word-level quiz furigana must be null" }
+        }
+    }
+    return quizzes
+}
+
+private fun parseQuizType(raw: String): QuizType = when (raw.uppercase()) {
+    "MEANING_RECALL" -> QuizType.MEANING_RECALL
+    "READING_RECOGNITION" -> QuizType.READING_RECOGNITION
+    "REVERSE_READING" -> QuizType.REVERSE_READING
+    "BOLD_WORD_MEANING" -> QuizType.BOLD_WORD_MEANING
+    "FILL_IN_THE_BLANK" -> QuizType.FILL_IN_THE_BLANK
+    else -> error("Unknown quiz type: $raw")
+}
 
 class QuizGenerationWorker(
     private val repository: QuizGenerationRepository,
@@ -60,19 +112,7 @@ class QuizGenerationWorker(
         val result = openRouter.completeText(prompt, claim.modelId, reasoningEffort = claim.reasoningEffort)
         repository.recordProviderCost(claim, result.costMicrodollars)
         val quizzes = try {
-            result.data.map { element ->
-                val item = element.jsonObject
-                GeneratedQuiz(
-                    quizType = parseQuizType(item.getValue("quiz_type").jsonPrimitive.content),
-                    prompt = item["prompt"]?.jsonPrimitive?.contentOrNull.orEmpty(),
-                    target = item["target"]?.jsonPrimitive?.contentOrNull.orEmpty(),
-                    answer = item["answer"]?.jsonPrimitive?.contentOrNull.orEmpty(),
-                    furigana = item["furigana"]?.jsonPrimitive?.contentOrNull,
-                    explanation = item["explanation"]?.jsonPrimitive?.contentOrNull,
-                    distractors = item["distractors"]?.jsonArray
-                        ?.mapNotNull { it.jsonPrimitive.contentOrNull }.orEmpty(),
-                )
-            }.also { require(it.isNotEmpty()) { "AI returned no quizzes" } }
+            parseAndValidateGeneratedQuizzes(result.data)
         } catch (error: Exception) {
             logger.error("Quiz response validation failed for job={}", claim.jobId, error)
             repository.fail(claim, "invalid_response", result.costMicrodollars)
@@ -112,15 +152,6 @@ class QuizGenerationWorker(
         }
         repository.completeRegeneration(claim, context, distractors, result.costMicrodollars)
         return result.costMicrodollars
-    }
-
-    private fun parseQuizType(raw: String): QuizType = when (raw.uppercase()) {
-        "MEANING_RECALL" -> QuizType.MEANING_RECALL
-        "READING_RECOGNITION" -> QuizType.READING_RECOGNITION
-        "REVERSE_READING" -> QuizType.REVERSE_READING
-        "BOLD_WORD_MEANING" -> QuizType.BOLD_WORD_MEANING
-        "FILL_IN_THE_BLANK" -> QuizType.FILL_IN_THE_BLANK
-        else -> error("Unknown quiz type: $raw")
     }
 
     private companion object {

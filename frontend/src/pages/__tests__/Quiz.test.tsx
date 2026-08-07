@@ -28,7 +28,7 @@ const introCard = {
 
 const quizCard = {
   ...introCard, cardType: "QUIZ", cardId: "card-quiz", introductionKind: null, exampleSentence: null, exampleContext: null,
-  quizType: "MEANING_RECALL", learningStep: 1, prompt: "電車", target: "電車", options: ["bus", "train", "taxi", "subway"], explanation: "電車 means train",
+  quizType: "MEANING_RECALL", learningStep: 1, prompt: "電車", target: "電車", options: ["bus", "train", "taxi", "subway"], explanation: "電 and 車 combine directly.",
 };
 
 const session = (currentCard: typeof introCard | typeof quizCard | null, status = "ACTIVE") => ({
@@ -113,14 +113,16 @@ describe("Quiz Phase 3 session", () => {
     mockApiFetch
       .mockResolvedValueOnce({ session: session(quizCard) })
       .mockResolvedValueOnce({
-        feedback: { type: "NOT_YET", correctAnswer: "train", explanation: null, kanjiBreakdown: quizCard.kanjiBreakdown },
+        feedback: { type: "NOT_YET", correctAnswer: "train", explanation: "電 and 車 combine directly.", kanjiBreakdown: quizCard.kanjiBreakdown },
         session: { ...session(quizCard), version: 2 },
       });
     renderWithProviders(<Quiz />);
     await userEvent.click(await screen.findByRole("button", { name: "bus" }));
     expect(await screen.findByText("Not yet")).toBeInTheDocument();
-    expect(screen.getByText("No penalty. You’ll see this word again before the session ends.")).toBeInTheDocument();
-    expect(screen.getByText("Answer:")).toBeInTheDocument();
+    expect(screen.getByLabelText("電車, でんしゃ, train")).toBeInTheDocument();
+    expect(screen.getByText("電 and 車 combine directly.")).toBeInTheDocument();
+    expect(screen.queryByText("Answer:")).not.toBeInTheDocument();
+    expect(screen.queryByText("electricity")).not.toBeInTheDocument();
   });
 
   it("renders the server-derived summary when complete", async () => {

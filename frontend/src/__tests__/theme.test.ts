@@ -18,7 +18,7 @@ function uiSourceFiles(directory: string): string[] {
 describe("application theme", () => {
   it("defines the semantic dark palette", () => {
     expect(appTheme.palette.mode).toBe("dark");
-    expect(appTheme.palette.background.backdrop).toBe("#8C94A8");
+    expect(appTheme.palette.background.backdrop).toBe("#747C8F");
     expect(appTheme.palette.background.default).toBe("#343A48");
     expect(appTheme.palette.background.paper).toBe("#454D5E");
     expect(appTheme.palette.primary.main).toBe("#D6E2DF");

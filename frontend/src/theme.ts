@@ -122,7 +122,7 @@ declare module "@mui/material/styles" {
 }
 
 const base = {
-  backdrop: "#8C94A8",
+  backdrop: "#747C8F",
   canvas: "#343A48",
   sunken: "#2B303C",
   paper: "#454D5E",

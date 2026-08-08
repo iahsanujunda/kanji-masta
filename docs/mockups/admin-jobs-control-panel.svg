@@ -10,7 +10,7 @@
       <feDropShadow dx="0" dy="14" stdDeviation="20" flood-color="#2B303C" flood-opacity="0.42"/>
     </filter>
     <style>
-      .canvas{fill:#8C94A8}.app{fill:#343A48}.card{fill:#454D5E}.raised{fill:#555E72}.line{stroke:rgba(245,245,245,.08);stroke-width:1}
+      .canvas{fill:#747C8F}.app{fill:#343A48}.card{fill:#454D5E}.raised{fill:#555E72}.line{stroke:rgba(245,245,245,.08);stroke-width:1}
       .text{fill:#F5F5F5;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}.muted{fill:#DFE2E8;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}.quiet{fill:#BCC2CD;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
       .primary{fill:#E4EBE9;font-family:Inter,system-ui,sans-serif}.primaryPale{fill:#EEF2F1;font-family:Inter,system-ui,sans-serif}.secondary{fill:#D8C8CE;font-family:Inter,system-ui,sans-serif}.secondaryPale{fill:#E7DCE0;font-family:Inter,system-ui,sans-serif}.warning{fill:#CA7288;font-family:Inter,system-ui,sans-serif}
       .darkText{fill:#30343F;font-family:Inter,system-ui,sans-serif}.title{font-size:28px;font-weight:800;letter-spacing:-.6px}.h1{font-size:26px;font-weight:800;letter-spacing:-.4px}.h2{font-size:18px;font-weight:750}.body{font-size:14px}.small{font-size:12px}.tiny{font-size:10px}.label{font-size:11px;font-weight:800;letter-spacing:1.15px}.button{font-size:14px;font-weight:800}.mono{font-family:"SFMono-Regular",Consolas,monospace}

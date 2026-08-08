@@ -1,34 +1,34 @@
 {
   "frontend": {
-    "commit": "57fe401",
-    "deployedAt": "2026-08-07T00:42:24Z"
+    "commit": "ee21025",
+    "deployedAt": "2026-08-08T13:39:58Z"
   },
   "backend": {
-    "commit": "57fe401",
-    "deployedAt": "2026-08-07T00:42:43Z"
+    "commit": "4b72297",
+    "deployedAt": "2026-08-07T15:21:57Z"
   },
   "ai-worker": {
     "commit": "ee8e45a",
     "deployedAt": "2026-08-05T16:02:03Z"
   },
   "database": {
-    "commit": "2723a5b",
-    "deployedAt": "2026-08-07T00:40:03Z"
+    "commit": "da5829c",
+    "deployedAt": "2026-08-07T14:37:22Z"
   },
   "kotlin-jobs": {
-    "commit": "2723a5b",
-    "deployedAt": "2026-08-07T00:42:08Z"
+    "commit": "4b72297",
+    "deployedAt": "2026-08-07T15:21:27Z"
   },
   "backend-candidate": {
-    "commit": "2723a5b",
-    "deployedAt": "2026-08-07T00:42:08Z"
+    "commit": "4b72297",
+    "deployedAt": "2026-08-07T15:21:32Z"
   },
   "photo-job": {
-    "commit": "2723a5b",
-    "deployedAt": "2026-08-07T00:41:39Z"
+    "commit": "4b72297",
+    "deployedAt": "2026-08-07T15:21:11Z"
   },
   "quiz-job": {
-    "commit": "2723a5b",
-    "deployedAt": "2026-08-07T00:41:58Z"
+    "commit": "4b72297",
+    "deployedAt": "2026-08-07T15:21:20Z"
   }
 }

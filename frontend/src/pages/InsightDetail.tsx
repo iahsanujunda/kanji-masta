@@ -260,7 +260,7 @@ function InteractiveLesson1({ onComplete, isCompleted }: { onComplete: () => voi
             <Button
               fullWidth variant="contained" size="large"
               onClick={() => setStep(1)}
-              sx={{ bgcolor: "secondary.main", color: "white", fontWeight: 700, py: 1.75, borderRadius: 3, "&:hover": { bgcolor: "app.accent.secondaryHover" } }}
+              sx={{ bgcolor: "secondary.main", color: "secondary.contrastText", fontWeight: 700, py: 1.75, borderRadius: 3, "&:hover": { bgcolor: "app.accent.secondaryHover" } }}
             >
               I memorized it. Next.
             </Button>
@@ -321,7 +321,7 @@ function InteractiveLesson1({ onComplete, isCompleted }: { onComplete: () => voi
             <Button
               fullWidth variant="contained" size="large"
               onClick={() => setStep(2)}
-              sx={{ bgcolor: "secondary.main", color: "white", fontWeight: 700, py: 1.75, borderRadius: 3, "&:hover": { bgcolor: "app.accent.secondaryHover" } }}
+              sx={{ bgcolor: "secondary.main", color: "secondary.contrastText", fontWeight: 700, py: 1.75, borderRadius: 3, "&:hover": { bgcolor: "app.accent.secondaryHover" } }}
             >
               Why was that hard?
             </Button>
@@ -499,7 +499,7 @@ function InteractiveLesson2({ onComplete, isCompleted, birthDate }: { onComplete
           <Button
             fullWidth variant="contained" size="large"
             onClick={() => setStep(2)}
-            sx={{ bgcolor: "app.accent.warning", color: "white", fontWeight: 700, py: 1.75, borderRadius: 3, "&:hover": { bgcolor: "app.accent.warningLight" } }}
+            sx={{ bgcolor: "app.accent.warning", color: "warning.contrastText", fontWeight: 700, py: 1.75, borderRadius: 3, "&:hover": { bgcolor: "app.accent.warningLight" } }}
           >
             See How
           </Button>

@@ -58,7 +58,7 @@ export default function JobsTab() {
     <Box sx={{ display: "grid", gap: 1.5 }}>
       <ModelSettings />
       <Box sx={{ display: "flex", gap: .75, overflowX: "auto", pb: .5, scrollbarWidth: "none" }}>
-        {filters.map((item) => <Chip key={item} clickable label={item.replace("-", " ")} onClick={() => setFilter(item)} sx={{ flexShrink: 0, height: 36, textTransform: "capitalize", bgcolor: filter === item ? "secondary.main" : "app.surface.muted", color: filter === item ? "white" : "grey.400", border: "1px solid", borderColor: "app.surface.selected" }} />)}
+        {filters.map((item) => <Chip key={item} clickable label={item.replace("-", " ")} onClick={() => setFilter(item)} sx={{ flexShrink: 0, height: 36, textTransform: "capitalize", bgcolor: filter === item ? "secondary.main" : "app.surface.muted", color: filter === item ? "secondary.contrastText" : "grey.400", border: "1px solid", borderColor: "app.surface.selected" }} />)}
       </Box>
       {jobs.isLoading && <Box sx={{ py: 6, textAlign: "center" }}><CircularProgress size={28} /></Box>}
       {jobs.isError && <Alert severity="error" action={<Button onClick={() => jobs.refetch()}>Retry</Button>}>Jobs are unavailable.</Alert>}

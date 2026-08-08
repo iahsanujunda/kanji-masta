@@ -21,7 +21,7 @@ describe("FamiliarityDots", () => {
     const allBoxes = container.querySelectorAll("div > div");
     const filled = Array.from(allBoxes).filter((el) => {
       const style = window.getComputedStyle(el);
-      return style.backgroundColor !== "" || el.getAttribute("style")?.includes("#34d399");
+      return style.backgroundColor !== "" || el.getAttribute("style")?.includes("#E4EBE9");
     });
     expect(filled.length).toBeGreaterThanOrEqual(0); // Basic smoke test
   });

@@ -413,7 +413,7 @@ function CurriculumDetail({
                   borderRadius: 3,
                   fontWeight: 700,
                   bgcolor: "secondary.main",
-                  color: "white",
+                  color: "secondary.contrastText",
                   border: "2px solid",
                   borderColor: "app.accent.secondaryBorder",
                   boxShadow: (theme) => theme.palette.app.shadow.secondarySoft,

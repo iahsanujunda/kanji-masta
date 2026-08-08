@@ -3,134 +3,134 @@
   <desc id="desc">Six dark mobile mockups showing all background jobs, a stale job detail, model configuration, bottom-drawer confirmations for mark failed and rerun, and a bottom-drawer model picker.</desc>
   <defs>
     <linearGradient id="brand-gradient" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#34d399"/>
-      <stop offset="1" stop-color="#4338ca"/>
+      <stop offset="0" stop-color="#E4EBE9"/>
+      <stop offset="1" stop-color="#C6B0B8"/>
     </linearGradient>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
-      <feDropShadow dx="0" dy="14" stdDeviation="20" flood-color="#000000" flood-opacity="0.42"/>
+      <feDropShadow dx="0" dy="14" stdDeviation="20" flood-color="#2B303C" flood-opacity="0.42"/>
     </filter>
     <style>
-      .canvas{fill:#050508}.app{fill:#0a0a0f}.card{fill:#0f0f16}.raised{fill:#1a1a24}.line{stroke:rgba(255,255,255,.08);stroke-width:1}
-      .text{fill:#f5f5f7;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}.muted{fill:#a1a1aa;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}.quiet{fill:#71717a;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
-      .emerald{fill:#34d399;font-family:Inter,system-ui,sans-serif}.emeraldPale{fill:#6ee7b7;font-family:Inter,system-ui,sans-serif}.indigo{fill:#818cf8;font-family:Inter,system-ui,sans-serif}.indigoPale{fill:#a5b4fc;font-family:Inter,system-ui,sans-serif}.danger{fill:#f87171;font-family:Inter,system-ui,sans-serif}
-      .darkText{fill:#031b13;font-family:Inter,system-ui,sans-serif}.title{font-size:28px;font-weight:800;letter-spacing:-.6px}.h1{font-size:26px;font-weight:800;letter-spacing:-.4px}.h2{font-size:18px;font-weight:750}.body{font-size:14px}.small{font-size:12px}.tiny{font-size:10px}.label{font-size:11px;font-weight:800;letter-spacing:1.15px}.button{font-size:14px;font-weight:800}.mono{font-family:"SFMono-Regular",Consolas,monospace}
+      .canvas{fill:#8C94A8}.app{fill:#343A48}.card{fill:#454D5E}.raised{fill:#555E72}.line{stroke:rgba(245,245,245,.08);stroke-width:1}
+      .text{fill:#F5F5F5;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}.muted{fill:#DFE2E8;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}.quiet{fill:#BCC2CD;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+      .primary{fill:#E4EBE9;font-family:Inter,system-ui,sans-serif}.primaryPale{fill:#EEF2F1;font-family:Inter,system-ui,sans-serif}.secondary{fill:#D8C8CE;font-family:Inter,system-ui,sans-serif}.secondaryPale{fill:#E7DCE0;font-family:Inter,system-ui,sans-serif}.warning{fill:#CA7288;font-family:Inter,system-ui,sans-serif}
+      .darkText{fill:#30343F;font-family:Inter,system-ui,sans-serif}.title{font-size:28px;font-weight:800;letter-spacing:-.6px}.h1{font-size:26px;font-weight:800;letter-spacing:-.4px}.h2{font-size:18px;font-weight:750}.body{font-size:14px}.small{font-size:12px}.tiny{font-size:10px}.label{font-size:11px;font-weight:800;letter-spacing:1.15px}.button{font-size:14px;font-weight:800}.mono{font-family:"SFMono-Regular",Consolas,monospace}
     </style>
     <g id="phone-shell">
       <rect width="390" height="760" rx="30" class="app" filter="url(#shadow)"/>
-      <rect x="1" y="1" width="388" height="758" rx="29" fill="none" stroke="rgba(255,255,255,.09)"/>
+      <rect x="1" y="1" width="388" height="758" rx="29" fill="none" stroke="rgba(245,245,245,.09)"/>
     </g>
     <g id="admin-header">
       <rect x="0" y="0" width="390" height="72" rx="30" class="app"/>
       <rect x="18" y="20" width="32" height="32" rx="9" fill="url(#brand-gradient)"/>
-      <path d="M28 42c8-2 12-7 13-14-8 1-12 5-13 14Zm0 0c-1-6 0-11 2-15" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/>
+      <path d="M28 42c8-2 12-7 13-14-8 1-12 5-13 14Zm0 0c-1-6 0-11 2-15" fill="none" stroke="#F5F5F5" stroke-width="1.7" stroke-linecap="round"/>
       <text x="62" y="41" class="text body" font-weight="800">Admin</text>
       <line x1="0" y1="72" x2="390" y2="72" class="line"/>
     </g>
     <g id="back-control">
       <circle cx="38" cy="116" r="19" class="raised"/>
-      <path d="m41 109-8 7 8 7m-8-7h14" fill="none" stroke="#a1a1aa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="m41 109-8 7 8 7m-8-7h14" fill="none" stroke="#DFE2E8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     </g>
     <g id="queue-model-tabs">
       <rect x="26" y="134" width="338" height="42" rx="12" class="raised"/>
-      <rect x="30" y="138" width="163" height="34" rx="9" fill="rgba(129,140,248,.16)" stroke="rgba(129,140,248,.24)"/>
-      <text x="111" y="160" text-anchor="middle" class="indigoPale small" font-weight="800">Queue</text>
+      <rect x="30" y="138" width="163" height="34" rx="9" fill="rgba(216,200,206,.16)" stroke="rgba(216,200,206,.24)"/>
+      <text x="111" y="160" text-anchor="middle" class="secondaryPale small" font-weight="800">Queue</text>
       <text x="278" y="160" text-anchor="middle" class="muted small" font-weight="750">Models</text>
     </g>
     <g id="model-queue-tabs">
       <rect x="26" y="134" width="338" height="42" rx="12" class="raised"/>
       <text x="111" y="160" text-anchor="middle" class="muted small" font-weight="750">Queue</text>
-      <rect x="197" y="138" width="163" height="34" rx="9" fill="rgba(129,140,248,.16)" stroke="rgba(129,140,248,.24)"/>
-      <text x="278" y="160" text-anchor="middle" class="indigoPale small" font-weight="800">Models</text>
+      <rect x="197" y="138" width="163" height="34" rx="9" fill="rgba(216,200,206,.16)" stroke="rgba(216,200,206,.24)"/>
+      <text x="278" y="160" text-anchor="middle" class="secondaryPale small" font-weight="800">Models</text>
     </g>
     <g id="bottom-nav-jobs">
-      <rect x="0" y="690" width="390" height="70" rx="0 0 30 30" fill="#0a0a0f"/>
+      <rect x="0" y="690" width="390" height="70" rx="0 0 30 30" fill="#343A48"/>
       <line x1="0" y1="690" x2="390" y2="690" class="line"/>
-      <path d="M72 714v16m-7-8h14" fill="none" stroke="#71717a" stroke-width="1.7" stroke-linecap="round"/>
+      <path d="M72 714v16m-7-8h14" fill="none" stroke="#BCC2CD" stroke-width="1.7" stroke-linecap="round"/>
       <text x="72" y="747" text-anchor="middle" class="quiet tiny">Cost</text>
-      <rect x="157" y="700" width="76" height="46" rx="15" fill="rgba(129,140,248,.10)"/>
-      <rect x="187" y="712" width="16" height="14" rx="3" fill="none" stroke="#818cf8" stroke-width="1.7"/>
-      <path d="M191 712v-3h8v3" fill="none" stroke="#818cf8" stroke-width="1.7"/>
-      <text x="195" y="743" text-anchor="middle" class="indigoPale tiny" font-weight="800">Jobs</text>
-      <circle cx="318" cy="720" r="8" fill="none" stroke="#71717a" stroke-width="1.7"/>
-      <path d="M306 734c2-6 7-9 12-9s10 3 12 9" fill="none" stroke="#71717a" stroke-width="1.7"/>
+      <rect x="157" y="700" width="76" height="46" rx="15" fill="rgba(216,200,206,.10)"/>
+      <rect x="187" y="712" width="16" height="14" rx="3" fill="none" stroke="#D8C8CE" stroke-width="1.7"/>
+      <path d="M191 712v-3h8v3" fill="none" stroke="#D8C8CE" stroke-width="1.7"/>
+      <text x="195" y="743" text-anchor="middle" class="secondaryPale tiny" font-weight="800">Jobs</text>
+      <circle cx="318" cy="720" r="8" fill="none" stroke="#BCC2CD" stroke-width="1.7"/>
+      <path d="M306 734c2-6 7-9 12-9s10 3 12 9" fill="none" stroke="#BCC2CD" stroke-width="1.7"/>
       <text x="318" y="747" text-anchor="middle" class="quiet tiny">Invites</text>
     </g>
   </defs>
 
   <rect width="1800" height="1960" class="canvas"/>
   <rect x="60" y="32" width="38" height="38" rx="10" fill="url(#brand-gradient)"/>
-  <path d="M72 58c10-2 15-8 16-17-9 1-15 6-16 17Zm0 0c-2-7-1-13 2-18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+  <path d="M72 58c10-2 15-8 16-17-9 1-15 6-16 17Zm0 0c-2-7-1-13 2-18" fill="none" stroke="#F5F5F5" stroke-width="2" stroke-linecap="round"/>
   <text x="112" y="55" class="text title">Admin Jobs — observe, stop, recover, configure</text>
   <text x="112" y="80" class="muted body">The same 390 px control surface on mobile and desktop, with all durable work in one queue.</text>
-  <rect x="1538" y="36" width="202" height="30" rx="15" fill="rgba(16,185,129,.13)" stroke="rgba(52,211,153,.28)"/>
-  <text x="1639" y="56" text-anchor="middle" class="emeraldPale label">UX MOCKUP · AUG 2026</text>
+  <rect x="1538" y="36" width="202" height="30" rx="15" fill="rgba(214,226,223,.13)" stroke="rgba(228,235,233,.28)"/>
+  <text x="1639" y="56" text-anchor="middle" class="primaryPale label">UX MOCKUP · AUG 2026</text>
 
   <!-- 01 ALL JOBS -->
-  <text x="60" y="128" class="indigoPale label">01 · JOBS · ALL DURABLE WORK</text>
+  <text x="60" y="128" class="secondaryPale label">01 · JOBS · ALL DURABLE WORK</text>
   <use href="#phone-shell" x="60" y="150"/>
   <use href="#admin-header" x="60" y="150"/>
-  <rect x="304" y="176" width="120" height="28" rx="14" fill="rgba(248,113,113,.10)" stroke="rgba(248,113,113,.28)"/>
-  <circle cx="321" cy="190" r="4" fill="#f87171"/>
-  <text x="370" y="194" text-anchor="middle" class="danger tiny" font-weight="800">SYSTEM DOWN</text>
+  <rect x="304" y="176" width="120" height="28" rx="14" fill="rgba(202,114,136,.10)" stroke="rgba(202,114,136,.28)"/>
+  <circle cx="321" cy="190" r="4" fill="#CA7288"/>
+  <text x="370" y="194" text-anchor="middle" class="warning tiny" font-weight="800">SYSTEM DOWN</text>
   <text x="86" y="258" class="text h1">Jobs</text>
   <circle cx="401" cy="250" r="20" class="raised"/>
-  <path d="M407 244a9 9 0 1 0 1 10m-1-10v7h-7" fill="none" stroke="#a1a1aa" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M407 244a9 9 0 1 0 1 10m-1-10v7h-7" fill="none" stroke="#DFE2E8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
   <use href="#queue-model-tabs" x="60" y="150"/>
-  <rect x="86" y="342" width="338" height="58" rx="14" fill="rgba(248,113,113,.08)" stroke="rgba(248,113,113,.24)"/>
-  <circle cx="108" cy="371" r="7" fill="#f87171"/>
+  <rect x="86" y="342" width="338" height="58" rx="14" fill="rgba(202,114,136,.08)" stroke="rgba(202,114,136,.24)"/>
+  <circle cx="108" cy="371" r="7" fill="#CA7288"/>
   <text x="126" y="367" class="text body" font-weight="800">2 jobs need action</text>
   <text x="126" y="385" class="muted tiny">One stale · one failed</text>
-  <rect x="86" y="416" width="68" height="32" rx="16" fill="rgba(129,140,248,.16)" stroke="rgba(129,140,248,.28)"/>
-  <text x="120" y="436" text-anchor="middle" class="indigoPale tiny" font-weight="800">All 23</text>
+  <rect x="86" y="416" width="68" height="32" rx="16" fill="rgba(216,200,206,.16)" stroke="rgba(216,200,206,.28)"/>
+  <text x="120" y="436" text-anchor="middle" class="secondaryPale tiny" font-weight="800">All 23</text>
   <rect x="162" y="416" width="100" height="32" rx="16" class="raised"/>
   <text x="212" y="436" text-anchor="middle" class="muted tiny" font-weight="750">Needs action 2</text>
   <rect x="270" y="416" width="76" height="32" rx="16" class="raised"/>
   <text x="308" y="436" text-anchor="middle" class="muted tiny" font-weight="750">Running 1</text>
   <rect x="354" y="416" width="70" height="32" rx="16" class="raised"/>
   <text x="389" y="436" text-anchor="middle" class="muted tiny" font-weight="750">Failed 1</text>
-  <rect x="86" y="464" width="338" height="104" rx="16" fill="rgba(248,113,113,.06)" stroke="rgba(248,113,113,.30)"/>
-  <rect x="104" y="482" width="46" height="46" rx="12" fill="rgba(248,113,113,.10)"/>
-  <path d="M116 494h22v16h-22Zm4-4h14l4 4h-22Z" fill="none" stroke="#f87171" stroke-width="1.5" stroke-linejoin="round"/>
-  <text x="164" y="488" class="danger tiny" font-weight="850" letter-spacing=".8">STALE · PROCESSING</text>
+  <rect x="86" y="464" width="338" height="104" rx="16" fill="rgba(202,114,136,.06)" stroke="rgba(202,114,136,.30)"/>
+  <rect x="104" y="482" width="46" height="46" rx="12" fill="rgba(202,114,136,.10)"/>
+  <path d="M116 494h22v16h-22Zm4-4h14l4 4h-22Z" fill="none" stroke="#CA7288" stroke-width="1.5" stroke-linejoin="round"/>
+  <text x="164" y="488" class="warning tiny" font-weight="850" letter-spacing=".8">STALE · PROCESSING</text>
   <text x="164" y="511" class="text body" font-weight="800">Photo analysis</text>
   <text x="164" y="532" class="muted tiny">23 min · attempt 2 · a60e1b9a</text>
   <rect x="326" y="523" width="80" height="32" rx="10" class="raised"/>
   <text x="366" y="543" text-anchor="middle" class="text tiny" font-weight="800">Open</text>
-  <rect x="86" y="580" width="338" height="88" rx="16" class="card" stroke="rgba(255,255,255,.09)"/>
-  <circle cx="113" cy="607" r="5" fill="#f87171"/>
-  <text x="130" y="611" class="danger tiny" font-weight="850">FAILED</text>
+  <rect x="86" y="580" width="338" height="88" rx="16" class="card" stroke="rgba(245,245,245,.09)"/>
+  <circle cx="113" cy="607" r="5" fill="#CA7288"/>
+  <text x="130" y="611" class="warning tiny" font-weight="850">FAILED</text>
   <text x="104" y="638" class="text body" font-weight="800">Quiz generation · 駅</text>
   <text x="104" y="656" class="muted tiny">2 min · 3 attempts</text>
-  <rect x="86" y="680" width="338" height="64" rx="16" class="card" stroke="rgba(255,255,255,.09)"/>
-  <circle cx="113" cy="704" r="5" fill="#34d399"/>
-  <text x="130" y="708" class="emerald tiny" font-weight="850">DONE</text>
+  <rect x="86" y="680" width="338" height="64" rx="16" class="card" stroke="rgba(245,245,245,.09)"/>
+  <circle cx="113" cy="704" r="5" fill="#E4EBE9"/>
+  <text x="130" y="708" class="primary tiny" font-weight="850">DONE</text>
   <text x="104" y="730" class="muted small">Photo analysis · 5 kanji</text>
   <use href="#bottom-nav-jobs" x="60" y="150"/>
 
   <!-- ARROW 1 -->
-  <path d="M494 530h132" fill="none" stroke="#4338ca" stroke-width="2"/>
-  <path d="m615 523 12 7-12 7" fill="none" stroke="#818cf8" stroke-width="2"/>
+  <path d="M494 530h132" fill="none" stroke="#C6B0B8" stroke-width="2"/>
+  <path d="m615 523 12 7-12 7" fill="none" stroke="#D8C8CE" stroke-width="2"/>
   <text x="560" y="510" text-anchor="middle" class="muted small">open stale job</text>
 
   <!-- 02 JOB DETAIL -->
-  <text x="705" y="128" class="indigoPale label">02 · JOB DETAIL · SAFE RECOVERY</text>
+  <text x="705" y="128" class="secondaryPale label">02 · JOB DETAIL · SAFE RECOVERY</text>
   <use href="#phone-shell" x="705" y="150"/>
   <use href="#admin-header" x="705" y="150"/>
-  <rect x="949" y="176" width="120" height="28" rx="14" fill="rgba(248,113,113,.10)" stroke="rgba(248,113,113,.28)"/>
-  <circle cx="966" cy="190" r="4" fill="#f87171"/>
-  <text x="1015" y="194" text-anchor="middle" class="danger tiny" font-weight="800">SYSTEM DOWN</text>
+  <rect x="949" y="176" width="120" height="28" rx="14" fill="rgba(202,114,136,.10)" stroke="rgba(202,114,136,.28)"/>
+  <circle cx="966" cy="190" r="4" fill="#CA7288"/>
+  <text x="1015" y="194" text-anchor="middle" class="warning tiny" font-weight="800">SYSTEM DOWN</text>
   <use href="#back-control" x="705" y="150"/>
   <text x="775" y="270" class="text h1">Photo analysis</text>
   <text x="775" y="294" class="muted small mono">a60e1b9a…d449</text>
-  <rect x="731" y="320" width="338" height="92" rx="16" fill="rgba(248,113,113,.07)" stroke="rgba(248,113,113,.26)"/>
-  <circle cx="763" cy="350" r="10" fill="#f87171"/>
+  <rect x="731" y="320" width="338" height="92" rx="16" fill="rgba(202,114,136,.07)" stroke="rgba(202,114,136,.26)"/>
+  <circle cx="763" cy="350" r="10" fill="#CA7288"/>
   <path d="M763 344v7m0 5v1" stroke="#2a0808" stroke-width="2" stroke-linecap="round"/>
   <text x="785" y="350" class="text body" font-weight="800">Stale processing job</text>
   <text x="785" y="373" class="muted small">The time limit has passed.</text>
-  <text x="751" y="398" class="danger tiny" font-weight="750">MANUAL ACTION AVAILABLE</text>
+  <text x="751" y="398" class="warning tiny" font-weight="750">MANUAL ACTION AVAILABLE</text>
   <text x="731" y="448" class="muted label">RUN</text>
-  <rect x="731" y="464" width="338" height="178" rx="16" class="card" stroke="rgba(255,255,255,.09)"/>
-  <text x="751" y="492" class="muted small">Status</text><text x="1049" y="492" text-anchor="end" class="danger small" font-weight="800">Processing · stale</text>
+  <rect x="731" y="464" width="338" height="178" rx="16" class="card" stroke="rgba(245,245,245,.09)"/>
+  <text x="751" y="492" class="muted small">Status</text><text x="1049" y="492" text-anchor="end" class="warning small" font-weight="800">Processing · stale</text>
   <line x1="751" y1="508" x2="1049" y2="508" class="line"/>
   <text x="751" y="534" class="muted small">Age</text><text x="1049" y="534" text-anchor="end" class="text small">23 minutes</text>
   <line x1="751" y1="550" x2="1049" y2="550" class="line"/>
@@ -138,152 +138,152 @@
   <line x1="751" y1="592" x2="1049" y2="592" class="line"/>
   <text x="751" y="618" class="muted small">User</text><text x="1049" y="618" text-anchor="end" class="text small mono">3295f8e9…</text>
   <text x="731" y="678" class="muted label">RECOVERY</text>
-  <rect x="731" y="696" width="338" height="52" rx="12" fill="#10b981"/>
-  <path d="M751 713a9 9 0 1 0 1 10m-1-10v7h-7" fill="none" stroke="#031b13" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="731" y="696" width="338" height="52" rx="12" fill="#D6E2DF"/>
+  <path d="M751 713a9 9 0 1 0 1 10m-1-10v7h-7" fill="none" stroke="#30343F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
   <text x="900" y="729" text-anchor="middle" class="darkText button">Rerun job</text>
-  <rect x="731" y="760" width="338" height="52" rx="12" fill="rgba(248,113,113,.08)" stroke="rgba(248,113,113,.30)"/>
-  <text x="900" y="793" text-anchor="middle" class="danger button">Mark failed</text>
+  <rect x="731" y="760" width="338" height="52" rx="12" fill="rgba(202,114,136,.08)" stroke="rgba(202,114,136,.30)"/>
+  <text x="900" y="793" text-anchor="middle" class="warning button">Mark failed</text>
   <text x="731" y="837" class="muted tiny">Rerun closes this run and creates a new attempt.</text>
 
   <!-- ARROW 2 -->
-  <path d="M1139 530h132" fill="none" stroke="#4338ca" stroke-width="2"/>
-  <path d="m1260 523 12 7-12 7" fill="none" stroke="#818cf8" stroke-width="2"/>
+  <path d="M1139 530h132" fill="none" stroke="#C6B0B8" stroke-width="2"/>
+  <path d="m1260 523 12 7-12 7" fill="none" stroke="#D8C8CE" stroke-width="2"/>
   <text x="1205" y="510" text-anchor="middle" class="muted small">switch to Models</text>
 
   <!-- 03 MODEL CONFIG -->
-  <text x="1350" y="128" class="indigoPale label">03 · MODELS · VERSIONED CONFIG</text>
+  <text x="1350" y="128" class="secondaryPale label">03 · MODELS · VERSIONED CONFIG</text>
   <use href="#phone-shell" x="1350" y="150"/>
   <use href="#admin-header" x="1350" y="150"/>
-  <rect x="1594" y="176" width="120" height="28" rx="14" fill="rgba(248,113,113,.10)" stroke="rgba(248,113,113,.28)"/>
-  <circle cx="1611" cy="190" r="4" fill="#f87171"/>
-  <text x="1660" y="194" text-anchor="middle" class="danger tiny" font-weight="800">SYSTEM DOWN</text>
+  <rect x="1594" y="176" width="120" height="28" rx="14" fill="rgba(202,114,136,.10)" stroke="rgba(202,114,136,.28)"/>
+  <circle cx="1611" cy="190" r="4" fill="#CA7288"/>
+  <text x="1660" y="194" text-anchor="middle" class="warning tiny" font-weight="800">SYSTEM DOWN</text>
   <text x="1376" y="258" class="text h1">Jobs</text>
   <use href="#model-queue-tabs" x="1350" y="150"/>
-  <rect x="1376" y="342" width="338" height="52" rx="14" fill="rgba(129,140,248,.08)" stroke="rgba(129,140,248,.22)"/>
-  <text x="1394" y="365" class="indigoPale small" font-weight="800">Active configuration · v12</text>
+  <rect x="1376" y="342" width="338" height="52" rx="14" fill="rgba(216,200,206,.08)" stroke="rgba(216,200,206,.22)"/>
+  <text x="1394" y="365" class="secondaryPale small" font-weight="800">Active configuration · v12</text>
   <text x="1394" y="382" class="muted tiny">OpenRouter · changed 2 days ago</text>
   <text x="1376" y="432" class="muted label">WORKLOAD MODELS</text>
-  <rect x="1376" y="448" width="338" height="96" rx="16" class="card" stroke="rgba(255,255,255,.09)"/>
+  <rect x="1376" y="448" width="338" height="96" rx="16" class="card" stroke="rgba(245,245,245,.09)"/>
   <text x="1396" y="477" class="text body" font-weight="800">Photo analysis</text>
   <text x="1396" y="499" class="muted tiny">Vision · capture pipeline</text>
-  <text x="1404" y="524" class="indigoPale tiny mono">qwen/qwen3.7-flash</text>
-  <path d="m1681 514 6 6-6 6" fill="none" stroke="#818cf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="1376" y="556" width="338" height="96" rx="16" class="card" stroke="rgba(255,255,255,.09)"/>
+  <text x="1404" y="524" class="secondaryPale tiny mono">qwen/qwen3.7-flash</text>
+  <path d="m1681 514 6 6-6 6" fill="none" stroke="#D8C8CE" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="1376" y="556" width="338" height="96" rx="16" class="card" stroke="rgba(245,245,245,.09)"/>
   <text x="1396" y="585" class="text body" font-weight="800">Quiz generation</text>
   <text x="1396" y="607" class="muted tiny">Scheduled and on-demand quizzes</text>
-  <text x="1404" y="632" class="indigoPale tiny mono">openai/gpt-5.6-terra</text>
-  <path d="m1681 622 6 6-6 6" fill="none" stroke="#818cf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="1376" y="664" width="338" height="96" rx="16" class="card" stroke="rgba(255,255,255,.09)"/>
+  <text x="1404" y="632" class="secondaryPale tiny mono">openai/gpt-5.6-terra</text>
+  <path d="m1681 622 6 6-6 6" fill="none" stroke="#D8C8CE" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="1376" y="664" width="338" height="96" rx="16" class="card" stroke="rgba(245,245,245,.09)"/>
   <text x="1396" y="693" class="text body" font-weight="800">Word discovery</text>
   <text x="1396" y="715" class="muted tiny">Dictionary enrichment</text>
-  <text x="1404" y="740" class="indigoPale tiny mono">google/gemini-3.1-pro</text>
-  <path d="m1681 730 6 6-6 6" fill="none" stroke="#818cf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="1376" y="780" width="338" height="48" rx="12" fill="#10b981"/>
+  <text x="1404" y="740" class="secondaryPale tiny mono">google/gemini-3.1-pro</text>
+  <path d="m1681 730 6 6-6 6" fill="none" stroke="#D8C8CE" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="1376" y="780" width="338" height="48" rx="12" fill="#D6E2DF"/>
   <text x="1545" y="810" text-anchor="middle" class="darkText small" font-weight="850">Submit</text>
   <use href="#bottom-nav-jobs" x="1350" y="150"/>
 
   <!-- ROW TRANSITION -->
-  <path d="M1545 940v52H255v45" fill="none" stroke="#4338ca" stroke-width="2" stroke-dasharray="7 7"/>
-  <path d="m248 1025 7 12 7-12" fill="none" stroke="#818cf8" stroke-width="2"/>
+  <path d="M1545 940v52H255v45" fill="none" stroke="#C6B0B8" stroke-width="2" stroke-dasharray="7 7"/>
+  <path d="m248 1025 7 12 7-12" fill="none" stroke="#D8C8CE" stroke-width="2"/>
   <text x="900" y="977" text-anchor="middle" class="muted small">Destructive actions confirm their user-visible effect; recovery and configuration changes remain auditable.</text>
 
   <!-- 04 MARK FAILED CONFIRM -->
-  <text x="60" y="1048" class="indigoPale label">04 · ACTION · MARK FAILED</text>
+  <text x="60" y="1048" class="secondaryPale label">04 · ACTION · MARK FAILED</text>
   <use href="#phone-shell" x="60" y="1070"/>
   <use href="#admin-header" x="60" y="1070"/>
-  <rect x="304" y="1096" width="120" height="28" rx="14" fill="rgba(248,113,113,.10)" stroke="rgba(248,113,113,.28)"/>
-  <circle cx="321" cy="1110" r="4" fill="#f87171"/>
-  <text x="370" y="1114" text-anchor="middle" class="danger tiny" font-weight="800">SYSTEM DOWN</text>
+  <rect x="304" y="1096" width="120" height="28" rx="14" fill="rgba(202,114,136,.10)" stroke="rgba(202,114,136,.28)"/>
+  <circle cx="321" cy="1110" r="4" fill="#CA7288"/>
+  <text x="370" y="1114" text-anchor="middle" class="warning tiny" font-weight="800">SYSTEM DOWN</text>
   <text x="86" y="1178" class="text h1">Jobs</text>
   <use href="#queue-model-tabs" x="60" y="1070"/>
-  <rect x="86" y="1262" width="338" height="58" rx="14" fill="rgba(248,113,113,.08)" stroke="rgba(248,113,113,.24)"/>
+  <rect x="86" y="1262" width="338" height="58" rx="14" fill="rgba(202,114,136,.08)" stroke="rgba(202,114,136,.24)"/>
   <text x="106" y="1288" class="text body" font-weight="800">2 jobs need action</text>
   <text x="106" y="1307" class="muted tiny">One stale · one failed</text>
-  <rect x="86" y="1338" width="338" height="106" rx="16" fill="rgba(248,113,113,.06)" stroke="rgba(248,113,113,.30)"/>
-  <text x="106" y="1368" class="danger tiny" font-weight="850">STALE · PROCESSING</text>
+  <rect x="86" y="1338" width="338" height="106" rx="16" fill="rgba(202,114,136,.06)" stroke="rgba(202,114,136,.30)"/>
+  <text x="106" y="1368" class="warning tiny" font-weight="850">STALE · PROCESSING</text>
   <text x="106" y="1393" class="text body" font-weight="800">Photo analysis</text>
   <text x="106" y="1416" class="muted tiny">23 min · attempt 2 · a60e1b9a</text>
-  <rect x="60" y="1490" width="390" height="340" rx="28" class="raised" stroke="rgba(248,113,113,.26)"/>
-  <rect x="225" y="1504" width="60" height="5" rx="3" fill="#52525b"/>
-  <circle cx="108" cy="1560" r="20" fill="rgba(248,113,113,.12)"/>
-  <path d="M108 1549v15m0 7v1" stroke="#f87171" stroke-width="2.5" stroke-linecap="round"/>
+  <rect x="60" y="1490" width="390" height="340" rx="28" class="raised" stroke="rgba(202,114,136,.26)"/>
+  <rect x="225" y="1504" width="60" height="5" rx="3" fill="#A8AFBD"/>
+  <circle cx="108" cy="1560" r="20" fill="rgba(202,114,136,.12)"/>
+  <path d="M108 1549v15m0 7v1" stroke="#CA7288" stroke-width="2.5" stroke-linecap="round"/>
   <text x="86" y="1607" class="text h1">Mark job failed?</text>
   <text x="86" y="1640" class="muted body">The scan will stop appearing as Analysing</text>
   <text x="86" y="1663" class="muted body">on the user's Home page.</text>
-  <rect x="86" y="1700" width="338" height="52" rx="12" fill="#ef4444"/>
+  <rect x="86" y="1700" width="338" height="52" rx="12" fill="#CA7288"/>
   <text x="255" y="1733" text-anchor="middle" fill="#190505" class="button">Mark failed</text>
   <rect x="86" y="1764" width="338" height="46" rx="12" class="card"/>
   <text x="255" y="1793" text-anchor="middle" class="muted button">Cancel</text>
 
   <!-- ARROW 4 -->
-  <path d="M494 1450h132" fill="none" stroke="#4338ca" stroke-width="2"/>
-  <path d="m615 1443 12 7-12 7" fill="none" stroke="#818cf8" stroke-width="2"/>
+  <path d="M494 1450h132" fill="none" stroke="#C6B0B8" stroke-width="2"/>
+  <path d="m615 1443 12 7-12 7" fill="none" stroke="#D8C8CE" stroke-width="2"/>
   <text x="560" y="1430" text-anchor="middle" class="muted small">choose Rerun</text>
 
   <!-- 05 RERUN CONFIRM -->
-  <text x="705" y="1048" class="indigoPale label">05 · ACTION · RERUN AS NEW ATTEMPT</text>
+  <text x="705" y="1048" class="secondaryPale label">05 · ACTION · RERUN AS NEW ATTEMPT</text>
   <use href="#phone-shell" x="705" y="1070"/>
   <use href="#admin-header" x="705" y="1070"/>
   <use href="#back-control" x="705" y="1070"/>
   <text x="775" y="1190" class="text h1">Photo analysis</text>
-  <rect x="731" y="1234" width="338" height="92" rx="16" fill="rgba(248,113,113,.07)" stroke="rgba(248,113,113,.26)"/>
-  <text x="751" y="1264" class="danger tiny" font-weight="850">STALE · PROCESSING</text>
+  <rect x="731" y="1234" width="338" height="92" rx="16" fill="rgba(202,114,136,.07)" stroke="rgba(202,114,136,.26)"/>
+  <text x="751" y="1264" class="warning tiny" font-weight="850">STALE · PROCESSING</text>
   <text x="751" y="1291" class="text body" font-weight="800">Attempt 2 · 23 minutes</text>
   <text x="751" y="1312" class="muted tiny mono">a60e1b9a…d449</text>
-  <rect x="705" y="1490" width="390" height="340" rx="28" class="raised" stroke="rgba(52,211,153,.24)"/>
-  <rect x="870" y="1504" width="60" height="5" rx="3" fill="#52525b"/>
-  <circle cx="753" cy="1560" r="20" fill="rgba(52,211,153,.12)"/>
-  <path d="M760 1553a10 10 0 1 0 1 11m-1-11v8h-8" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="705" y="1490" width="390" height="340" rx="28" class="raised" stroke="rgba(228,235,233,.24)"/>
+  <rect x="870" y="1504" width="60" height="5" rx="3" fill="#A8AFBD"/>
+  <circle cx="753" cy="1560" r="20" fill="rgba(228,235,233,.12)"/>
+  <path d="M760 1553a10 10 0 1 0 1 11m-1-11v8h-8" fill="none" stroke="#E4EBE9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   <text x="731" y="1607" class="text h1">Rerun photo analysis?</text>
   <text x="731" y="1640" class="muted body">This run becomes Failed. A new attempt uses</text>
   <text x="731" y="1663" class="muted body">the original stored photo and current model.</text>
-  <rect x="731" y="1700" width="338" height="52" rx="12" fill="#10b981"/>
+  <rect x="731" y="1700" width="338" height="52" rx="12" fill="#D6E2DF"/>
   <text x="900" y="1733" text-anchor="middle" class="darkText button">Create new attempt</text>
   <rect x="731" y="1764" width="338" height="46" rx="12" class="card"/>
   <text x="900" y="1793" text-anchor="middle" class="muted button">Cancel</text>
 
   <!-- ARROW 5 -->
-  <path d="M1139 1450h132" fill="none" stroke="#4338ca" stroke-width="2"/>
-  <path d="m1260 1443 12 7-12 7" fill="none" stroke="#818cf8" stroke-width="2"/>
+  <path d="M1139 1450h132" fill="none" stroke="#C6B0B8" stroke-width="2"/>
+  <path d="m1260 1443 12 7-12 7" fill="none" stroke="#D8C8CE" stroke-width="2"/>
   <text x="1205" y="1430" text-anchor="middle" class="muted small">tap model row</text>
 
   <!-- 06 MODEL PICKER DRAWER -->
-  <text x="1350" y="1048" class="indigoPale label">06 · MODELS · BOTTOM-DRAWER PICKER</text>
+  <text x="1350" y="1048" class="secondaryPale label">06 · MODELS · BOTTOM-DRAWER PICKER</text>
   <use href="#phone-shell" x="1350" y="1070"/>
   <use href="#admin-header" x="1350" y="1070"/>
-  <rect x="1594" y="1096" width="120" height="28" rx="14" fill="rgba(248,113,113,.10)" stroke="rgba(248,113,113,.28)"/>
-  <circle cx="1611" cy="1110" r="4" fill="#f87171"/>
-  <text x="1660" y="1114" text-anchor="middle" class="danger tiny" font-weight="800">SYSTEM DOWN</text>
+  <rect x="1594" y="1096" width="120" height="28" rx="14" fill="rgba(202,114,136,.10)" stroke="rgba(202,114,136,.28)"/>
+  <circle cx="1611" cy="1110" r="4" fill="#CA7288"/>
+  <text x="1660" y="1114" text-anchor="middle" class="warning tiny" font-weight="800">SYSTEM DOWN</text>
   <text x="1376" y="1178" class="text h1">Jobs</text>
   <use href="#model-queue-tabs" x="1350" y="1070"/>
-  <rect x="1376" y="1262" width="338" height="96" rx="16" class="card" stroke="rgba(129,140,248,.34)"/>
+  <rect x="1376" y="1262" width="338" height="96" rx="16" class="card" stroke="rgba(216,200,206,.34)"/>
   <text x="1396" y="1291" class="text body" font-weight="800">Photo analysis</text>
   <text x="1396" y="1313" class="muted tiny">Vision · capture pipeline</text>
-  <text x="1396" y="1340" class="indigoPale tiny mono">qwen/qwen3.7-flash</text>
-  <path d="m1681 1329 6 6-6 6" fill="none" stroke="#818cf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="1376" y="1370" width="338" height="78" rx="16" class="card" stroke="rgba(255,255,255,.09)"/>
+  <text x="1396" y="1340" class="secondaryPale tiny mono">qwen/qwen3.7-flash</text>
+  <path d="m1681 1329 6 6-6 6" fill="none" stroke="#D8C8CE" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="1376" y="1370" width="338" height="78" rx="16" class="card" stroke="rgba(245,245,245,.09)"/>
   <text x="1396" y="1400" class="text body" font-weight="800">Quiz generation</text>
-  <text x="1396" y="1426" class="indigoPale tiny mono">openai/gpt-5.6-terra</text>
-  <rect x="1350" y="1430" width="390" height="400" rx="28" class="raised" stroke="rgba(129,140,248,.28)"/>
-  <rect x="1515" y="1444" width="60" height="5" rx="3" fill="#52525b"/>
+  <text x="1396" y="1426" class="secondaryPale tiny mono">openai/gpt-5.6-terra</text>
+  <rect x="1350" y="1430" width="390" height="400" rx="28" class="raised" stroke="rgba(216,200,206,.28)"/>
+  <rect x="1515" y="1444" width="60" height="5" rx="3" fill="#A8AFBD"/>
   <text x="1376" y="1501" class="text h1">Choose photo model</text>
   <text x="1376" y="1528" class="muted small">Results are fetched through the Admin API.</text>
-  <rect x="1376" y="1550" width="338" height="46" rx="12" class="card" stroke="rgba(255,255,255,.12)"/>
-  <circle cx="1398" cy="1573" r="8" fill="none" stroke="#71717a" stroke-width="1.6"/>
-  <path d="m1404 1579 6 6" stroke="#71717a" stroke-width="1.6" stroke-linecap="round"/>
+  <rect x="1376" y="1550" width="338" height="46" rx="12" class="card" stroke="rgba(245,245,245,.12)"/>
+  <circle cx="1398" cy="1573" r="8" fill="none" stroke="#BCC2CD" stroke-width="1.6"/>
+  <path d="m1404 1579 6 6" stroke="#BCC2CD" stroke-width="1.6" stroke-linecap="round"/>
   <text x="1420" y="1578" class="quiet small">Search OpenRouter models</text>
-  <rect x="1376" y="1612" width="338" height="54" rx="12" fill="rgba(129,140,248,.10)" stroke="rgba(129,140,248,.30)"/>
-  <circle cx="1398" cy="1639" r="9" fill="none" stroke="#818cf8" stroke-width="1.8"/><circle cx="1398" cy="1639" r="4" fill="#818cf8"/>
+  <rect x="1376" y="1612" width="338" height="54" rx="12" fill="rgba(216,200,206,.10)" stroke="rgba(216,200,206,.30)"/>
+  <circle cx="1398" cy="1639" r="9" fill="none" stroke="#D8C8CE" stroke-width="1.8"/><circle cx="1398" cy="1639" r="4" fill="#D8C8CE"/>
   <text x="1420" y="1636" class="text small" font-weight="800">qwen/qwen3.7-flash</text>
-  <text x="1420" y="1653" class="indigoPale tiny">Current</text>
-  <rect x="1376" y="1676" width="338" height="54" rx="12" class="card" stroke="rgba(255,255,255,.09)"/>
-  <circle cx="1398" cy="1703" r="9" fill="none" stroke="#71717a" stroke-width="1.6"/>
+  <text x="1420" y="1653" class="secondaryPale tiny">Current</text>
+  <rect x="1376" y="1676" width="338" height="54" rx="12" class="card" stroke="rgba(245,245,245,.09)"/>
+  <circle cx="1398" cy="1703" r="9" fill="none" stroke="#BCC2CD" stroke-width="1.6"/>
   <text x="1420" y="1708" class="text small mono">google/gemini-3.1-pro</text>
-  <rect x="1376" y="1740" width="338" height="54" rx="12" class="card" stroke="rgba(255,255,255,.09)"/>
-  <circle cx="1398" cy="1767" r="9" fill="none" stroke="#71717a" stroke-width="1.6"/>
+  <rect x="1376" y="1740" width="338" height="54" rx="12" class="card" stroke="rgba(245,245,245,.09)"/>
+  <circle cx="1398" cy="1767" r="9" fill="none" stroke="#BCC2CD" stroke-width="1.6"/>
   <text x="1420" y="1772" class="text small mono">openai/gpt-5.6-terra</text>
   <text x="1545" y="1816" text-anchor="middle" class="muted small" font-weight="750">Swipe down or tap outside to cancel</text>
 
   <text x="60" y="1905" class="muted body">Control contract: every transient mobile action uses a bottom drawer. Stale jobs auto-fail, rerun creates a new attempt, model configuration is versioned, and secrets never enter the browser.</text>
-  <text x="60" y="1932" class="indigoPale small">Drawer motion · enter 300 ms · exit 260 ms · both directions remain visibly animated until completion</text>
+  <text x="60" y="1932" class="secondaryPale small">Drawer motion · enter 300 ms · exit 260 ms · both directions remain visibly animated until completion</text>
 </svg>

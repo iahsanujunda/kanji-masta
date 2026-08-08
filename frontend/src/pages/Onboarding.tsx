@@ -268,7 +268,7 @@ export default function Onboarding() {
               fullWidth
               variant="contained"
               onClick={handleAddMore}
-              sx={{ bgcolor: "secondary.main", py: 1.5, borderRadius: 3, fontWeight: "bold", "&:hover": { bgcolor: "secondary.dark" } }}
+              sx={{ bgcolor: "secondary.main", color: "secondary.contrastText", py: 1.5, borderRadius: 3, fontWeight: "bold", "&:hover": { bgcolor: "secondary.light" } }}
             >
               Add another 10
             </Button>
@@ -283,7 +283,7 @@ export default function Onboarding() {
               fontWeight: "bold",
               ...(hasMore
                 ? { borderColor: "grey.700", color: "grey.300" }
-                : { bgcolor: "secondary.main", "&:hover": { bgcolor: "secondary.dark" } }),
+                : { bgcolor: "secondary.main", color: "secondary.contrastText", "&:hover": { bgcolor: "secondary.light" } }),
             }}
           >
             {allLearning > 0 ? "Start learning" : "Done"}
@@ -474,17 +474,17 @@ export default function Onboarding() {
               alignItems: "center",
               gap: 0.5,
               bgcolor: "secondary.main",
-              color: "white",
+              color: "secondary.contrastText",
               border: "2px solid",
               borderColor: "app.accent.secondaryBorder",
               boxShadow: (theme) => theme.palette.app.shadow.secondarySoft,
-              "&:hover": { bgcolor: "secondary.dark" },
+              "&:hover": { bgcolor: "secondary.light" },
               textTransform: "none",
             }}
           >
             <SpaIcon sx={{ fontSize: 22, mb: 0.25 }} />
             <Typography variant="body2" fontWeight="bold">Want to Learn</Typography>
-            <Typography variant="caption" sx={{ color: "app.accent.secondaryPale", opacity: 0.7, fontSize: "0.6rem" }}>
+            <Typography variant="caption" sx={{ color: "secondary.contrastText", opacity: 0.72, fontSize: "0.6rem" }}>
               Start from Level 0
             </Typography>
           </Button>

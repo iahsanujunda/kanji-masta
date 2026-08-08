@@ -18,11 +18,12 @@ function uiSourceFiles(directory: string): string[] {
 describe("application theme", () => {
   it("defines the semantic dark palette", () => {
     expect(appTheme.palette.mode).toBe("dark");
-    expect(appTheme.palette.background.default).toBe("#050508");
-    expect(appTheme.palette.background.paper).toBe("#0f0f16");
-    expect(appTheme.palette.primary.main).toBe("#10b981");
-    expect(appTheme.palette.secondary.main).toBe("#4338ca");
-    expect(appTheme.palette.error.main).toBe("#ef4444");
+    expect(appTheme.palette.background.backdrop).toBe("#8C94A8");
+    expect(appTheme.palette.background.default).toBe("#343A48");
+    expect(appTheme.palette.background.paper).toBe("#454D5E");
+    expect(appTheme.palette.primary.main).toBe("#D6E2DF");
+    expect(appTheme.palette.secondary.main).toBe("#C6B0B8");
+    expect(appTheme.palette.error.main).toBe("#CA7288");
   });
 
   it("keeps raw color literals out of application UI source", () => {

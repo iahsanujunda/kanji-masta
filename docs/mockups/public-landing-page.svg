@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="2600" viewBox="0 0 1800 2600" role="img" aria-labelledby="title desc">
+  <title id="title">Shuukan public landing page responsive mockup</title>
+  <desc id="desc">A full-page desktop mockup and a mobile responsive mockup show Shuukan's public landing page: fixed navigation, asymmetric hero, real-world capture learning loop, collection tree, signup call to action, and footer.</desc>
+  <defs>
+    <!-- UI palette: intentionally centralized for the planned theme revision. -->
+    <style>
+      .board{fill:#8C94A8}.canvas{fill:#343A48}.surface{fill:#3B4251}.surface-strong{fill:#5C6C68}.line{stroke:#5C667A;stroke-width:1}.line-strong{stroke:#687286;stroke-width:1}
+      .text{fill:#F5F5F5;font-family:"Avenir Next","Segoe UI","Noto Sans JP",sans-serif}.text-strong{fill:#F5F5F5;font-family:"Avenir Next","Segoe UI","Noto Sans JP",sans-serif}.soft{fill:#DFE2E8;font-family:"Avenir Next","Segoe UI","Noto Sans JP",sans-serif}.muted{fill:#C9CED7;font-family:"Avenir Next","Segoe UI","Noto Sans JP",sans-serif}.subtle{fill:#ABB2C0;font-family:"Avenir Next","Segoe UI","Noto Sans JP",sans-serif}.faint{fill:#9DA5B4;font-family:"Avenir Next","Segoe UI","Noto Sans JP",sans-serif}
+      .primary{fill:#D6E2DF;font-family:"Avenir Next","Segoe UI","Noto Sans JP",sans-serif}.primary-pale{fill:#EEF2F1;font-family:"Avenir Next","Segoe UI","Noto Sans JP",sans-serif}.cta{fill:#D6E2DF}.cta-text{fill:#30343F;font-family:"Avenir Next","Segoe UI","Noto Sans JP",sans-serif}.dark-cta{fill:#2F3937}
+      .board-title{font-size:28px;font-weight:800;letter-spacing:-.7px}.board-copy{font-size:14px}.eyebrow{font-size:11px;font-weight:850;letter-spacing:1.7px}.hero{font-size:57px;font-weight:760;letter-spacing:-3.4px}.hero-mobile{font-size:39px;font-weight:760;letter-spacing:-2.1px}.section-title{font-size:37px;font-weight:740;letter-spacing:-1.8px}.section-mobile{font-size:29px;font-weight:740;letter-spacing:-1.25px}.h3{font-size:18px;font-weight:760;letter-spacing:-.25px}.body{font-size:14px}.small{font-size:12px}.tiny{font-size:10px}.button{font-size:13px;font-weight:850}.number{font-size:10px;font-weight:850;letter-spacing:1.5px}
+    </style>
+    <filter id="board-shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="18" stdDeviation="25" flood-color="#2B303C" flood-opacity=".42"/></filter>
+    <filter id="soft-shadow" x="-25%" y="-25%" width="150%" height="160%"><feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#2B303C" flood-opacity=".46"/></filter>
+    <linearGradient id="photo-scene" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#34463f"/><stop offset=".55" stop-color="#1d2925"/><stop offset="1" stop-color="#101714"/></linearGradient>
+    <linearGradient id="tree-trunk" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#a05a31"/><stop offset="1" stop-color="#4d2115"/></linearGradient>
+    <clipPath id="desktop-page"><rect x="60" y="184" width="1180" height="2176" rx="0 0 18 18"/></clipPath>
+    <clipPath id="mobile-page"><rect x="1335" y="184" width="390" height="2316" rx="0 0 28 28"/></clipPath>
+
+    <g id="leaf-mark">
+      <path d="M4 22C16 20 24 12 26 1C14 3 6 10 4 22Zm0 0C2 13 4 7 8 2" fill="none" stroke="#F5F5F5" stroke-width="2" stroke-linecap="round"/>
+    </g>
+
+    <!-- Artwork uses its own local palette, independent from the UI classes above. -->
+    <g id="tree-art">
+      <ellipse cx="200" cy="291" rx="100" ry="19" fill="#6b21a8" opacity=".18"/>
+      <path d="M185 284C178 240 178 194 190 144L210 144C219 193 220 242 214 284Z" fill="url(#tree-trunk)"/>
+      <path d="M198 184C166 163 143 144 120 112M206 179C238 158 260 138 280 108" fill="none" stroke="#71351f" stroke-width="14" stroke-linecap="round"/>
+      <polygon points="48,150 96,75 150,130 198,36 252,128 302,69 354,153 326,224 74,224" fill="#355d2a"/>
+      <polygon points="78,137 123,68 169,128 198,36 224,131 280,83 326,151 301,184 101,184" fill="#527f3b"/>
+      <polygon points="123,95 162,53 198,36 231,72 264,117 224,131 169,128" fill="#7e943e"/>
+      <g fill="#a8e870"><circle cx="134" cy="129" r="5"/><circle cx="198" cy="78" r="5"/><circle cx="259" cy="139" r="5"/></g>
+      <g fill="#D8C8CE"><circle cx="105" cy="175" r="4"/><circle cx="218" cy="159" r="4"/><circle cx="296" cy="172" r="4"/></g>
+      <path d="M181 284C151 297 133 307 112 323M201 284C190 302 184 312 178 330M214 284C245 296 266 307 288 323" fill="none" stroke="#71351f" stroke-width="8" stroke-linecap="round"/>
+    </g>
+
+    <g id="product-loop">
+      <path d="M60 357C192 401 369 396 526 320" fill="none" stroke="#AABDB8" stroke-width="1.5" stroke-dasharray="3 10"/>
+      <rect x="20" y="6" width="300" height="378" rx="33" fill="#454D5E" stroke="#778196" filter="url(#soft-shadow)"/>
+      <rect x="30" y="16" width="280" height="358" rx="26" fill="#343A48"/>
+      <text x="50" y="44" class="text tiny" font-weight="800">9:41</text><rect x="139" y="27" width="62" height="15" rx="7.5" fill="#2B303C"/>
+      <rect x="44" y="64" width="252" height="160" rx="16" fill="url(#photo-scene)"/>
+      <path d="M44 92L124 64H204L296 110V64H44Z" fill="#5d6964" opacity=".45"/>
+      <rect x="60" y="101" width="220" height="86" rx="5" fill="#e7e7df" transform="rotate(2 170 144)"/>
+      <path d="M62 158L279 166V183L62 176Z" fill="#218450"/><text x="85" y="149" fill="#171a18" font-family="system-ui,sans-serif" font-size="35" font-weight="800" transform="rotate(2 85 149)">中 野</text><text x="204" y="142" fill="#272b29" font-family="system-ui,sans-serif" font-size="11" font-weight="700">なかの</text>
+      <path d="M66 105v-11h15M275 106V95h-15M66 181v11h15M275 183v11h-15" fill="none" stroke="#E4EBE9" stroke-width="3" stroke-linecap="round"/>
+      <rect x="53" y="196" width="106" height="21" rx="10.5" fill="#2F3937" stroke="#AABDB8"/><circle cx="66" cy="206.5" r="3" fill="#D6E2DF"/><text x="76" y="210" class="primary-pale tiny" font-weight="800">2 words detected</text>
+      <text x="48" y="254" class="subtle tiny" font-weight="800" letter-spacing="1.4">FOUND NEAR NAKANO</text><text x="48" y="279" class="text h3">Keep what matters</text>
+      <rect x="48" y="295" width="244" height="55" rx="13" class="surface" stroke="#687286"/><rect x="59" y="305" width="37" height="37" rx="9" fill="#5C667A"/><text x="68" y="334" class="text" font-size="25" font-weight="650">中</text><text x="108" y="315" class="primary-pale tiny" font-weight="850">ナカ</text><text x="108" y="335" class="text small" font-weight="750">middle · inside</text><rect x="235" y="309" width="45" height="28" rx="14" fill="#D6E2DF"/><text x="257" y="327" text-anchor="middle" class="cta-text tiny" font-weight="850">Keep</text>
+
+      <rect x="354" y="38" width="220" height="112" rx="18" class="surface" stroke="#687286" filter="url(#soft-shadow)"/><text x="374" y="63" class="subtle tiny" font-weight="850" letter-spacing="1.3">SAVED FROM YOUR DAY</text><rect x="374" y="77" width="50" height="50" rx="12" fill="#5C667A"/><text x="386" y="115" class="text" font-size="32" font-weight="650">中</text><text x="440" y="92" class="primary-pale tiny" font-weight="850">NAKA</text><text x="440" y="112" class="text small" font-weight="750">middle · inside</text><text x="440" y="129" class="muted tiny">Nakano Station · today</text>
+      <rect x="389" y="174" width="220" height="112" rx="18" class="surface" stroke="#687286" filter="url(#soft-shadow)"/><text x="409" y="199" class="subtle tiny" font-weight="850" letter-spacing="1.3">ONE-MINUTE RECALL</text><text x="409" y="231" class="text h3">What does 中 mean?</text><rect x="409" y="247" width="80" height="24" rx="8" fill="#5C6C68" stroke="#AABDB8"/><text x="449" y="263" text-anchor="middle" class="primary-pale tiny" font-weight="800">middle</text><rect x="497" y="247" width="91" height="24" rx="8" fill="#5C667A"/><text x="542" y="263" text-anchor="middle" class="muted tiny">entrance</text>
+      <rect x="336" y="310" width="220" height="92" rx="18" class="surface" stroke="#687286" filter="url(#soft-shadow)"/><g transform="translate(342 309) scale(.25)"><use href="#tree-art"/></g><text x="454" y="339" class="primary-pale tiny" font-weight="850">YOUR TREE</text><text x="454" y="362" class="text small" font-weight="750">中 moved to trunk</text><text x="454" y="382" class="muted tiny">Recall is taking root</text>
+    </g>
+
+    <g id="icon-camera"><rect x="2" y="7" width="20" height="14" rx="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M7 7l2-3h6l2 3" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="14" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/></g>
+    <g id="icon-bookmark"><path d="M6 3h12a2 2 0 0 1 2 2v17l-8-5-8 5V5a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v6M9 10h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></g>
+    <g id="icon-light"><path d="M8 18h8M9 22h6M8 15a7 7 0 1 1 8 0c-1 1-1 2-1 3H9c0-1 0-2-1-3Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></g>
+  </defs>
+
+  <rect width="1800" height="2600" class="board"/>
+  <rect x="40" y="32" width="38" height="38" rx="10" class="surface-strong" stroke="#AABDB8"/><g transform="translate(47 38) scale(.9)"><use href="#leaf-mark"/></g>
+  <text x="94" y="55" class="text board-title">Public landing page — responsive layout contract</text>
+  <text x="94" y="80" class="muted board-copy">The complete unauthenticated route, documented before the global mockup palette revision.</text>
+  <rect x="1488" y="36" width="252" height="30" rx="15" fill="#5C6C68" stroke="#AABDB8"/><text x="1614" y="56" text-anchor="middle" class="primary-pale eyebrow">PUBLIC · DESKTOP + MOBILE</text>
+
+  <!-- DESKTOP BROWSER -->
+  <text x="60" y="122" class="primary-pale eyebrow">01 · DESKTOP · 1440 PX VIEWPORT</text>
+  <rect x="40" y="140" width="1220" height="2240" rx="24" fill="#3B4251" stroke="#687286" filter="url(#board-shadow)"/>
+  <rect x="40" y="140" width="1220" height="44" rx="24" fill="#454D5E"/><circle cx="65" cy="162" r="5" fill="#ABB2C0"/><circle cx="83" cy="162" r="5" fill="#9DA5B4"/><circle cx="101" cy="162" r="5" fill="#D6E2DF"/><rect x="205" y="151" width="890" height="22" rx="11" fill="#343A48"/><text x="650" y="166" text-anchor="middle" class="faint tiny">shuukanhq.com</text>
+  <g clip-path="url(#desktop-page)">
+    <rect x="60" y="184" width="1180" height="2176" class="canvas"/>
+
+    <!-- Fixed navigation -->
+    <rect x="60" y="184" width="1180" height="64" fill="#343A48" fill-opacity=".94"/><line x1="60" y1="248" x2="1240" y2="248" class="line"/>
+    <rect x="91" y="200" width="32" height="32" rx="10" class="surface-strong" stroke="#AABDB8"/><g transform="translate(98 205) scale(.72)"><use href="#leaf-mark"/></g><text x="135" y="223" class="text h3">Shuukan</text>
+    <text x="1050" y="223" class="soft small" font-weight="700">Log in</text><rect x="1111" y="196" width="105" height="40" rx="10" class="cta"/><text x="1163" y="221" text-anchor="middle" class="cta-text small" font-weight="850">Start collecting</text>
+
+    <!-- Hero -->
+    <text x="105" y="345" class="primary-pale eyebrow">—  JAPANESE FROM YOUR REAL LIFE</text>
+    <text x="105" y="414" class="text-strong hero"><tspan x="105">Keep the Japanese</tspan><tspan x="105" dy="60">you notice.</tspan></text>
+    <text x="105" y="555" class="muted body"><tspan x="105">Turn signs, menus, and everyday discoveries into a small learning habit.</tspan><tspan x="105" dy="24">Shuukan remembers where a word came from, then brings it back</tspan><tspan x="105" dy="24">when you have a minute.</tspan></text>
+    <rect x="105" y="648" width="170" height="48" rx="11" fill="#D6E2DF"/><text x="190" y="678" text-anchor="middle" class="cta-text button">Start collecting  →</text><text x="299" y="678" class="soft small" font-weight="750">I already have an account</text><text x="105" y="724" class="subtle small">Free while Shuukan is in early access. No card required.</text>
+    <g transform="translate(632 278) scale(.91)"><use href="#product-loop"/></g>
+
+    <!-- Learning loop -->
+    <rect x="60" y="800" width="1180" height="450" class="surface"/><line x1="60" y1="800" x2="1240" y2="800" class="line"/><line x1="60" y1="1250" x2="1240" y2="1250" class="line"/>
+    <text x="105" y="872" class="primary-pale eyebrow">THE LEARNING LOOP</text><text x="105" y="929" class="text section-title"><tspan x="105">Your surroundings</tspan><tspan x="105" dy="43">become the syllabus.</tspan></text><text x="105" y="1048" class="muted body"><tspan x="105">No blank deck to configure and no pile of generic</tspan><tspan x="105" dy="23">vocabulary. Every item starts with something you chose</tspan><tspan x="105" dy="23">to understand.</tspan></text>
+    <line x1="550" y1="852" x2="1195" y2="852" class="line-strong"/>
+    <g>
+      <circle cx="579" cy="913" r="21" fill="none" stroke="#778196"/><g transform="translate(567 901)" style="color:#EEF2F1"><use href="#icon-camera"/></g><text x="628" y="893" class="faint number">01</text><text x="628" y="920" class="text h3">Notice it</text><text x="814" y="895" class="muted body"><tspan x="814">Point Shuukan at a menu, station sign, or screen.</tspan><tspan x="814" dy="22">It finds the Japanese already living in your day.</tspan></text><line x1="550" y1="968" x2="1195" y2="968" class="line-strong"/>
+      <circle cx="579" cy="1028" r="21" fill="none" stroke="#778196"/><g transform="translate(567 1016)" style="color:#EEF2F1"><use href="#icon-bookmark"/></g><text x="628" y="1008" class="faint number">02</text><text x="628" y="1035" class="text h3">Keep it</text><text x="814" y="1010" class="muted body"><tspan x="814">Choose the words that matter. Context and reading</tspan><tspan x="814" dy="22">stay attached, so they never become anonymous cards.</tspan></text><line x1="550" y1="1083" x2="1195" y2="1083" class="line-strong"/>
+      <circle cx="579" cy="1143" r="21" fill="none" stroke="#778196"/><g transform="translate(567 1131)" style="color:#EEF2F1"><use href="#icon-light"/></g><text x="628" y="1123" class="faint number">03</text><text x="628" y="1150" class="text h3">Recall it</text><text x="814" y="1125" class="muted body"><tspan x="814">Focused prompts return later. Each answer moves the</tspan><tspan x="814" dy="22">kanji through the roots, trunk, and canopy.</tspan></text><line x1="550" y1="1198" x2="1195" y2="1198" class="line-strong"/>
+    </g>
+
+    <!-- Tree story -->
+    <rect x="105" y="1310" width="570" height="500" rx="34" class="surface" stroke="#5C667A"/><g transform="translate(190 1344) scale(1.05)"><use href="#tree-art"/></g><rect x="105" y="1638" width="570" height="172" rx="0 0 34 34" fill="#3B4251" fill-opacity=".82"/><text x="140" y="1739" class="primary-pale eyebrow">YOUR COLLECTION</text><text x="140" y="1773" class="text h3" font-size="24">A map of what is sticking</text>
+    <text x="753" y="1378" class="primary-pale eyebrow">PROGRESS WITH SHAPE</text><text x="753" y="1438" class="text section-title"><tspan x="753">Watch familiarity</tspan><tspan x="753" dy="43">take root.</tspan></text><text x="753" y="1550" class="muted body"><tspan x="753">Shuukan’s tree is not decoration. New kanji begin at the</tspan><tspan x="753" dy="24">roots, move through the trunk as recall strengthens, and</tspan><tspan x="753" dy="24">reach the canopy when they become familiar.</tspan></text>
+    <line x1="753" y1="1661" x2="1178" y2="1661" class="line-strong"/><line x1="753" y1="1734" x2="1178" y2="1734" class="line-strong"/><line x1="894" y1="1661" x2="894" y2="1734" class="line-strong"/><line x1="1036" y1="1661" x2="1036" y2="1734" class="line-strong"/><text x="773" y="1691" class="text body" font-weight="750">Roots</text><text x="773" y="1716" class="subtle small">New</text><text x="914" y="1691" class="text body" font-weight="750">Trunk</text><text x="914" y="1716" class="subtle small">Growing</text><text x="1056" y="1691" class="text body" font-weight="750">Canopy</text><text x="1056" y="1716" class="subtle small">Familiar</text>
+
+    <!-- CTA and footer -->
+    <rect x="105" y="1880" width="1090" height="245" rx="34" class="cta"/><text x="155" y="1944" fill="#7E9690" class="eyebrow">START WITH ONE THING YOU SAW TODAY</text><text x="155" y="2000" class="cta-text section-title"><tspan x="155">Build a Japanese habit</tspan><tspan x="155" dy="43">that belongs to your life.</tspan></text><rect x="955" y="1992" width="188" height="52" rx="12" class="dark-cta"/><text x="1049" y="2024" text-anchor="middle" class="text button">Start collecting  →</text>
+    <line x1="60" y1="2215" x2="1240" y2="2215" class="line"/><rect x="96" y="2250" width="28" height="28" rx="9" class="surface-strong" stroke="#AABDB8"/><g transform="translate(102 2254) scale(.65)"><use href="#leaf-mark"/></g><text x="136" y="2270" class="text body" font-weight="750">Shuukan</text><text x="1025" y="2270" class="subtle small">Privacy</text><text x="1091" y="2270" class="subtle small">Terms</text><text x="1144" y="2270" class="faint small">© 2026 Shuukan</text>
+  </g>
+
+  <!-- MOBILE BROWSER -->
+  <text x="1335" y="122" class="primary-pale eyebrow">02 · MOBILE · 390 PX VIEWPORT</text>
+  <rect x="1315" y="140" width="430" height="2380" rx="34" fill="#3B4251" stroke="#687286" filter="url(#board-shadow)"/>
+  <rect x="1315" y="140" width="430" height="44" rx="34" fill="#454D5E"/><circle cx="1340" cy="162" r="5" fill="#ABB2C0"/><circle cx="1358" cy="162" r="5" fill="#9DA5B4"/><circle cx="1376" cy="162" r="5" fill="#D6E2DF"/><rect x="1410" y="151" width="250" height="22" rx="11" fill="#343A48"/><text x="1535" y="166" text-anchor="middle" class="faint tiny">shuukanhq.com</text>
+  <g clip-path="url(#mobile-page)">
+    <rect x="1335" y="184" width="390" height="2316" class="canvas"/>
+    <rect x="1335" y="184" width="390" height="64" fill="#343A48" fill-opacity=".94"/><line x1="1335" y1="248" x2="1725" y2="248" class="line"/><rect x="1355" y="200" width="32" height="32" rx="10" class="surface-strong" stroke="#AABDB8"/><g transform="translate(1362 205) scale(.72)"><use href="#leaf-mark"/></g><text x="1398" y="222" class="text body" font-weight="780">Shuukan</text><text x="1560" y="222" class="soft small" font-weight="700">Log in</text><rect x="1611" y="198" width="96" height="38" rx="10" class="cta"/><text x="1659" y="221" text-anchor="middle" class="cta-text tiny" font-weight="850">Start collecting</text>
+
+    <!-- Mobile hero -->
+    <text x="1357" y="306" class="primary-pale tiny" font-weight="850" letter-spacing="1.35">—  JAPANESE FROM YOUR REAL LIFE</text><text x="1357" y="360" class="text-strong hero-mobile"><tspan x="1357">Keep the Japanese</tspan><tspan x="1357" dy="44">you notice.</tspan></text><text x="1357" y="473" class="muted body"><tspan x="1357">Turn signs, menus, and everyday discoveries</tspan><tspan x="1357" dy="22">into a small learning habit. Shuukan remembers</tspan><tspan x="1357" dy="22">where a word came from, then brings it back.</tspan></text><rect x="1357" y="560" width="346" height="48" rx="11" fill="#D6E2DF"/><text x="1530" y="590" text-anchor="middle" class="cta-text button">Start collecting  →</text><text x="1530" y="637" text-anchor="middle" class="soft small" font-weight="750">I already have an account</text><text x="1530" y="667" text-anchor="middle" class="subtle tiny">Free in early access. No card required.</text>
+    <g transform="translate(1353 706) scale(.58)"><use href="#product-loop"/></g>
+
+    <!-- Mobile learning loop -->
+    <rect x="1335" y="961" width="390" height="595" class="surface"/><line x1="1335" y1="961" x2="1725" y2="961" class="line"/><text x="1357" y="1013" class="primary-pale tiny" font-weight="850" letter-spacing="1.4">THE LEARNING LOOP</text><text x="1357" y="1057" class="text section-mobile"><tspan x="1357">Your surroundings become</tspan><tspan x="1357" dy="34">the syllabus.</tspan></text><text x="1357" y="1140" class="muted small"><tspan x="1357">No blank deck and no generic vocabulary.</tspan><tspan x="1357" dy="20">Every item starts with something you chose.</tspan></text>
+    <line x1="1357" y1="1203" x2="1703" y2="1203" class="line-strong"/>
+    <circle cx="1380" cy="1252" r="20" fill="none" stroke="#778196"/><g transform="translate(1368 1240)" style="color:#EEF2F1"><use href="#icon-camera"/></g><text x="1418" y="1237" class="faint number">01</text><text x="1418" y="1264" class="text h3">Notice it</text><text x="1418" y="1287" class="muted small">Find Japanese already living in your day.</text><line x1="1357" y1="1318" x2="1703" y2="1318" class="line-strong"/>
+    <circle cx="1380" cy="1367" r="20" fill="none" stroke="#778196"/><g transform="translate(1368 1355)" style="color:#EEF2F1"><use href="#icon-bookmark"/></g><text x="1418" y="1352" class="faint number">02</text><text x="1418" y="1379" class="text h3">Keep it</text><text x="1418" y="1402" class="muted small">Save the context with the word.</text><line x1="1357" y1="1433" x2="1703" y2="1433" class="line-strong"/>
+    <circle cx="1380" cy="1482" r="20" fill="none" stroke="#778196"/><g transform="translate(1368 1470)" style="color:#EEF2F1"><use href="#icon-light"/></g><text x="1418" y="1467" class="faint number">03</text><text x="1418" y="1494" class="text h3">Recall it</text><text x="1418" y="1517" class="muted small">Bring it back in focused prompts.</text>
+
+    <!-- Mobile tree and CTA -->
+    <text x="1357" y="1614" class="primary-pale tiny" font-weight="850" letter-spacing="1.4">PROGRESS WITH SHAPE</text><text x="1357" y="1659" class="text section-mobile"><tspan x="1357">Watch familiarity</tspan><tspan x="1357" dy="34">take root.</tspan></text><text x="1357" y="1744" class="muted small"><tspan x="1357">New kanji begin at the roots and reach the</tspan><tspan x="1357" dy="20">canopy as recall becomes familiar.</tspan></text><rect x="1357" y="1803" width="346" height="310" rx="26" class="surface" stroke="#5C667A"/><g transform="translate(1363 1813) scale(.84)"><use href="#tree-art"/></g><rect x="1378" y="2052" width="304" height="42" rx="12" fill="#343A48" fill-opacity=".78"/><text x="1394" y="2078" class="primary-pale tiny" font-weight="850">ROOTS → TRUNK → CANOPY</text>
+    <rect x="1357" y="2160" width="346" height="168" rx="26" class="cta"/><text x="1381" y="2200" fill="#7E9690" font-family="Avenir Next,Segoe UI,sans-serif" font-size="9" font-weight="850" letter-spacing="1.1">START WITH ONE THING YOU SAW TODAY</text><text x="1381" y="2237" class="cta-text" font-size="24" font-weight="780" letter-spacing="-1"><tspan x="1381">Build a habit that</tspan><tspan x="1381" dy="29">belongs to your life.</tspan></text><rect x="1381" y="2290" width="298" height="38" rx="10" class="dark-cta"/><text x="1530" y="2314" text-anchor="middle" class="text small" font-weight="850">Start collecting  →</text>
+    <line x1="1335" y1="2380" x2="1725" y2="2380" class="line"/><rect x="1357" y="2416" width="28" height="28" rx="9" class="surface-strong" stroke="#AABDB8"/><g transform="translate(1363 2420) scale(.65)"><use href="#leaf-mark"/></g><text x="1397" y="2436" class="text body" font-weight="750">Shuukan</text><text x="1544" y="2436" class="subtle tiny">Privacy</text><text x="1592" y="2436" class="subtle tiny">Terms</text><text x="1630" y="2436" class="faint tiny">© 2026</text>
+  </g>
+
+  <text x="60" y="2564" class="muted body">Layout contract: fixed public navigation, left-aligned split hero at desktop, strict single-column mobile collapse, one dominant signup action, and artwork that remains visually independent from UI theme tokens.</text>
+</svg>

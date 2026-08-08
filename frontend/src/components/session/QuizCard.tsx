@@ -40,7 +40,7 @@ export default function QuizCard({ card, submitting, onAnswer }: { card: Session
               variant="contained"
               disabled={!input.trim() || submitting}
               onClick={() => onAnswer(input)}
-              sx={{ minHeight: 50, borderRadius: 3, bgcolor: "secondary.main", fontWeight: 700, "&:hover": { bgcolor: "app.accent.secondaryHover" } }}
+              sx={{ minHeight: 50, borderRadius: 3, bgcolor: "secondary.main", color: "secondary.contrastText", fontWeight: 700, "&:hover": { bgcolor: "app.accent.secondaryHover" } }}
             >
               Check
             </Button>

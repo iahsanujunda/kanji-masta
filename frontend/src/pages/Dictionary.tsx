@@ -86,7 +86,7 @@ export default function Dictionary() {
       <Box sx={{ px: 3, mb: 2.5, display: "flex", gap: 1, overflowX: "auto", scrollbarWidth: "none", "&::-webkit-scrollbar": { display: "none" } }}>
         {filters.map((filter) => (
           <Chip key={filter.value} label={filter.label} clickable onClick={() => setState(filter.value)}
-            sx={{ flexShrink: 0, bgcolor: state === filter.value ? "secondary.main" : "background.elevated", color: state === filter.value ? "white" : "grey.400", fontWeight: 700 }} />
+            sx={{ flexShrink: 0, bgcolor: state === filter.value ? "secondary.main" : "background.elevated", color: state === filter.value ? "secondary.contrastText" : "grey.400", fontWeight: 700 }} />
         ))}
       </Box>
       <Box sx={{ flex: 1, px: 3, pb: 4, display: "flex", flexDirection: "column", gap: 1.5 }}>

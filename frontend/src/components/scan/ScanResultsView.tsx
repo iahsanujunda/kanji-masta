@@ -79,7 +79,7 @@ export default function ScanResultsView({ sessionId, kanji }: ScanResultsViewPro
           return (
             <Paper key={item.character} variant="outlined" sx={{ borderRadius: 4, p: 2.5, position: "relative", overflow: "hidden", bgcolor: "background.paper" }}>
               {item.recommended && (
-                <Box sx={{ position: "absolute", top: 0, right: 0, px: 1.5, py: 0.5, bgcolor: "secondary.main", display: "flex", alignItems: "center", gap: 0.5, borderBottomLeftRadius: 12 }}>
+                <Box sx={{ position: "absolute", top: 0, right: 0, px: 1.5, py: 0.5, bgcolor: "secondary.main", color: "secondary.contrastText", display: "flex", alignItems: "center", gap: 0.5, borderBottomLeftRadius: 12 }}>
                   <StarIcon sx={{ fontSize: 13 }} />
                   <Typography variant="caption" fontWeight={700}>Recommended</Typography>
                 </Box>
@@ -115,7 +115,7 @@ export default function ScanResultsView({ sessionId, kanji }: ScanResultsViewPro
                   onClick={() => toggle(item.character, "learning")}
                   startIcon={<StarOutlineIcon />}
                   aria-pressed={selected === "learning"}
-                  sx={{ minHeight: 48, color: selected === "learning" ? "white" : "text.secondary", border: "1px solid", borderColor: selected === "learning" ? "secondary.light" : "background.elevated", bgcolor: selected === "learning" ? "secondary.main" : "transparent" }}
+                  sx={{ minHeight: 48, color: selected === "learning" ? "secondary.contrastText" : "text.secondary", border: "1px solid", borderColor: selected === "learning" ? "secondary.light" : "background.elevated", bgcolor: selected === "learning" ? "secondary.main" : "transparent" }}
                 >
                   Learn
                 </Button>

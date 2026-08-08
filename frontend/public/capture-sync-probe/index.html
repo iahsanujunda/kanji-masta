@@ -3,33 +3,33 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#050508" />
+    <meta name="theme-color" content="#8C94A8" />
     <link rel="manifest" href="./manifest.json" />
     <title>Capture Background Sync Probe</title>
     <style>
-      :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #050508; color: #f4f4f5; }
+      :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #8C94A8; color: #F5F5F5; }
       * { box-sizing: border-box; }
-      body { margin: 0; min-height: 100vh; background: #050508; }
+      body { margin: 0; min-height: 100vh; background: #8C94A8; }
       main { width: min(100%, 480px); margin: 0 auto; padding: 32px 20px max(40px, env(safe-area-inset-bottom)); }
       h1 { margin: 0 0 8px; font-size: clamp(1.7rem, 7vw, 2.2rem); line-height: 1.1; }
       h2 { margin: 0 0 14px; font-size: 1rem; }
-      p, li { color: #a1a1aa; line-height: 1.55; }
-      .eyebrow { margin: 0 0 10px; color: #6ee7b7; font-size: .78rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-      .card { margin-top: 20px; padding: 20px; border: 1px solid #1a1a24; border-radius: 18px; background: #0f0f16; }
+      p, li { color: #DFE2E8; line-height: 1.55; }
+      .eyebrow { margin: 0 0 10px; color: #EEF2F1; font-size: .78rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+      .card { margin-top: 20px; padding: 20px; border: 1px solid #778196; border-radius: 18px; background: #454D5E; }
       .grid { display: grid; gap: 10px; }
-      .row { display: flex; justify-content: space-between; gap: 18px; padding: 10px 0; border-bottom: 1px solid #1a1a24; }
+      .row { display: flex; justify-content: space-between; gap: 18px; padding: 10px 0; border-bottom: 1px solid #555E72; }
       .row:last-child { border-bottom: 0; }
-      .row span:first-child { color: #a1a1aa; }
+      .row span:first-child { color: #DFE2E8; }
       .value { text-align: right; font-weight: 750; overflow-wrap: anywhere; }
-      .good { color: #34d399; }
-      .warn { color: #fbbf24; }
-      .bad { color: #fca5a5; }
+      .good { color: #E4EBE9; }
+      .warn { color: #CA7288; }
+      .bad { color: #D58D9F; }
       ol { margin: 0; padding-left: 22px; }
-      button { width: 100%; min-height: 48px; margin-top: 10px; border: 1px solid #292936; border-radius: 14px; background: #1a1a24; color: white; font: inherit; font-weight: 750; }
-      button.primary { border-color: #10b981; background: #10b981; color: #050508; }
+      button { width: 100%; min-height: 48px; margin-top: 10px; border: 1px solid #778196; border-radius: 14px; background: #555E72; color: #F5F5F5; font: inherit; font-weight: 750; }
+      button.primary { border-color: #D6E2DF; background: #D6E2DF; color: #30343F; }
       button:disabled { opacity: .45; }
-      button:focus-visible { outline: 3px solid #818cf8; outline-offset: 2px; }
-      textarea { width: 100%; min-height: 190px; padding: 12px; border: 1px solid #292936; border-radius: 12px; background: #0a0a0f; color: #d4d4d8; font: .75rem/1.45 ui-monospace, monospace; resize: vertical; }
+      button:focus-visible { outline: 3px solid #C6B0B8; outline-offset: 2px; }
+      textarea { width: 100%; min-height: 190px; padding: 12px; border: 1px solid #778196; border-radius: 12px; background: #343A48; color: #F5F5F5; font: .75rem/1.45 ui-monospace, monospace; resize: vertical; }
       .note { font-size: .85rem; }
     </style>
   </head>

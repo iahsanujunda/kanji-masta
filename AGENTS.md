@@ -33,21 +33,19 @@ Never amend an existing commit. Every correction or follow-up must be recorded a
 - Use one shared auth provider, define intentional `staleTime`/`gcTime`, and keep cached data visible during background refetches; show initial loading UI only when no cached data exists.
 - Shared components: `PageHeader` (all pages), `FamiliarityDots` (kanji/word lists)
 - Mobile-first `maxWidth: 480`. No AppBar — pages manage own headers via `PageHeader`
-- Brand icon: emerald→indigo gradient square with leaf SVG (favicon, navbar, footer)
+- Brand icon: light-teal→muted-pink gradient square with leaf SVG (favicon, navbar, footer)
 - **Color theme** — use consistently across all pages:
-  - Backgrounds: `#050508` (page bg), `#0a0a0f` (sections), `#0f0f16` (cards), `#1a1a24` (elevated)
-  - Emerald `#10b981` — primary CTA buttons (black text), success states, active streaks
-  - Emerald light `#34d399` — hover states, positive labels, streak text, "Session Complete"
-  - Emerald pale `#6ee7b7` — secondary labels on dark gradients
-  - Indigo `#4338ca` — secondary accents, "Recommended" badges, selected states
-  - Indigo light `#818cf8` — icon tints, readings, tier labels, quiz type indicators
-  - Indigo pale `#a5b4fc` — subtle text accents
-  - Orange `#ff9800` — streak fire icon chip only
-  - Purple `#a78bfa` — collection tree roots zone, ecosystem feature icon
-  - Gradient `linear-gradient(135deg, #065f46, #312e81)` — slot cards (quiz ready/active/complete)
-  - Gradient `linear-gradient(135deg, #34d399, #4338ca)` — brand logo background
-  - Glass cards: `rgba(15,15,22,0.8)` + `backdropFilter: "blur(12px)"` — login/signup forms
-  - Glow effects: `boxShadow: "0 0 30px rgba(16,185,129,0.3)"` on primary CTAs
+  - Background family: `#8C94A8` (outer backdrop), `#343A48` (app canvas), `#3B4251` (sections), `#454D5E` (cards), `#555E72` (elevated)
+  - Light teal `#D6E2DF` — primary CTA buttons (`#30343F` text), success states, active streaks
+  - Light teal hover `#E4EBE9` and pale `#EEF2F1` — hover states, positive labels, subtle primary accents
+  - Muted pink `#C6B0B8` — secondary accents, "Recommended" badges, and selected states
+  - Muted pink light `#D8C8CE` and pale `#E7DCE0` — icon tints, readings, tier labels, and subtle secondary accents
+  - Reddish warning `#CA7288`, light `#D58D9F`, and pale `#E8C2CB` — warnings, errors, destructive actions, and streak fire
+  - White `#F5F5F5` — primary text and icons on dark surfaces
+  - Gradient `linear-gradient(135deg, #849B96, #846F77)` — slot cards (quiz ready/active/complete)
+  - Gradient `linear-gradient(135deg, #E4EBE9, #C6B0B8)` — brand logo background
+  - Glass cards: `rgba(69,77,94,0.8)` + `backdropFilter: "blur(12px)"` — login/signup forms
+  - Artwork palettes live with artwork components/assets and are not theme tokens
 
 ### AI Runtime (Ktor + Kotlin)
 - Lives in the backend Gradle project and ships in the same fat JAR/image as the API.

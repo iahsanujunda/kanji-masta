@@ -2,101 +2,101 @@
   <title id="title">Admin model and reasoning configuration flow</title>
   <desc id="desc">Four mobile mockups showing workload model and reasoning selectors, image-capable model filtering for photo analysis, DeepSeek V4 Flash selection for quiz generation, and supported reasoning-level selection.</desc>
   <defs>
-    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#34d399"/><stop offset="1" stop-color="#4338ca"/></linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#E4EBE9"/><stop offset="1" stop-color="#C6B0B8"/></linearGradient>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="14" stdDeviation="20" flood-color="#000" flood-opacity=".42"/></filter>
     <style>
-      .canvas{fill:#050508}.app{fill:#0a0a0f}.card{fill:#0f0f16}.raised{fill:#1a1a24}.rule{stroke:rgba(255,255,255,.09);stroke-width:1}
-      .text{fill:#f5f5f7;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}.muted{fill:#a1a1aa;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}.quiet{fill:#71717a;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
-      .emerald{fill:#34d399;font-family:system-ui,sans-serif}.emeraldPale{fill:#6ee7b7;font-family:system-ui,sans-serif}.indigo{fill:#818cf8;font-family:system-ui,sans-serif}.indigoPale{fill:#a5b4fc;font-family:system-ui,sans-serif}.dark{fill:#031b13;font-family:system-ui,sans-serif}
+      .canvas{fill:#8C94A8}.app{fill:#343A48}.card{fill:#454D5E}.raised{fill:#555E72}.rule{stroke:rgba(245,245,245,.09);stroke-width:1}
+      .text{fill:#F5F5F5;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}.muted{fill:#DFE2E8;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}.quiet{fill:#BCC2CD;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+      .primary{fill:#E4EBE9;font-family:system-ui,sans-serif}.primaryPale{fill:#EEF2F1;font-family:system-ui,sans-serif}.secondary{fill:#D8C8CE;font-family:system-ui,sans-serif}.secondaryPale{fill:#E7DCE0;font-family:system-ui,sans-serif}.dark{fill:#30343F;font-family:system-ui,sans-serif}
       .title{font-size:28px;font-weight:850;letter-spacing:-.6px}.h1{font-size:24px;font-weight:850;letter-spacing:-.4px}.h2{font-size:16px;font-weight:800}.body{font-size:14px}.small{font-size:12px}.tiny{font-size:10px}.label{font-size:10px;font-weight:850;letter-spacing:1.1px}.mono{font-family:"SFMono-Regular",Consolas,monospace}.button{font-size:13px;font-weight:850}
     </style>
-    <g id="phone"><rect width="390" height="820" rx="30" class="app" filter="url(#shadow)"/><rect x="1" y="1" width="388" height="818" rx="29" fill="none" stroke="rgba(255,255,255,.1)"/></g>
+    <g id="phone"><rect width="390" height="820" rx="30" class="app" filter="url(#shadow)"/><rect x="1" y="1" width="388" height="818" rx="29" fill="none" stroke="rgba(245,245,245,.1)"/></g>
     <g id="header">
       <rect width="390" height="72" rx="30" class="app"/><rect x="18" y="20" width="32" height="32" rx="9" fill="url(#brand)"/>
-      <path d="M28 42c8-2 12-7 13-14-8 1-12 5-13 14Zm0 0c-1-6 0-11 2-15" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/>
+      <path d="M28 42c8-2 12-7 13-14-8 1-12 5-13 14Zm0 0c-1-6 0-11 2-15" fill="none" stroke="#F5F5F5" stroke-width="1.7" stroke-linecap="round"/>
       <text x="62" y="41" class="text body" font-weight="800">Admin</text><line x1="0" y1="72" x2="390" y2="72" class="rule"/>
     </g>
-    <g id="tabs"><rect x="26" y="116" width="338" height="40" rx="12" class="raised"/><text x="111" y="141" text-anchor="middle" class="muted small" font-weight="750">Queue</text><rect x="197" y="120" width="163" height="32" rx="9" fill="rgba(129,140,248,.16)" stroke="rgba(129,140,248,.28)"/><text x="278" y="141" text-anchor="middle" class="indigoPale small" font-weight="850">Models</text></g>
-    <g id="chevron"><path d="m0 0 6 6-6 6" fill="none" stroke="#818cf8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></g>
-    <g id="search"><rect width="338" height="46" rx="12" class="card" stroke="rgba(255,255,255,.12)"/><circle cx="22" cy="22" r="8" fill="none" stroke="#71717a" stroke-width="1.6"/><path d="m28 28 6 6" stroke="#71717a" stroke-width="1.6" stroke-linecap="round"/><text x="44" y="27" class="quiet small">Search OpenRouter models</text></g>
-    <g id="radio"><circle r="9" fill="none" stroke="#818cf8" stroke-width="1.7"/><circle r="4" fill="#818cf8"/></g>
-    <g id="radio-empty"><circle r="9" fill="none" stroke="#71717a" stroke-width="1.6"/></g>
+    <g id="tabs"><rect x="26" y="116" width="338" height="40" rx="12" class="raised"/><text x="111" y="141" text-anchor="middle" class="muted small" font-weight="750">Queue</text><rect x="197" y="120" width="163" height="32" rx="9" fill="rgba(216,200,206,.16)" stroke="rgba(216,200,206,.28)"/><text x="278" y="141" text-anchor="middle" class="secondaryPale small" font-weight="850">Models</text></g>
+    <g id="chevron"><path d="m0 0 6 6-6 6" fill="none" stroke="#D8C8CE" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <g id="search"><rect width="338" height="46" rx="12" class="card" stroke="rgba(245,245,245,.12)"/><circle cx="22" cy="22" r="8" fill="none" stroke="#BCC2CD" stroke-width="1.6"/><path d="m28 28 6 6" stroke="#BCC2CD" stroke-width="1.6" stroke-linecap="round"/><text x="44" y="27" class="quiet small">Search OpenRouter models</text></g>
+    <g id="radio"><circle r="9" fill="none" stroke="#D8C8CE" stroke-width="1.7"/><circle r="4" fill="#D8C8CE"/></g>
+    <g id="radio-empty"><circle r="9" fill="none" stroke="#BCC2CD" stroke-width="1.6"/></g>
   </defs>
 
   <rect width="1980" height="1080" class="canvas"/>
-  <rect x="50" y="30" width="38" height="38" rx="10" fill="url(#brand)"/><path d="M62 56c10-2 15-8 16-17-9 1-15 6-16 17Zm0 0c-2-7-1-13 2-18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+  <rect x="50" y="30" width="38" height="38" rx="10" fill="url(#brand)"/><path d="M62 56c10-2 15-8 16-17-9 1-15 6-16 17Zm0 0c-2-7-1-13 2-18" fill="none" stroke="#F5F5F5" stroke-width="2" stroke-linecap="round"/>
   <text x="102" y="53" class="text title">Admin Models — choose capability, then reasoning</text>
   <text x="102" y="78" class="muted body">Reasoning options come from live model metadata. Photo search is pre-filtered to image-capable models.</text>
-  <rect x="1710" y="34" width="210" height="30" rx="15" fill="rgba(16,185,129,.13)" stroke="rgba(52,211,153,.28)"/><text x="1815" y="54" text-anchor="middle" class="emeraldPale label">UX MOCKUP · AUG 2026</text>
+  <rect x="1710" y="34" width="210" height="30" rx="15" fill="rgba(214,226,223,.13)" stroke="rgba(228,235,233,.28)"/><text x="1815" y="54" text-anchor="middle" class="primaryPale label">UX MOCKUP · AUG 2026</text>
 
   <!-- 01 CONFIG -->
-  <text x="50" y="128" class="indigoPale label">01 · VERSIONED WORKLOAD CONFIG</text>
+  <text x="50" y="128" class="secondaryPale label">01 · VERSIONED WORKLOAD CONFIG</text>
   <use href="#phone" x="50" y="150"/><use href="#header" x="50" y="150"/><use href="#tabs" x="50" y="150"/>
   <text x="76" y="342" class="text h1">Model settings</text><text x="76" y="365" class="muted small">Changes apply only to new attempts.</text>
-  <rect x="76" y="384" width="338" height="48" rx="13" fill="rgba(129,140,248,.08)" stroke="rgba(129,140,248,.22)"/><text x="92" y="405" class="indigoPale small" font-weight="800">Active configuration · v16</text><text x="92" y="420" class="muted tiny">Model and reasoning are snapshotted together</text>
+  <rect x="76" y="384" width="338" height="48" rx="13" fill="rgba(216,200,206,.08)" stroke="rgba(216,200,206,.22)"/><text x="92" y="405" class="secondaryPale small" font-weight="800">Active configuration · v16</text><text x="92" y="420" class="muted tiny">Model and reasoning are snapshotted together</text>
 
-  <rect x="76" y="446" width="338" height="110" rx="15" class="card" stroke="rgba(255,255,255,.09)"/>
-  <text x="92" y="469" class="text small" font-weight="850">Photo analysis</text><rect x="306" y="454" width="94" height="22" rx="11" fill="rgba(52,211,153,.09)" stroke="rgba(52,211,153,.24)"/><text x="353" y="469" text-anchor="middle" class="emeraldPale tiny" font-weight="800">IMAGE INPUT</text>
+  <rect x="76" y="446" width="338" height="110" rx="15" class="card" stroke="rgba(245,245,245,.09)"/>
+  <text x="92" y="469" class="text small" font-weight="850">Photo analysis</text><rect x="306" y="454" width="94" height="22" rx="11" fill="rgba(228,235,233,.09)" stroke="rgba(228,235,233,.24)"/><text x="353" y="469" text-anchor="middle" class="primaryPale tiny" font-weight="800">IMAGE INPUT</text>
   <text x="92" y="496" class="muted tiny">MODEL</text><text x="150" y="496" class="text tiny mono">openai/gpt-5.6-luna</text><use href="#chevron" x="389" y="486"/>
-  <line x1="92" y1="508" x2="398" y2="508" class="rule"/><text x="92" y="535" class="muted tiny">REASONING</text><text x="174" y="535" class="indigoPale tiny" font-weight="800">Medium</text><use href="#chevron" x="389" y="525"/>
+  <line x1="92" y1="508" x2="398" y2="508" class="rule"/><text x="92" y="535" class="muted tiny">REASONING</text><text x="174" y="535" class="secondaryPale tiny" font-weight="800">Medium</text><use href="#chevron" x="389" y="525"/>
 
-  <rect x="76" y="566" width="338" height="110" rx="15" class="card" stroke="rgba(255,255,255,.09)"/>
+  <rect x="76" y="566" width="338" height="110" rx="15" class="card" stroke="rgba(245,245,245,.09)"/>
   <text x="92" y="589" class="text small" font-weight="850">Capture translation</text><text x="92" y="616" class="muted tiny">MODEL</text><text x="150" y="616" class="text tiny mono">google/gemini-3.1-flash-lite</text><use href="#chevron" x="389" y="606"/>
-  <line x1="92" y1="628" x2="398" y2="628" class="rule"/><text x="92" y="655" class="muted tiny">REASONING</text><text x="174" y="655" class="indigoPale tiny" font-weight="800">Minimal</text><use href="#chevron" x="389" y="645"/>
+  <line x1="92" y1="628" x2="398" y2="628" class="rule"/><text x="92" y="655" class="muted tiny">REASONING</text><text x="174" y="655" class="secondaryPale tiny" font-weight="800">Minimal</text><use href="#chevron" x="389" y="645"/>
 
-  <rect x="76" y="686" width="338" height="110" rx="15" fill="rgba(129,140,248,.06)" stroke="rgba(129,140,248,.30)"/>
+  <rect x="76" y="686" width="338" height="110" rx="15" fill="rgba(216,200,206,.06)" stroke="rgba(216,200,206,.30)"/>
   <text x="92" y="709" class="text small" font-weight="850">Quiz generation</text><text x="92" y="736" class="muted tiny">MODEL</text><text x="150" y="736" class="text tiny mono">deepseek/deepseek-v4-flash-0731</text><use href="#chevron" x="389" y="726"/>
-  <line x1="92" y1="748" x2="398" y2="748" class="rule"/><text x="92" y="775" class="muted tiny">REASONING</text><text x="174" y="775" class="indigoPale tiny" font-weight="800">High · model default</text><use href="#chevron" x="389" y="765"/>
+  <line x1="92" y1="748" x2="398" y2="748" class="rule"/><text x="92" y="775" class="muted tiny">REASONING</text><text x="174" y="775" class="secondaryPale tiny" font-weight="800">High · model default</text><use href="#chevron" x="389" y="765"/>
 
-  <rect x="76" y="806" width="338" height="80" rx="15" class="card" stroke="rgba(255,255,255,.09)"/><text x="92" y="828" class="text small" font-weight="850">Word discovery</text>
+  <rect x="76" y="806" width="338" height="80" rx="15" class="card" stroke="rgba(245,245,245,.09)"/><text x="92" y="828" class="text small" font-weight="850">Word discovery</text>
   <text x="92" y="849" class="muted tiny">MODEL</text><text x="150" y="849" class="text tiny mono">google/gemini-3.1-pro</text><use href="#chevron" x="389" y="839"/>
-  <text x="92" y="873" class="muted tiny">REASONING</text><text x="174" y="873" class="indigoPale tiny" font-weight="800">Low</text><use href="#chevron" x="389" y="863"/>
-  <rect x="76" y="896" width="338" height="50" rx="12" fill="#10b981"/><text x="245" y="927" text-anchor="middle" class="dark button">Submit new configuration</text>
+  <text x="92" y="873" class="muted tiny">REASONING</text><text x="174" y="873" class="secondaryPale tiny" font-weight="800">Low</text><use href="#chevron" x="389" y="863"/>
+  <rect x="76" y="896" width="338" height="50" rx="12" fill="#D6E2DF"/><text x="245" y="927" text-anchor="middle" class="dark button">Submit new configuration</text>
 
   <!-- FLOW -->
-  <path d="M466 565h46" stroke="#4338ca" stroke-width="2"/><path d="m502 558 11 7-11 7" fill="none" stroke="#818cf8" stroke-width="2"/><text x="489" y="545" text-anchor="middle" class="muted tiny">model</text>
+  <path d="M466 565h46" stroke="#C6B0B8" stroke-width="2"/><path d="m502 558 11 7-11 7" fill="none" stroke="#D8C8CE" stroke-width="2"/><text x="489" y="545" text-anchor="middle" class="muted tiny">model</text>
 
   <!-- 02 PHOTO PICKER -->
-  <text x="520" y="128" class="indigoPale label">02 · PHOTO MODEL · IMAGE PRE-FILTER</text>
+  <text x="520" y="128" class="secondaryPale label">02 · PHOTO MODEL · IMAGE PRE-FILTER</text>
   <use href="#phone" x="520" y="150"/><use href="#header" x="520" y="150"/><use href="#tabs" x="520" y="150"/>
-  <text x="546" y="342" class="text h1">Model settings</text><rect x="546" y="384" width="338" height="110" rx="15" class="card" stroke="rgba(129,140,248,.28)"/><text x="562" y="410" class="text small" font-weight="850">Photo analysis</text><text x="562" y="440" class="text tiny mono">openai/gpt-5.6-luna</text><text x="562" y="472" class="muted tiny">Reasoning · Medium</text>
-  <rect x="520" y="456" width="390" height="514" rx="28" class="raised" stroke="rgba(129,140,248,.28)"/><rect x="685" y="470" width="60" height="5" rx="3" fill="#52525b"/>
+  <text x="546" y="342" class="text h1">Model settings</text><rect x="546" y="384" width="338" height="110" rx="15" class="card" stroke="rgba(216,200,206,.28)"/><text x="562" y="410" class="text small" font-weight="850">Photo analysis</text><text x="562" y="440" class="text tiny mono">openai/gpt-5.6-luna</text><text x="562" y="472" class="muted tiny">Reasoning · Medium</text>
+  <rect x="520" y="456" width="390" height="514" rx="28" class="raised" stroke="rgba(216,200,206,.28)"/><rect x="685" y="470" width="60" height="5" rx="3" fill="#A8AFBD"/>
   <text x="546" y="523" class="text h1">Choose photo model</text><text x="546" y="547" class="muted small">Only compatible vision models are shown.</text>
-  <rect x="546" y="565" width="138" height="28" rx="14" fill="rgba(52,211,153,.10)" stroke="rgba(52,211,153,.28)"/><circle cx="563" cy="579" r="5" fill="#34d399"/><text x="616" y="583" text-anchor="middle" class="emeraldPale tiny" font-weight="850">Image input · required</text>
+  <rect x="546" y="565" width="138" height="28" rx="14" fill="rgba(228,235,233,.10)" stroke="rgba(228,235,233,.28)"/><circle cx="563" cy="579" r="5" fill="#E4EBE9"/><text x="616" y="583" text-anchor="middle" class="primaryPale tiny" font-weight="850">Image input · required</text>
   <use href="#search" x="546" y="607"/>
-  <rect x="546" y="669" width="338" height="82" rx="13" fill="rgba(129,140,248,.10)" stroke="rgba(129,140,248,.30)"/><use href="#radio" x="568" y="695"/><text x="590" y="693" class="text small" font-weight="850">GPT-5.6 Luna</text><text x="590" y="712" class="muted tiny mono">openai/gpt-5.6-luna</text><text x="590" y="735" class="indigoPale tiny">Reasoning · max, xhigh, high, medium, low, none</text>
-  <rect x="546" y="763" width="338" height="82" rx="13" class="card" stroke="rgba(255,255,255,.09)"/><use href="#radio-empty" x="568" y="789"/><text x="590" y="787" class="text small" font-weight="850">Gemini 3.1 Pro Preview</text><text x="590" y="806" class="muted tiny mono">google/gemini-3.1-pro-preview</text><text x="590" y="829" class="quiet tiny">Reasoning · high, medium, low</text>
-  <rect x="546" y="857" width="338" height="82" rx="13" class="card" stroke="rgba(255,255,255,.09)"/><use href="#radio-empty" x="568" y="883"/><text x="590" y="881" class="text small" font-weight="850">Qwen 3.7 VL Flash</text><text x="590" y="900" class="muted tiny mono">qwen/qwen3.7-vl-flash</text><text x="590" y="923" class="quiet tiny">Reasoning · high, medium, low</text>
+  <rect x="546" y="669" width="338" height="82" rx="13" fill="rgba(216,200,206,.10)" stroke="rgba(216,200,206,.30)"/><use href="#radio" x="568" y="695"/><text x="590" y="693" class="text small" font-weight="850">GPT-5.6 Luna</text><text x="590" y="712" class="muted tiny mono">openai/gpt-5.6-luna</text><text x="590" y="735" class="secondaryPale tiny">Reasoning · max, xhigh, high, medium, low, none</text>
+  <rect x="546" y="763" width="338" height="82" rx="13" class="card" stroke="rgba(245,245,245,.09)"/><use href="#radio-empty" x="568" y="789"/><text x="590" y="787" class="text small" font-weight="850">Gemini 3.1 Pro Preview</text><text x="590" y="806" class="muted tiny mono">google/gemini-3.1-pro-preview</text><text x="590" y="829" class="quiet tiny">Reasoning · high, medium, low</text>
+  <rect x="546" y="857" width="338" height="82" rx="13" class="card" stroke="rgba(245,245,245,.09)"/><use href="#radio-empty" x="568" y="883"/><text x="590" y="881" class="text small" font-weight="850">Qwen 3.7 VL Flash</text><text x="590" y="900" class="muted tiny mono">qwen/qwen3.7-vl-flash</text><text x="590" y="923" class="quiet tiny">Reasoning · high, medium, low</text>
 
-  <path d="M936 565h46" stroke="#4338ca" stroke-width="2"/><path d="m972 558 11 7-11 7" fill="none" stroke="#818cf8" stroke-width="2"/><text x="959" y="545" text-anchor="middle" class="muted tiny">quiz</text>
+  <path d="M936 565h46" stroke="#C6B0B8" stroke-width="2"/><path d="m972 558 11 7-11 7" fill="none" stroke="#D8C8CE" stroke-width="2"/><text x="959" y="545" text-anchor="middle" class="muted tiny">quiz</text>
 
   <!-- 03 QUIZ PICKER -->
-  <text x="990" y="128" class="indigoPale label">03 · QUIZ MODEL · CAPABILITY DISCOVERY</text>
+  <text x="990" y="128" class="secondaryPale label">03 · QUIZ MODEL · CAPABILITY DISCOVERY</text>
   <use href="#phone" x="990" y="150"/><use href="#header" x="990" y="150"/><use href="#tabs" x="990" y="150"/>
-  <text x="1016" y="342" class="text h1">Model settings</text><rect x="1016" y="384" width="338" height="110" rx="15" class="card" stroke="rgba(129,140,248,.28)"/><text x="1032" y="410" class="text small" font-weight="850">Quiz generation</text><text x="1032" y="440" class="text tiny mono">openai/gpt-5.6-terra</text><text x="1032" y="472" class="muted tiny">Reasoning · Medium</text>
-  <rect x="990" y="456" width="390" height="514" rx="28" class="raised" stroke="rgba(129,140,248,.28)"/><rect x="1155" y="470" width="60" height="5" rx="3" fill="#52525b"/>
+  <text x="1016" y="342" class="text h1">Model settings</text><rect x="1016" y="384" width="338" height="110" rx="15" class="card" stroke="rgba(216,200,206,.28)"/><text x="1032" y="410" class="text small" font-weight="850">Quiz generation</text><text x="1032" y="440" class="text tiny mono">openai/gpt-5.6-terra</text><text x="1032" y="472" class="muted tiny">Reasoning · Medium</text>
+  <rect x="990" y="456" width="390" height="514" rx="28" class="raised" stroke="rgba(216,200,206,.28)"/><rect x="1155" y="470" width="60" height="5" rx="3" fill="#A8AFBD"/>
   <text x="1016" y="523" class="text h1">Choose quiz model</text><text x="1016" y="547" class="muted small">Reasoning is chosen after the model.</text>
-  <rect x="1016" y="565" width="112" height="28" rx="14" class="card" stroke="rgba(255,255,255,.12)"/><text x="1072" y="583" text-anchor="middle" class="muted tiny" font-weight="800">Text input</text>
-  <rect x="1138" y="565" width="152" height="28" rx="14" class="card" stroke="rgba(255,255,255,.12)"/><text x="1214" y="583" text-anchor="middle" class="muted tiny" font-weight="800">Structured response</text>
+  <rect x="1016" y="565" width="112" height="28" rx="14" class="card" stroke="rgba(245,245,245,.12)"/><text x="1072" y="583" text-anchor="middle" class="muted tiny" font-weight="800">Text input</text>
+  <rect x="1138" y="565" width="152" height="28" rx="14" class="card" stroke="rgba(245,245,245,.12)"/><text x="1214" y="583" text-anchor="middle" class="muted tiny" font-weight="800">Structured response</text>
   <use href="#search" x="1016" y="607"/><text x="1060" y="634" class="text small">deepseek v4 flash</text>
-  <rect x="1016" y="669" width="338" height="92" rx="13" fill="rgba(129,140,248,.10)" stroke="rgba(129,140,248,.30)"/><use href="#radio" x="1038" y="695"/><text x="1060" y="693" class="text small" font-weight="850">DeepSeek V4 Flash 0731</text><text x="1060" y="712" class="muted tiny mono">deepseek/deepseek-v4-flash-0731</text><text x="1060" y="735" class="indigoPale tiny">Reasoning · max, high, low</text><text x="1328" y="735" text-anchor="end" class="emerald tiny" font-weight="800">SELECT</text>
-  <rect x="1016" y="773" width="338" height="92" rx="13" class="card" stroke="rgba(255,255,255,.09)"/><use href="#radio-empty" x="1038" y="799"/><text x="1060" y="797" class="text small" font-weight="850">DeepSeek V4 Flash 0423</text><text x="1060" y="816" class="muted tiny mono">deepseek/deepseek-v4-flash</text><text x="1060" y="839" class="quiet tiny">Reasoning · xhigh, high</text>
-  <rect x="1016" y="877" width="338" height="62" rx="13" class="card" stroke="rgba(255,255,255,.09)"/><use href="#radio-empty" x="1038" y="908"/><text x="1060" y="903" class="text small" font-weight="850">DeepSeek V4 Flash Latest</text><text x="1060" y="922" class="muted tiny mono">~deepseek/deepseek-v4-flash-latest</text>
+  <rect x="1016" y="669" width="338" height="92" rx="13" fill="rgba(216,200,206,.10)" stroke="rgba(216,200,206,.30)"/><use href="#radio" x="1038" y="695"/><text x="1060" y="693" class="text small" font-weight="850">DeepSeek V4 Flash 0731</text><text x="1060" y="712" class="muted tiny mono">deepseek/deepseek-v4-flash-0731</text><text x="1060" y="735" class="secondaryPale tiny">Reasoning · max, high, low</text><text x="1328" y="735" text-anchor="end" class="primary tiny" font-weight="800">SELECT</text>
+  <rect x="1016" y="773" width="338" height="92" rx="13" class="card" stroke="rgba(245,245,245,.09)"/><use href="#radio-empty" x="1038" y="799"/><text x="1060" y="797" class="text small" font-weight="850">DeepSeek V4 Flash 0423</text><text x="1060" y="816" class="muted tiny mono">deepseek/deepseek-v4-flash</text><text x="1060" y="839" class="quiet tiny">Reasoning · xhigh, high</text>
+  <rect x="1016" y="877" width="338" height="62" rx="13" class="card" stroke="rgba(245,245,245,.09)"/><use href="#radio-empty" x="1038" y="908"/><text x="1060" y="903" class="text small" font-weight="850">DeepSeek V4 Flash Latest</text><text x="1060" y="922" class="muted tiny mono">~deepseek/deepseek-v4-flash-latest</text>
 
-  <path d="M1406 565h46" stroke="#4338ca" stroke-width="2"/><path d="m1442 558 11 7-11 7" fill="none" stroke="#818cf8" stroke-width="2"/><text x="1429" y="545" text-anchor="middle" class="muted tiny">effort</text>
+  <path d="M1406 565h46" stroke="#C6B0B8" stroke-width="2"/><path d="m1442 558 11 7-11 7" fill="none" stroke="#D8C8CE" stroke-width="2"/><text x="1429" y="545" text-anchor="middle" class="muted tiny">effort</text>
 
   <!-- 04 REASONING PICKER -->
-  <text x="1460" y="128" class="indigoPale label">04 · REASONING · MODEL-SUPPORTED ONLY</text>
+  <text x="1460" y="128" class="secondaryPale label">04 · REASONING · MODEL-SUPPORTED ONLY</text>
   <use href="#phone" x="1460" y="150"/><use href="#header" x="1460" y="150"/><use href="#tabs" x="1460" y="150"/>
-  <text x="1486" y="342" class="text h1">Model settings</text><rect x="1486" y="384" width="338" height="110" rx="15" fill="rgba(129,140,248,.07)" stroke="rgba(129,140,248,.30)"/><text x="1502" y="410" class="text small" font-weight="850">Quiz generation</text><text x="1502" y="440" class="text tiny mono">deepseek/deepseek-v4-flash-0731</text><text x="1502" y="472" class="indigoPale tiny">Choose reasoning level</text>
-  <rect x="1460" y="456" width="390" height="514" rx="28" class="raised" stroke="rgba(129,140,248,.28)"/><rect x="1625" y="470" width="60" height="5" rx="3" fill="#52525b"/>
+  <text x="1486" y="342" class="text h1">Model settings</text><rect x="1486" y="384" width="338" height="110" rx="15" fill="rgba(216,200,206,.07)" stroke="rgba(216,200,206,.30)"/><text x="1502" y="410" class="text small" font-weight="850">Quiz generation</text><text x="1502" y="440" class="text tiny mono">deepseek/deepseek-v4-flash-0731</text><text x="1502" y="472" class="secondaryPale tiny">Choose reasoning level</text>
+  <rect x="1460" y="456" width="390" height="514" rx="28" class="raised" stroke="rgba(216,200,206,.28)"/><rect x="1625" y="470" width="60" height="5" rx="3" fill="#A8AFBD"/>
   <text x="1486" y="523" class="text h1">Reasoning level</text><text x="1486" y="547" class="muted small">DeepSeek V4 Flash 0731 supports three levels.</text>
-  <rect x="1486" y="576" width="338" height="70" rx="13" class="card" stroke="rgba(255,255,255,.09)"/><use href="#radio-empty" x="1510" y="611"/><text x="1534" y="606" class="text body" font-weight="850">Max</text><text x="1534" y="627" class="muted tiny">Largest reasoning budget · highest latency</text>
-  <rect x="1486" y="658" width="338" height="82" rx="13" fill="rgba(129,140,248,.11)" stroke="rgba(129,140,248,.34)"/><use href="#radio" x="1510" y="699"/><text x="1534" y="687" class="text body" font-weight="850">High</text><rect x="1760" y="675" width="50" height="20" rx="10" fill="rgba(52,211,153,.10)" stroke="rgba(52,211,153,.25)"/><text x="1785" y="689" text-anchor="middle" class="emeraldPale tiny" font-weight="850">DEFAULT</text><text x="1534" y="716" class="indigoPale tiny">Model default · recommended for quiz quality</text>
-  <rect x="1486" y="752" width="338" height="70" rx="13" class="card" stroke="rgba(255,255,255,.09)"/><use href="#radio-empty" x="1510" y="787"/><text x="1534" y="782" class="text body" font-weight="850">Low</text><text x="1534" y="803" class="muted tiny">Faster and lower cost</text>
-  <rect x="1486" y="842" width="338" height="50" rx="12" fill="#10b981"/><text x="1655" y="873" text-anchor="middle" class="dark button">Use High reasoning</text>
+  <rect x="1486" y="576" width="338" height="70" rx="13" class="card" stroke="rgba(245,245,245,.09)"/><use href="#radio-empty" x="1510" y="611"/><text x="1534" y="606" class="text body" font-weight="850">Max</text><text x="1534" y="627" class="muted tiny">Largest reasoning budget · highest latency</text>
+  <rect x="1486" y="658" width="338" height="82" rx="13" fill="rgba(216,200,206,.11)" stroke="rgba(216,200,206,.34)"/><use href="#radio" x="1510" y="699"/><text x="1534" y="687" class="text body" font-weight="850">High</text><rect x="1760" y="675" width="50" height="20" rx="10" fill="rgba(228,235,233,.10)" stroke="rgba(228,235,233,.25)"/><text x="1785" y="689" text-anchor="middle" class="primaryPale tiny" font-weight="850">DEFAULT</text><text x="1534" y="716" class="secondaryPale tiny">Model default · recommended for quiz quality</text>
+  <rect x="1486" y="752" width="338" height="70" rx="13" class="card" stroke="rgba(245,245,245,.09)"/><use href="#radio-empty" x="1510" y="787"/><text x="1534" y="782" class="text body" font-weight="850">Low</text><text x="1534" y="803" class="muted tiny">Faster and lower cost</text>
+  <rect x="1486" y="842" width="338" height="50" rx="12" fill="#D6E2DF"/><text x="1655" y="873" text-anchor="middle" class="dark button">Use High reasoning</text>
   <text x="1486" y="923" class="quiet tiny">Unsupported levels are hidden, not disabled.</text><text x="1486" y="942" class="quiet tiny">Changing the model resets an incompatible reasoning choice.</text>
 
   <text x="50" y="1024" class="muted body">Interaction contract: choose a model first → choose one of its advertised reasoning levels → submit both as one versioned configuration.</text>
-  <text x="50" y="1050" class="indigoPale small">Photo analysis adds a locked image-input capability filter. Model changes preserve reasoning only when the new model supports the same level.</text>
+  <text x="50" y="1050" class="secondaryPale small">Photo analysis adds a locked image-input capability filter. Model changes preserve reasoning only when the new model supports the same level.</text>
 </svg>

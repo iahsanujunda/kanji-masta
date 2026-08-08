@@ -135,11 +135,11 @@ export default function Quiz() {
           <Box>
             <Typography variant="h6" fontWeight={800}>Couldn’t load this session</Typography>
             <Typography color="text.secondary" sx={{ mt: 1, mb: 3 }}>Your progress is safe. Try reconnecting.</Typography>
-            <Button variant="contained" onClick={() => startQuery.refetch()} sx={{ bgcolor: "#10b981", color: "#050508", fontWeight: 800 }}>Try again</Button>
+            <Button variant="contained" onClick={() => startQuery.refetch()} sx={{ bgcolor: "primary.main", color: "background.default", fontWeight: 800 }}>Try again</Button>
           </Box>
         ) : (
           <Box>
-            <CircularProgress size={30} sx={{ color: "#10b981" }} />
+            <CircularProgress size={30} sx={{ color: "primary.main" }} />
             <Typography color="text.secondary" sx={{ mt: 2 }}>Preparing your session…</Typography>
           </Box>
         )}
@@ -153,7 +153,7 @@ export default function Quiz() {
 
   const card = session.currentCard;
   return (
-    <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", position: "relative", overflow: "hidden", bgcolor: "#050508" }}>
+    <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", position: "relative", overflow: "hidden", bgcolor: "background.default" }}>
       <SessionHeader session={session} onExit={() => setExitOpen(true)} />
       {commandError && (
         <Alert
@@ -171,14 +171,14 @@ export default function Quiz() {
       )}
       {feedback && answeredCard && <FeedbackSheet feedback={feedback} answeredCard={answeredCard} onContinue={continueAfterFeedback} />}
 
-      <Dialog open={exitOpen} onClose={() => setExitOpen(false)} PaperProps={{ sx: { borderRadius: 4, bgcolor: "#0f0f16", maxWidth: 400 } }}>
+      <Dialog open={exitOpen} onClose={() => setExitOpen(false)} PaperProps={{ sx: { borderRadius: 4, bgcolor: "background.paper", maxWidth: 400 } }}>
         <DialogTitle fontWeight={800}>Leave this session?</DialogTitle>
         <DialogContent>
           <Typography color="text.secondary">Your completed reviews stay saved. Any new-word learning steps will return in a later session.</Typography>
         </DialogContent>
         <DialogActions sx={{ p: 2.5, pt: 1 }}>
           <Button onClick={() => setExitOpen(false)} sx={{ color: "grey.400" }}>Keep learning</Button>
-          <Button onClick={exitSession} disabled={submitting} sx={{ color: "#fca5a5" }}>Leave session</Button>
+          <Button onClick={exitSession} disabled={submitting} sx={{ color: "app.accent.errorPale" }}>Leave session</Button>
         </DialogActions>
       </Dialog>
     </Box>

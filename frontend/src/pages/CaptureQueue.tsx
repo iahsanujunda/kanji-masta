@@ -52,10 +52,10 @@ export default function CaptureQueue() {
       <Box sx={{ px: { xs: 2, sm: 3 }, pb: 6 }}>
         <Paper
           variant="outlined"
-          sx={{ p: 2, mb: 2.5, borderRadius: 3, bgcolor: "#0f0f16", borderColor: "#1a1a24" }}
+          sx={{ p: 2, mb: 2.5, borderRadius: 3, bgcolor: "background.paper", borderColor: "background.elevated" }}
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-            <CloudDoneOutlinedIcon sx={{ color: storage?.persistence === "granted" ? "#34d399" : "#818cf8" }} />
+            <CloudDoneOutlinedIcon sx={{ color: storage?.persistence === "granted" ? "primary.light" : "secondary.light" }} />
             <Box>
               <Typography fontWeight={700}>
                 {savedCaptures.length} {savedCaptures.length === 1 ? "photo" : "photos"} saved
@@ -67,7 +67,7 @@ export default function CaptureQueue() {
             </Box>
           </Box>
           {storage?.hasAgedCapture && (
-            <Typography variant="body2" sx={{ color: "#a5b4fc", mt: 1.5 }}>
+            <Typography variant="body2" sx={{ color: "app.accent.secondaryPale", mt: 1.5 }}>
               An older photo still needs attention. It will not be removed automatically.
             </Typography>
           )}
@@ -122,13 +122,13 @@ function QueueCaptureCard({ capture, onDelete }: { capture: LocalCapture; onDele
   return (
     <Paper
       variant="outlined"
-      sx={{ p: 1.5, borderRadius: 3, bgcolor: "#0f0f16", borderColor: "#1a1a24", display: "flex", gap: 1.5, alignItems: "center" }}
+      sx={{ p: 1.5, borderRadius: 3, bgcolor: "background.paper", borderColor: "background.elevated", display: "flex", gap: 1.5, alignItems: "center" }}
     >
       <Box
         component="img"
         src={imageUrl}
         alt="Saved scan preview"
-        sx={{ width: 64, height: 64, objectFit: "cover", borderRadius: 2.5, bgcolor: "#0a0a0f", flexShrink: 0 }}
+        sx={{ width: 64, height: 64, objectFit: "cover", borderRadius: 2.5, bgcolor: "background.sunken", flexShrink: 0 }}
       />
       <Box sx={{ minWidth: 0, flex: 1 }}>
         <Typography fontWeight={700}>{copy.title}</Typography>
@@ -138,7 +138,7 @@ function QueueCaptureCard({ capture, onDelete }: { capture: LocalCapture; onDele
           <Button
             size="small"
             onClick={() => void retryLocalCapture(capture.id)}
-            sx={{ display: "block", minHeight: 36, mt: 0.5, px: 0, color: "#34d399" }}
+            sx={{ display: "block", minHeight: 36, mt: 0.5, px: 0, color: "primary.light" }}
           >
             Retry upload
           </Button>
@@ -174,8 +174,8 @@ function formatBytes(bytes: number): string {
 
 const primaryButtonSx = {
   minHeight: 48,
-  bgcolor: "#10b981",
-  color: "#050508",
+  bgcolor: "primary.main",
+  color: "background.default",
   fontWeight: 700,
-  "&:hover": { bgcolor: "#34d399" },
+  "&:hover": { bgcolor: "primary.light" },
 };

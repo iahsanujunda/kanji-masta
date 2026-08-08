@@ -13,6 +13,7 @@ import {
   Skeleton,
   Typography,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
@@ -141,14 +142,14 @@ export default function CaptureDetailPage() {
     return (
       <PageShell title="Capture">
         <Box sx={{ px: 3, py: 8, textAlign: "center" }} role="status">
-          <HourglassTopOutlinedIcon sx={{ fontSize: 38, color: "#818cf8", mb: 1.5 }} />
+          <HourglassTopOutlinedIcon sx={{ fontSize: 38, color: "secondary.light", mb: 1.5 }} />
           <Typography variant="h6" fontWeight={800}>{translating ? "Translation in progress" : "Analysing your capture"}</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 3 }}>
             {translating
               ? `Visual analysis is complete${capture.totalKanji > 0 ? ` · ${capture.totalKanji} kanji found` : ""}. Translation runs independently.`
               : "Progress remains available in Activity. It is safe to leave this page."}
           </Typography>
-          <LinearProgress sx={{ borderRadius: 2, bgcolor: "#1a1a24" }} />
+          <LinearProgress sx={{ borderRadius: 2, bgcolor: "background.elevated" }} />
         </Box>
       </PageShell>
     );
@@ -182,32 +183,32 @@ export default function CaptureDetailPage() {
   return (
     <PageShell title="Capture" subtitle={date}>
       <Box sx={{ px: { xs: 2, sm: 3 }, pb: 6, display: "flex", flexDirection: "column", gap: 2 }}>
-        <Box component="img" src={photo} alt="Captured Japanese text" sx={{ width: "100%", maxHeight: 300, aspectRatio: "4 / 3", objectFit: "cover", borderRadius: 4, bgcolor: "#0f0f16", border: "1px solid #1a1a24" }} />
+        <Box component="img" src={photo} alt="Captured Japanese text" sx={{ width: "100%", maxHeight: 300, aspectRatio: "4 / 3", objectFit: "cover", borderRadius: 4, bgcolor: "background.paper", border: "1px solid", borderColor: "app.border.default" }} />
 
         {capture.fullText && (
-          <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3.5, bgcolor: "#0f0f16", borderColor: "#1a1a24" }}>
+          <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3.5, bgcolor: "background.paper", borderColor: "background.elevated" }}>
             <Typography variant="caption" sx={eyebrowSx}>Detected text</Typography>
             <Typography lang="ja" sx={{ mt: 1, whiteSpace: "pre-wrap", lineHeight: 1.85, fontSize: 17 }}>{capture.fullText}</Typography>
           </Paper>
         )}
 
-        <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3.5, bgcolor: "#0f0f16", borderColor: "#1a1a24" }}>
+        <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3.5, bgcolor: "background.paper", borderColor: "background.elevated" }}>
           <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2 }}>
             <Box>
               <Typography variant="caption" sx={eyebrowSx}>Kanji coverage</Typography>
               <Typography variant="h6" fontWeight={800} sx={{ mt: 0.5 }}>{coverageLabel}</Typography>
             </Box>
-            {capture.coveragePercent != null && <Typography variant="h5" fontWeight={800} sx={{ color: capture.coveragePercent === 100 ? "#34d399" : "#a5b4fc" }}>{capture.coveragePercent}%</Typography>}
+            {capture.coveragePercent != null && <Typography variant="h5" fontWeight={800} sx={{ color: capture.coveragePercent === 100 ? "primary.light" : "app.accent.secondaryPale" }}>{capture.coveragePercent}%</Typography>}
           </Box>
-          {capture.coveragePercent != null && <LinearProgress variant="determinate" value={capture.coveragePercent} sx={{ mt: 1.5, height: 6, borderRadius: 3, bgcolor: "#1a1a24", "& .MuiLinearProgress-bar": { bgcolor: capture.coveragePercent === 100 ? "#10b981" : "#4338ca" } }} />}
+          {capture.coveragePercent != null && <LinearProgress variant="determinate" value={capture.coveragePercent} sx={{ mt: 1.5, height: 6, borderRadius: 3, bgcolor: "background.elevated", "& .MuiLinearProgress-bar": { bgcolor: capture.coveragePercent === 100 ? "primary.main" : "secondary.main" } }} />}
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
             {capture.totalKanji === 0 ? "No supported kanji were detected. You can still use the translation." : `${active.filter((item) => item.learningState === "LEARNING").length} learning · ${active.filter((item) => item.learningState === "NOT_STARTED").length} not started`}
           </Typography>
         </Paper>
 
         {recommended.length > 0 && (
-          <Paper sx={{ p: 2.5, borderRadius: 4, background: "linear-gradient(135deg, rgba(6,95,70,.72), rgba(49,46,129,.72))", border: "1px solid rgba(129,140,248,.25)" }}>
-            <Typography variant="caption" sx={{ ...eyebrowSx, color: "#a5b4fc" }}>Recommended next</Typography>
+          <Paper sx={{ p: 2.5, borderRadius: 4, background: (theme) => `linear-gradient(135deg, ${alpha(theme.palette.primary.dark, 0.72)}, ${alpha(theme.palette.secondary.dark, 0.72)})`, border: "1px solid", borderColor: "app.tone.secondary.border" }}>
+            <Typography variant="caption" sx={{ ...eyebrowSx, color: "app.accent.secondaryPale" }}>Recommended next</Typography>
             <Box sx={{ display: "flex", gap: 1.25, my: 2 }}>
               {recommended.map((item) => <KanjiTile key={item.kanjiMasterId} item={item} />)}
             </Box>
@@ -225,7 +226,7 @@ export default function CaptureDetailPage() {
         )}
 
         {!capture.batchGateSatisfied && (
-          <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, bgcolor: "rgba(67,56,202,.10)", borderColor: "rgba(129,140,248,.25)" }}>
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, bgcolor: "app.tone.secondary.faint", borderColor: "app.tone.secondary.border" }}>
             <Typography fontWeight={800}>Keep learning your current batch</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>The next three unlock when every kanji selected from this capture reaches full familiarity.</Typography>
           </Paper>
@@ -249,7 +250,7 @@ export default function CaptureDetailPage() {
           />
         )}
 
-        <Button onClick={() => setAllKanjiOpen((open) => !open)} endIcon={<ExpandMoreIcon sx={{ transform: allKanjiOpen ? "rotate(180deg)" : "none", transition: "transform 180ms" }} />} aria-expanded={allKanjiOpen} sx={{ minHeight: 48, justifyContent: "space-between", color: "#a5b4fc", px: 2 }}>
+        <Button onClick={() => setAllKanjiOpen((open) => !open)} endIcon={<ExpandMoreIcon sx={{ transform: allKanjiOpen ? "rotate(180deg)" : "none", transition: "transform 180ms" }} />} aria-expanded={allKanjiOpen} sx={{ minHeight: 48, justifyContent: "space-between", color: "app.accent.secondaryPale", px: 2 }}>
           {allKanjiOpen ? "Hide detected kanji" : "Show all detected kanji"}
         </Button>
         {allKanjiOpen && (
@@ -267,10 +268,10 @@ export default function CaptureDetailPage() {
         )}
 
         {capture.translation && (
-          <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3.5, bgcolor: "#0f0f16", borderColor: "#1a1a24" }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}><TranslateOutlinedIcon sx={{ color: "#818cf8" }} /><Typography fontWeight={800}>Translation</Typography></Box>
+          <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3.5, bgcolor: "background.paper", borderColor: "background.elevated" }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}><TranslateOutlinedIcon sx={{ color: "secondary.light" }} /><Typography fontWeight={800}>Translation</Typography></Box>
             {translationOpen && <Typography sx={{ mt: 1.5, lineHeight: 1.7 }}>{capture.translation}</Typography>}
-            <Button onClick={() => setTranslationOpen((open) => !open)} aria-expanded={translationOpen} sx={{ minHeight: 48, mt: 1, px: 0, color: "#34d399" }}>
+            <Button onClick={() => setTranslationOpen((open) => !open)} aria-expanded={translationOpen} sx={{ minHeight: 48, mt: 1, px: 0, color: "primary.light" }}>
               {translationOpen ? "Hide translation" : "Reveal translation"}
             </Button>
           </Paper>
@@ -305,8 +306,8 @@ function WordDiscoveryCard({
 }) {
   const running = discovery.status === "PENDING" || discovery.status === "PROCESSING";
   return (
-    <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3.5, bgcolor: "rgba(16,185,129,.08)", borderColor: "rgba(52,211,153,.28)" }}>
-      <CheckCircleOutlineIcon sx={{ color: "#34d399", mb: 1 }} />
+    <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3.5, bgcolor: "app.tone.primary.faint", borderColor: "app.tone.primary.border" }}>
+      <CheckCircleOutlineIcon sx={{ color: "primary.light", mb: 1 }} />
       <Typography fontWeight={800}>You know every kanji in this capture.</Typography>
       {discovery.status === "NOT_STARTED" && (
         <>
@@ -317,7 +318,7 @@ function WordDiscoveryCard({
       {running && (
         <Box role="status" sx={{ mt: 1.5 }}>
           <Typography variant="body2" color="text.secondary">Finding words in the captured text…</Typography>
-          <LinearProgress sx={{ mt: 1.5, borderRadius: 2, bgcolor: "#1a1a24" }} />
+          <LinearProgress sx={{ mt: 1.5, borderRadius: 2, bgcolor: "background.elevated" }} />
         </Box>
       )}
       {discovery.status === "FAILED" && (
@@ -357,15 +358,15 @@ function CapturedWordRow({ candidate, checked, onToggle }: { candidate: CaptureW
   const isNew = candidate.learningState === "NEW";
   const stateLabel = isNew ? "New" : candidate.learningState === "LEARNING" ? "Learning" : "Familiar";
   return (
-    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 3, bgcolor: "#0f0f16", borderColor: "#1a1a24" }}>
+    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 3, bgcolor: "background.paper", borderColor: "background.elevated" }}>
       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-        {isNew && <Checkbox checked={checked} onChange={onToggle} inputProps={{ "aria-label": `Learn ${candidate.surfaceText}` }} sx={{ color: "#818cf8", "&.Mui-checked": { color: "#10b981" } }} />}
+        {isNew && <Checkbox checked={checked} onChange={onToggle} inputProps={{ "aria-label": `Learn ${candidate.surfaceText}` }} sx={{ color: "secondary.light", "&.Mui-checked": { color: "primary.main" } }} />}
         <Box sx={{ minWidth: 0, flex: 1 }}>
           <Typography lang="ja" fontWeight={800}>{candidate.surfaceText}</Typography>
-          <Typography lang="ja" variant="caption" sx={{ color: "#a5b4fc" }}>{candidate.reading}</Typography>
+          <Typography lang="ja" variant="caption" sx={{ color: "app.accent.secondaryPale" }}>{candidate.reading}</Typography>
           <Typography variant="body2" color="text.secondary">{candidate.meaning}</Typography>
         </Box>
-        <Typography variant="caption" sx={{ color: isNew ? "#a5b4fc" : "#34d399", fontWeight: 800 }}>{stateLabel}</Typography>
+        <Typography variant="caption" sx={{ color: isNew ? "app.accent.secondaryPale" : "primary.light", fontWeight: 800 }}>{stateLabel}</Typography>
       </Box>
     </Paper>
   );
@@ -380,13 +381,13 @@ function CaptureDetailSkeleton() {
 }
 
 function KanjiTile({ item }: { item: CaptureKanjiItem }) {
-  return <Box sx={{ width: 64, height: 72, borderRadius: 3, bgcolor: "rgba(5,5,8,.55)", border: "1px solid rgba(165,180,252,.2)", display: "grid", placeItems: "center" }}><Typography lang="ja" sx={{ fontSize: 34 }}>{item.character}</Typography></Box>;
+  return <Box sx={{ width: 64, height: 72, borderRadius: 3, bgcolor: (theme) => alpha(theme.palette.background.default, 0.55), border: "1px solid", borderColor: (theme) => alpha(theme.palette.app.accent.secondaryPale, 0.2), display: "grid", placeItems: "center" }}><Typography lang="ja" sx={{ fontSize: 34 }}>{item.character}</Typography></Box>;
 }
 
 function KanjiRow({ item, onExclude, onRestore, onKnow }: { item: CaptureKanjiItem; onExclude?: () => void; onRestore?: () => void; onKnow?: () => void }) {
   const stateLabel = item.excluded ? "Not in this photo" : item.learningState === "FAMILIAR" ? "Familiar" : item.learningState === "LEARNING" ? "Learning" : "Not started";
   return (
-    <Paper variant="outlined" sx={{ p: 1.75, borderRadius: 3, bgcolor: "#0f0f16", borderColor: "#1a1a24", opacity: item.excluded ? 0.68 : 1 }}>
+    <Paper variant="outlined" sx={{ p: 1.75, borderRadius: 3, bgcolor: "background.paper", borderColor: "background.elevated", opacity: item.excluded ? 0.68 : 1 }}>
       <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
         <Typography lang="ja" sx={{ fontSize: 32, width: 44, textAlign: "center" }}>{item.character}</Typography>
         <Box sx={{ minWidth: 0, flex: 1 }}>
@@ -398,11 +399,11 @@ function KanjiRow({ item, onExclude, onRestore, onKnow }: { item: CaptureKanjiIt
       <Box sx={{ display: "flex", justifyContent: "flex-end", flexWrap: "wrap", gap: 0.5, mt: 1 }}>
         {onKnow && <Button size="small" onClick={onKnow} sx={{ minHeight: 40 }}>Already know</Button>}
         {onExclude && <Button size="small" onClick={onExclude} sx={{ minHeight: 40, color: "text.secondary" }}>Not in this photo</Button>}
-        {onRestore && <Button size="small" onClick={onRestore} sx={{ minHeight: 40, color: "#a5b4fc" }}>Undo</Button>}
+        {onRestore && <Button size="small" onClick={onRestore} sx={{ minHeight: 40, color: "app.accent.secondaryPale" }}>Undo</Button>}
       </Box>
     </Paper>
   );
 }
 
 const eyebrowSx = { color: "text.disabled", fontWeight: 800, letterSpacing: 1.2, textTransform: "uppercase" } as const;
-const primaryButtonSx = { minHeight: 48, bgcolor: "#10b981", color: "#050508", fontWeight: 800, "&:hover": { bgcolor: "#34d399" } };
+const primaryButtonSx = { minHeight: 48, bgcolor: "primary.main", color: "background.default", fontWeight: 800, "&:hover": { bgcolor: "primary.light" } };

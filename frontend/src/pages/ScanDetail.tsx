@@ -35,14 +35,14 @@ export default function ScanDetail() {
           <ErrorOutlineIcon sx={{ color: "error.light", fontSize: 36, mb: 2 }} />
           <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>Scan needs attention</Typography>
           <Typography color="text.secondary" sx={{ mb: 3 }}>{failureMessage(query.data.failureCode)}</Typography>
-          <Button variant="contained" onClick={() => navigate("/capture")} sx={{ minHeight: 48, bgcolor: "#10b981", color: "#050508", fontWeight: 700 }}>
+          <Button variant="contained" onClick={() => navigate("/capture")} sx={{ minHeight: 48, bgcolor: "primary.main", color: "background.default", fontWeight: 700 }}>
             Capture another photo
           </Button>
           <Button onClick={() => navigate("/home")} sx={{ minHeight: 48, mt: 1 }}>Back to Home</Button>
         </Box>
       ) : query.data?.status === "ingested" ? (
         <Box sx={{ flex: 1, px: 3, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-          <CheckCircleOutlineIcon sx={{ color: "#34d399", fontSize: 36, mb: 2 }} />
+          <CheckCircleOutlineIcon sx={{ color: "primary.light", fontSize: 36, mb: 2 }} />
           <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>Added to your collection</Typography>
           <Button variant="contained" onClick={() => navigate("/collection")} sx={{ minHeight: 48, mt: 2 }}>View collection</Button>
         </Box>

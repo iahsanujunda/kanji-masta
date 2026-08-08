@@ -117,7 +117,7 @@ export default function Settings() {
               step={1}
               marks={[{ value: 3, label: "3" }, { value: 5, label: "5" }, { value: 10, label: "10" }, { value: 15, label: "15" }]}
               disabled={!settingsQuery.data}
-              sx={{ color: "#4338ca" }}
+              sx={{ color: "secondary.main" }}
             />
             <Typography variant="caption" color="text.secondary">
               Changes take effect from your next session.

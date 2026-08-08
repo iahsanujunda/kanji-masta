@@ -19,7 +19,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
     <Box
       sx={{
         minHeight: "var(--app-height)",
-        bgcolor: "#050508",
+        bgcolor: "background.default",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -28,11 +28,11 @@ function PageShell({ children }: { children: React.ReactNode }) {
         overflow: "hidden",
       }}
     >
-      <Box sx={{ position: "absolute", top: "30%", left: "50%", transform: "translateX(-50%)", width: 600, height: 300, bgcolor: "rgba(16,185,129,0.1)", filter: "blur(120px)", borderRadius: "50%", pointerEvents: "none" }} />
-      <Box sx={{ position: "absolute", top: "50%", right: "20%", width: 300, height: 300, bgcolor: "rgba(67,56,202,0.1)", filter: "blur(120px)", borderRadius: "50%", pointerEvents: "none" }} />
+      <Box sx={{ position: "absolute", top: "30%", left: "50%", transform: "translateX(-50%)", width: 600, height: 300, bgcolor: "app.tone.primary.subtle", filter: "blur(120px)", borderRadius: "50%", pointerEvents: "none" }} />
+      <Box sx={{ position: "absolute", top: "50%", right: "20%", width: 300, height: 300, bgcolor: "app.tone.secondary.faint", filter: "blur(120px)", borderRadius: "50%", pointerEvents: "none" }} />
 
       <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 5, position: "relative", zIndex: 1 }}>
-        <Box sx={{ width: 40, height: 40, borderRadius: 2, background: "linear-gradient(135deg, #34d399, #4338ca)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Box sx={{ width: 40, height: 40, borderRadius: 2, background: (theme) => theme.palette.app.gradient.brand, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <LeafIcon size={24} />
         </Box>
         <Typography sx={{ fontSize: 28, fontWeight: 800, letterSpacing: -0.5, color: "white" }}>Shuukan</Typography>
@@ -104,7 +104,7 @@ export default function Signup() {
   if (inviteCode && invite.isPending) {
     return (
       <PageShell>
-        <CircularProgress sx={{ color: "#34d399" }} />
+        <CircularProgress sx={{ color: "primary.light" }} />
       </PageShell>
     );
   }
@@ -121,8 +121,8 @@ export default function Signup() {
             component={Link}
             to="/login"
             sx={{
-              color: "#34d399", borderColor: "#34d399", textTransform: "none", fontWeight: 600,
-              "&:hover": { borderColor: "#10b981", bgcolor: "rgba(16,185,129,0.1)" },
+              color: "primary.light", borderColor: "primary.light", textTransform: "none", fontWeight: 600,
+              "&:hover": { borderColor: "primary.main", bgcolor: "app.tone.primary.subtle" },
             }}
             variant="outlined"
           >
@@ -146,8 +146,8 @@ export default function Signup() {
             component={Link}
             to="/login"
             sx={{
-              color: "#34d399", borderColor: "#34d399", textTransform: "none", fontWeight: 600,
-              "&:hover": { borderColor: "#10b981", bgcolor: "rgba(16,185,129,0.1)" },
+              color: "primary.light", borderColor: "primary.light", textTransform: "none", fontWeight: 600,
+              "&:hover": { borderColor: "primary.main", bgcolor: "app.tone.primary.subtle" },
             }}
             variant="outlined"
           >
@@ -165,7 +165,7 @@ export default function Signup() {
         onSubmit={handleSubmit}
         sx={{
           width: "100%", maxWidth: 380, px: 4, py: 5, mx: 3,
-          bgcolor: "rgba(15,15,22,0.8)", backdropFilter: "blur(12px)",
+          bgcolor: "app.surface.glass", backdropFilter: "blur(12px)",
           border: "1px solid", borderColor: "grey.800",
           borderRadius: 4,
         }}
@@ -230,22 +230,22 @@ export default function Signup() {
           size="large"
           disabled={signup.isPending || !inviteValid}
           sx={{
-            bgcolor: "#10b981",
+            bgcolor: "primary.main",
             color: "black",
             py: 1.5,
             borderRadius: "9999px",
             fontSize: "1rem",
             fontWeight: 700,
             textTransform: "none",
-            boxShadow: "0 0 20px rgba(16,185,129,0.2)",
-            "&:hover": { bgcolor: "#34d399" },
+            boxShadow: (theme) => theme.palette.app.shadow.primarySoft,
+            "&:hover": { bgcolor: "primary.light" },
           }}
         >
           {signup.isPending ? "Creating account..." : "Sign Up"}
         </Button>
         <Typography sx={{ mt: 2.5, textAlign: "center", fontSize: 13, color: "grey.500" }}>
           Already have an account?{" "}
-          <Box component={Link} to="/login" sx={{ color: "#34d399", textDecoration: "none", fontWeight: 600, "&:hover": { textDecoration: "underline" } }}>
+          <Box component={Link} to="/login" sx={{ color: "primary.light", textDecoration: "none", fontWeight: 600, "&:hover": { textDecoration: "underline" } }}>
             Sign in
           </Box>
         </Typography>

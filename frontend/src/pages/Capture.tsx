@@ -101,7 +101,7 @@ export default function Capture() {
             </Typography>
             <LinearProgress
               aria-label="Saving photo"
-              sx={{ height: 4, borderRadius: 2, bgcolor: "#1a1a24", "& .MuiLinearProgress-bar": { bgcolor: "#10b981" } }}
+              sx={{ height: 4, borderRadius: 2, bgcolor: "background.elevated", "& .MuiLinearProgress-bar": { bgcolor: "primary.main" } }}
             />
           </Box>
         ) : view === "save-failed" ? (
@@ -114,7 +114,7 @@ export default function Capture() {
                 fullWidth
                 variant="contained"
                 onClick={() => navigate("/capture-queue")}
-                sx={{ minHeight: 48, bgcolor: "#10b981", color: "#050508", fontWeight: 700, "&:hover": { bgcolor: "#34d399" } }}
+                sx={{ minHeight: 48, bgcolor: "primary.main", color: "background.default", fontWeight: 700, "&:hover": { bgcolor: "primary.light" } }}
               >
                 Manage saved photos
               </Button>
@@ -124,7 +124,7 @@ export default function Capture() {
                 variant="contained"
                 disabled={!pendingFile}
                 onClick={() => pendingFile && void persistFile(pendingFile)}
-                sx={{ minHeight: 48, bgcolor: "#10b981", color: "#050508", fontWeight: 700, "&:hover": { bgcolor: "#34d399" } }}
+                sx={{ minHeight: 48, bgcolor: "primary.main", color: "background.default", fontWeight: 700, "&:hover": { bgcolor: "primary.light" } }}
               >
                 Retry saving
               </Button>
@@ -135,7 +135,7 @@ export default function Capture() {
           </Box>
         ) : (
           <Box sx={{ textAlign: "center" }}>
-            <CameraAltOutlinedIcon sx={{ color: "#818cf8", fontSize: 48, mb: 2 }} />
+            <CameraAltOutlinedIcon sx={{ color: "secondary.light", fontSize: 48, mb: 2 }} />
             <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>Choose a photo</Typography>
             <Button variant="contained" onClick={() => fileInputRef.current?.click()} sx={{ minHeight: 48, mt: 2 }}>
               Open camera

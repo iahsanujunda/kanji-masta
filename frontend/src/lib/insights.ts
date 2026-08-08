@@ -13,16 +13,16 @@ export const LESSONS: Lesson[] = [
     title: "The Illusion of Flashcards",
     readTime: "2 MIN",
     teaser: "Our brain is not built for repeating a single character and hoping it sticks.",
-    accentColor: "#10b981",
-    accentBg: "rgba(16,185,129,0.1)",
+    accentColor: "primary.main",
+    accentBg: "app.tone.primary.subtle",
   },
   {
     id: "wild-is-your-classroom",
     title: "The Wild is Your Classroom",
     readTime: "3 MIN",
     teaser: "Why capturing signs works better than studying an Anki deck.",
-    accentColor: "#f97316",
-    accentBg: "rgba(249,115,22,0.1)",
+    accentColor: "app.accent.warning",
+    accentBg: "app.tone.warning.subtle",
   },
 ];
 

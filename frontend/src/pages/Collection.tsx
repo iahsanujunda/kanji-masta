@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Box, Typography } from "@mui/material";
-import CollectionTree from "@/components/CollectionTree";
+import CollectionTree from "@/components/artwork/CollectionTree";
 import PageHeader from "@/components/PageHeader";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -55,12 +55,13 @@ function ZoneBadge({
     >
       <Box
         sx={{
-          bgcolor: "rgba(255,255,255,0.1)",
+          bgcolor: "app.overlay.subtle",
           backdropFilter: "blur(12px)",
-          border: "1px solid rgba(255,255,255,0.2)",
+          border: "1px solid",
+          borderColor: "app.overlay.strong",
           p: 2,
           borderRadius: 3,
-          boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+          boxShadow: (theme) => theme.palette.app.shadow.card,
         }}
       >
         <Typography
@@ -119,7 +120,7 @@ export default function Collection() {
         flexDirection: "column",
         position: "relative",
         overflow: "hidden",
-        background: "linear-gradient(to bottom, #1a1a24, #0a0a0f)",
+        background: (theme) => `linear-gradient(to bottom, ${theme.palette.background.elevated}, ${theme.palette.background.sunken})`,
       }}
     >
       <PageHeader
@@ -128,8 +129,8 @@ export default function Collection() {
         backTo="/home"
         sx={{ zIndex: 20 }}
         backButtonSx={{
-          bgcolor: "rgba(255,255,255,0.1)",
-          "&:hover": { bgcolor: "rgba(255,255,255,0.2)" },
+          bgcolor: "app.overlay.subtle",
+          "&:hover": { bgcolor: "app.overlay.strong" },
         }}
       />
 
@@ -146,7 +147,7 @@ export default function Collection() {
           label={collection.canopy.label}
           count={collection.canopy.count}
           tier={collection.canopy.tier}
-          color="#34d399"
+          color="primary.light"
           hoveredZone={hoveredZone}
           onHover={setHoveredZone}
           onClick={() => navigate("/collection/list?zone=canopy")}
@@ -159,7 +160,7 @@ export default function Collection() {
           label={collection.trunk.label}
           count={collection.trunk.count}
           tier={collection.trunk.tier}
-          color="#818cf8"
+          color="secondary.light"
           hoveredZone={hoveredZone}
           onHover={setHoveredZone}
           onClick={() => navigate("/collection/list?zone=trunk")}
@@ -172,7 +173,7 @@ export default function Collection() {
           label={collection.roots.label}
           count={collection.roots.count}
           tier={collection.roots.tier}
-          color="#c084fc"
+          color="app.accent.purpleLight"
           hoveredZone={hoveredZone}
           onHover={setHoveredZone}
           onClick={() => navigate("/collection/list?zone=roots")}

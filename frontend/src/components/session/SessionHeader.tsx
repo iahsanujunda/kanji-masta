@@ -20,7 +20,7 @@ export default function SessionHeader({ session, onExit }: { session: SessionSna
           <CloseIcon />
         </IconButton>
         <Box sx={{ textAlign: "center" }}>
-          <Typography variant="caption" sx={{ color: card?.learningStep ? "#818cf8" : "#6ee7b7", fontWeight: 700, letterSpacing: 0.8 }}>
+          <Typography variant="caption" sx={{ color: card?.learningStep ? "secondary.light" : "app.accent.primaryPale", fontWeight: 700, letterSpacing: 0.8 }}>
             {card?.cardType === "INTRODUCTION" ? "INTRODUCTION" : card?.learningStep ? "LEARNING STEP" : "REVIEW"}
           </Typography>
           <Typography variant="caption" display="block" color="text.secondary">
@@ -33,7 +33,7 @@ export default function SessionHeader({ session, onExit }: { session: SessionSna
         variant="determinate"
         value={progress}
         aria-label="Session progress"
-        sx={{ height: 6, borderRadius: 3, bgcolor: "#1a1a24", "& .MuiLinearProgress-bar": { bgcolor: "#10b981", borderRadius: 3 } }}
+        sx={{ height: 6, borderRadius: 3, bgcolor: "background.elevated", "& .MuiLinearProgress-bar": { bgcolor: "primary.main", borderRadius: 3 } }}
       />
     </Box>
   );

@@ -6,8 +6,8 @@ export default function KanjiBreakdown({ items }: { items: KanjiBreakdownItem[] 
   return (
     <Box sx={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 1 }}>
       {items.map((item) => (
-        <Box key={`${item.character}-${item.meaning}`} sx={{ display: "flex", alignItems: "baseline", gap: 0.75, px: 1.25, py: 0.75, bgcolor: "#1a1a24", borderRadius: 2 }}>
-          <Typography sx={{ color: "#a5b4fc", fontSize: "1.15rem", fontWeight: 700 }}>{item.character}</Typography>
+        <Box key={`${item.character}-${item.meaning}`} sx={{ display: "flex", alignItems: "baseline", gap: 0.75, px: 1.25, py: 0.75, bgcolor: "background.elevated", borderRadius: 2 }}>
+          <Typography sx={{ color: "app.accent.secondaryPale", fontSize: "1.15rem", fontWeight: 700 }}>{item.character}</Typography>
           <Typography variant="caption" color="text.secondary">{item.meaning}</Typography>
         </Box>
       ))}

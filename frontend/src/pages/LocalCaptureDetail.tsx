@@ -59,7 +59,7 @@ export default function LocalCaptureDetail() {
           <Button
             variant="contained"
             onClick={async () => { await retryLocalCapture(capture.id); await refetch(); }}
-            sx={{ minHeight: 48, bgcolor: "#10b981", color: "#050508", fontWeight: 700 }}
+            sx={{ minHeight: 48, bgcolor: "primary.main", color: "background.default", fontWeight: 700 }}
           >
             Retry upload
           </Button>

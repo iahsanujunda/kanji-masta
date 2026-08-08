@@ -9,6 +9,7 @@ import {
   SwipeableDrawer,
   Typography,
 } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
 import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
 import CloseIcon from "@mui/icons-material/Close";
 import CameraAltOutlinedIcon from "@mui/icons-material/CameraAltOutlined";
@@ -103,8 +104,9 @@ export default function PhotoActivityControl({ userId }: { userId?: string }) {
               width: 8,
               height: 8,
               borderRadius: "50%",
-              bgcolor: "#34d399",
-              border: "2px solid #0a0a0f",
+              bgcolor: "primary.light",
+              border: "2px solid",
+              borderColor: "background.sunken",
               boxSizing: "content-box",
             }}
           />
@@ -132,9 +134,10 @@ export default function PhotoActivityControl({ userId }: { userId?: string }) {
             left: 0,
             right: 0,
             borderRadius: "24px 24px 0 0",
-            border: "1px solid #2a2a38",
+            border: "1px solid",
+            borderColor: "app.border.strong",
             borderBottom: 0,
-            bgcolor: "#0f0f16",
+            bgcolor: "background.paper",
             backgroundImage: "none",
             color: "grey.100",
             overflow: "hidden",
@@ -156,7 +159,7 @@ export default function PhotoActivityControl({ userId }: { userId?: string }) {
         }}
       >
         <Box sx={{ width: 42, height: 4, borderRadius: 2, bgcolor: "grey.700", mx: "auto", mt: 1.25, flexShrink: 0 }} />
-        <Box sx={{ px: 2.5, py: 1.25, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, borderBottom: "1px solid rgba(255,255,255,.08)" }}>
+        <Box sx={{ px: 2.5, py: 1.25, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, borderBottom: "1px solid", borderColor: "app.border.subtle" }}>
           <Typography id={titleId} sx={{ fontSize: 18, fontWeight: 800 }}>Activity</Typography>
           <IconButton aria-label="Close Activity" onClick={closeDrawer} sx={{ color: "grey.400", minWidth: 44, minHeight: 44 }}>
             <CloseIcon />
@@ -173,7 +176,7 @@ export default function PhotoActivityControl({ userId }: { userId?: string }) {
             <Alert
               severity="warning"
               action={<Box component="button" type="button" onClick={() => void activityQuery.refetch()} sx={retryButtonSx}>Try again</Box>}
-              sx={{ mt: 2, bgcolor: "rgba(248,113,113,.08)", color: "grey.200" }}
+              sx={{ mt: 2, bgcolor: "app.tone.error.faint", color: "grey.200" }}
             >
               Could not load scan activity
             </Alert>
@@ -210,7 +213,7 @@ export default function PhotoActivityControl({ userId }: { userId?: string }) {
               <Box ref={sentinelRef} sx={{ height: 1 }} />
               {activityQuery.isFetchingNextPage && <ActivityRowSkeleton />}
               {activityQuery.isFetchNextPageError && (
-                <Box role="alert" sx={{ mt: 2, p: 1.5, borderRadius: 3, bgcolor: "rgba(248,113,113,.07)", border: "1px solid rgba(248,113,113,.22)" }}>
+                <Box role="alert" sx={{ mt: 2, p: 1.5, borderRadius: 3, bgcolor: "app.tone.error.faint", border: "1px solid", borderColor: "app.tone.error.border" }}>
                   <Typography variant="body2" fontWeight={800}>Could not load earlier scans</Typography>
                   <Box component="button" type="button" onClick={() => void activityQuery.fetchNextPage()} sx={{ ...retryButtonSx, width: "100%", mt: 1 }}>Try again</Box>
                 </Box>
@@ -227,7 +230,7 @@ function ActivitySection({ title, children }: { title: string; children: React.R
   return (
     <Box component="section" sx={{ pt: 2 }}>
       <Typography variant="caption" sx={{ color: "grey.500", fontWeight: 800, letterSpacing: 1.25, textTransform: "uppercase" }}>{title}</Typography>
-      <Box sx={{ mt: 0.75, borderTop: "1px solid rgba(255,255,255,.06)" }}>{children}</Box>
+      <Box sx={{ mt: 0.75, borderTop: "1px solid", borderColor: "app.border.subtle" }}>{children}</Box>
     </Box>
   );
 }
@@ -293,7 +296,8 @@ function ActivityRow({
   icon: React.ReactNode;
   onOpen: () => void;
 }) {
-  const accent = tone === "done" ? "#34d399" : tone === "danger" ? "#f87171" : "#818cf8";
+  const theme = useTheme();
+  const accent = tone === "done" ? theme.palette.primary.light : tone === "danger" ? theme.palette.error.light : theme.palette.secondary.light;
   return (
     <Box
       component="button"
@@ -312,16 +316,17 @@ function ActivityRow({
         color: "inherit",
         bgcolor: "transparent",
         border: 0,
-        borderBottom: "1px solid rgba(255,255,255,.07)",
+        borderBottom: "1px solid",
+        borderColor: "app.border.subtle",
         cursor: "pointer",
         "&:active": { transform: "scale(.99)" },
         "&:focus-visible": { outline: `2px solid ${accent}`, outlineOffset: -2 },
       }}
     >
-      <Box sx={{ width: 48, height: 48, borderRadius: 3, display: "grid", placeItems: "center", bgcolor: `${accent}18`, color: accent, flexShrink: 0, "& svg": { fontSize: 23 } }}>{icon}</Box>
+      <Box sx={{ width: 48, height: 48, borderRadius: 3, display: "grid", placeItems: "center", bgcolor: alpha(accent, 0.09), color: accent, flexShrink: 0, "& svg": { fontSize: 23 } }}>{icon}</Box>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography variant="body2" fontWeight={800} noWrap>{title}</Typography>
-        <Typography variant="body2" sx={{ color: tone === "done" ? "#6ee7b7" : tone === "active" ? "#a5b4fc" : "grey.400" }} noWrap>{subtitle}</Typography>
+        <Typography variant="body2" sx={{ color: tone === "done" ? "app.accent.primaryPale" : tone === "active" ? "app.accent.secondaryPale" : "grey.400" }} noWrap>{subtitle}</Typography>
         <Typography variant="caption" color="text.disabled">{meta}</Typography>
       </Box>
       <ChevronRightIcon sx={{ color: "grey.700", flexShrink: 0 }} />
@@ -346,7 +351,7 @@ function ActivityEmpty() {
   return (
     <Box sx={{ minHeight: 330, display: "grid", placeItems: "center", textAlign: "center", px: 3 }}>
       <Box>
-        <Box sx={{ width: 72, height: 72, borderRadius: "50%", display: "grid", placeItems: "center", mx: "auto", mb: 2, bgcolor: "rgba(129,140,248,.10)", color: "#818cf8" }}><CameraAltOutlinedIcon sx={{ fontSize: 34 }} /></Box>
+        <Box sx={{ width: 72, height: 72, borderRadius: "50%", display: "grid", placeItems: "center", mx: "auto", mb: 2, bgcolor: (theme) => alpha(theme.palette.secondary.light, 0.1), color: "secondary.light" }}><CameraAltOutlinedIcon sx={{ fontSize: 34 }} /></Box>
         <Typography fontWeight={800}>No scan activity yet</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>Your saved and analysed photos will appear here.</Typography>
       </Box>
@@ -359,8 +364,8 @@ const retryButtonSx = {
   px: 1.5,
   border: 0,
   borderRadius: 2,
-  bgcolor: "#1a1a24",
-  color: "#a5b4fc",
+  bgcolor: "background.elevated",
+  color: "app.accent.secondaryPale",
   font: "inherit",
   fontWeight: 800,
   cursor: "pointer",

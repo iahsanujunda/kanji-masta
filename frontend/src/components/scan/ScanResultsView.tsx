@@ -77,25 +77,25 @@ export default function ScanResultsView({ sessionId, kanji }: ScanResultsViewPro
         {kanji.map((item) => {
           const selected = selections[item.character];
           return (
-            <Paper key={item.character} variant="outlined" sx={{ borderRadius: 4, p: 2.5, position: "relative", overflow: "hidden", bgcolor: "#0f0f16" }}>
+            <Paper key={item.character} variant="outlined" sx={{ borderRadius: 4, p: 2.5, position: "relative", overflow: "hidden", bgcolor: "background.paper" }}>
               {item.recommended && (
-                <Box sx={{ position: "absolute", top: 0, right: 0, px: 1.5, py: 0.5, bgcolor: "#4338ca", display: "flex", alignItems: "center", gap: 0.5, borderBottomLeftRadius: 12 }}>
+                <Box sx={{ position: "absolute", top: 0, right: 0, px: 1.5, py: 0.5, bgcolor: "secondary.main", display: "flex", alignItems: "center", gap: 0.5, borderBottomLeftRadius: 12 }}>
                   <StarIcon sx={{ fontSize: 13 }} />
                   <Typography variant="caption" fontWeight={700}>Recommended</Typography>
                 </Box>
               )}
               <Box sx={{ display: "flex", gap: 2, alignItems: "center", mb: 2.5, pt: item.recommended ? 1 : 0 }}>
-                <Box sx={{ width: 72, height: 72, flexShrink: 0, display: "grid", placeItems: "center", bgcolor: "#0a0a0f", border: "1px solid #1a1a24", borderRadius: 3 }}>
+                <Box sx={{ width: 72, height: 72, flexShrink: 0, display: "grid", placeItems: "center", bgcolor: "background.sunken", border: "1px solid", borderColor: "app.border.default", borderRadius: 3 }}>
                   <Typography sx={{ fontSize: 42 }}>{item.character}</Typography>
                 </Box>
                 <Box sx={{ minWidth: 0 }}>
-                  <Typography variant="caption" sx={{ color: "#818cf8", fontWeight: 700, letterSpacing: 1.5 }}>{item.onyomi.join("、")}</Typography>
+                  <Typography variant="caption" sx={{ color: "secondary.light", fontWeight: 700, letterSpacing: 1.5 }}>{item.onyomi.join("、")}</Typography>
                   <Typography variant="h6" fontWeight={700}>{item.meanings[0] ?? ""}</Typography>
                   {item.whyUseful && <Typography variant="body2" color="text.secondary">{item.whyUseful}</Typography>}
                 </Box>
               </Box>
               {item.exampleWords[0] && (
-                <Box sx={{ p: 1.5, mb: 2, bgcolor: "#0a0a0f", borderRadius: 2 }}>
+                <Box sx={{ p: 1.5, mb: 2, bgcolor: "background.sunken", borderRadius: 2 }}>
                   <Typography variant="body2">
                     {item.exampleWords[0].word} · {item.exampleWords[0].reading}
                   </Typography>
@@ -107,7 +107,7 @@ export default function ScanResultsView({ sessionId, kanji }: ScanResultsViewPro
                   onClick={() => toggle(item.character, "familiar")}
                   startIcon={<CheckIcon />}
                   aria-pressed={selected === "familiar"}
-                  sx={{ minHeight: 48, color: selected === "familiar" ? "#34d399" : "text.secondary", border: "1px solid", borderColor: selected === "familiar" ? "rgba(16,185,129,.45)" : "#1a1a24", bgcolor: selected === "familiar" ? "rgba(16,185,129,.12)" : "transparent" }}
+                  sx={{ minHeight: 48, color: selected === "familiar" ? "primary.light" : "text.secondary", border: "1px solid", borderColor: selected === "familiar" ? "app.tone.primary.strongBorder" : "background.elevated", bgcolor: selected === "familiar" ? "app.tone.primary.subtle" : "transparent" }}
                 >
                   Already know
                 </Button>
@@ -115,7 +115,7 @@ export default function ScanResultsView({ sessionId, kanji }: ScanResultsViewPro
                   onClick={() => toggle(item.character, "learning")}
                   startIcon={<StarOutlineIcon />}
                   aria-pressed={selected === "learning"}
-                  sx={{ minHeight: 48, color: selected === "learning" ? "white" : "text.secondary", border: "1px solid", borderColor: selected === "learning" ? "#818cf8" : "#1a1a24", bgcolor: selected === "learning" ? "#4338ca" : "transparent" }}
+                  sx={{ minHeight: 48, color: selected === "learning" ? "white" : "text.secondary", border: "1px solid", borderColor: selected === "learning" ? "secondary.light" : "background.elevated", bgcolor: selected === "learning" ? "secondary.main" : "transparent" }}
                 >
                   Learn
                 </Button>
@@ -124,12 +124,12 @@ export default function ScanResultsView({ sessionId, kanji }: ScanResultsViewPro
           );
         })}
       </Box>
-      <Box sx={{ position: "fixed", bottom: 0, left: 0, right: 0, display: "flex", justifyContent: "center", pb: "max(24px, env(safe-area-inset-bottom))", pt: 5, background: "linear-gradient(transparent, #050508 40%)", pointerEvents: "none" }}>
+      <Box sx={{ position: "fixed", bottom: 0, left: 0, right: 0, display: "flex", justifyContent: "center", pb: "max(24px, env(safe-area-inset-bottom))", pt: 5, background: (theme) => `linear-gradient(transparent, ${theme.palette.background.default} 40%)`, pointerEvents: "none" }}>
         <Button
           variant="contained"
           disabled={saving}
           onClick={() => void save()}
-          sx={{ pointerEvents: "auto", width: "calc(100% - 48px)", maxWidth: 432, minHeight: 52, borderRadius: 8, bgcolor: "#10b981", color: "#050508", fontWeight: 700, "&:hover": { bgcolor: "#34d399" } }}
+          sx={{ pointerEvents: "auto", width: "calc(100% - 48px)", maxWidth: 432, minHeight: 52, borderRadius: 8, bgcolor: "primary.main", color: "background.default", fontWeight: 700, "&:hover": { bgcolor: "primary.light" } }}
         >
           {saving ? "Saving…" : "Done"}
         </Button>

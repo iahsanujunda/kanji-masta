@@ -8,8 +8,8 @@ interface Props {
 
 export default function FamiliarityDots({ value, color, size = 6 }: Props) {
   const mastered = value === 5;
-  const filledColor = color ?? (mastered ? "#34d399" : "#818cf8");
-  const glowSx = mastered && !color ? { boxShadow: "0 0 8px rgba(52,211,153,0.8)" } : {};
+  const filledColor = color ?? (mastered ? "primary.light" : "secondary.light");
+  const glowSx = mastered && !color ? { boxShadow: (theme: import("@mui/material/styles").Theme) => theme.palette.app.shadow.familiarityGlow } : {};
 
   return (
     <Box sx={{ display: "flex", gap: 0.75 }}>

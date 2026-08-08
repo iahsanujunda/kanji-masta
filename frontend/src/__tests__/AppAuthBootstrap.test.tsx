@@ -1,10 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { ThemeProvider } from "@mui/material/styles";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Session } from "@supabase/supabase-js";
 import { AuthProvider } from "@/auth/AuthProvider";
 import { supabase } from "@/lib/supabase";
+import { appTheme } from "@/theme";
 
 vi.mock("@/hooks/useCaptureQueue", () => ({ useCaptureQueue: vi.fn() }));
 vi.mock("@/pages/Home", () => ({ default: () => <h1>Authenticated home</h1> }));
@@ -29,9 +31,11 @@ describe("application auth bootstrap", () => {
 
     render(
       <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <MemoryRouter initialEntries={["/"]}><App /></MemoryRouter>
-        </AuthProvider>
+        <ThemeProvider theme={appTheme}>
+          <AuthProvider>
+            <MemoryRouter initialEntries={["/"]}><App /></MemoryRouter>
+          </AuthProvider>
+        </ThemeProvider>
       </QueryClientProvider>,
     );
 

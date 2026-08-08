@@ -23,7 +23,7 @@ export default function QuizCard({ card, submitting, onAnswer }: { card: Session
       </Box>
 
       <Box sx={{ width: "100%", maxWidth: 360, mx: "auto", display: "flex", flexDirection: "column", gap: 1.5 }}>
-        {submitting && <Typography variant="caption" role="status" sx={{ color: "#818cf8", textAlign: "center" }}>Saving your answer…</Typography>}
+        {submitting && <Typography variant="caption" role="status" sx={{ color: "secondary.light", textAlign: "center" }}>Saving your answer…</Typography>}
         {freeText ? (
           <>
             <TextField
@@ -34,13 +34,13 @@ export default function QuizCard({ card, submitting, onAnswer }: { card: Session
               placeholder="Type your answer"
               autoFocus
               fullWidth
-              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 3, bgcolor: "#0f0f16" }, "& input": { textAlign: "center" } }}
+              sx={{ "& .MuiOutlinedInput-root": { borderRadius: 3, bgcolor: "background.paper" }, "& input": { textAlign: "center" } }}
             />
             <Button
               variant="contained"
               disabled={!input.trim() || submitting}
               onClick={() => onAnswer(input)}
-              sx={{ minHeight: 50, borderRadius: 3, bgcolor: "#4338ca", fontWeight: 700, "&:hover": { bgcolor: "#4f46e5" } }}
+              sx={{ minHeight: 50, borderRadius: 3, bgcolor: "secondary.main", fontWeight: 700, "&:hover": { bgcolor: "app.accent.secondaryHover" } }}
             >
               Check
             </Button>
@@ -51,7 +51,7 @@ export default function QuizCard({ card, submitting, onAnswer }: { card: Session
             fullWidth
             disabled={submitting}
             onClick={() => onAnswer(option)}
-            sx={{ minHeight: 50, borderRadius: 3, px: 2, bgcolor: "#1a1a24", color: "grey.100", border: "1px solid rgba(255,255,255,0.05)", textTransform: "none", fontSize: "1rem", "&:hover": { bgcolor: "#252534", borderColor: "rgba(129,140,248,0.45)" } }}
+            sx={{ minHeight: 50, borderRadius: 3, px: 2, bgcolor: "background.elevated", color: "grey.100", border: "1px solid", borderColor: "app.border.subtle", textTransform: "none", fontSize: "1rem", "&:hover": { bgcolor: "app.surface.interactive", borderColor: "app.tone.secondary.strongBorder" } }}
           >
             {option}
           </Button>
@@ -67,7 +67,7 @@ function HighlightedPrompt({ prompt, target }: { prompt: string; target: string 
   return (
     <Typography sx={{ fontSize: "1.25rem", lineHeight: 2, px: 1 }}>
       {parts[0]}
-      <Box component="span" sx={{ color: "#a5b4fc", fontWeight: 800, borderBottom: "2px solid #4338ca", mx: 0.5 }}>{target}</Box>
+      <Box component="span" sx={{ color: "app.accent.secondaryPale", fontWeight: 800, borderBottom: "2px solid", borderColor: "secondary.main", mx: 0.5 }}>{target}</Box>
       {parts[1]}
     </Typography>
   );

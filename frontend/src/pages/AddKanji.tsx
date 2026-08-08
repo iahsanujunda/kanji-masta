@@ -132,7 +132,7 @@ function CurriculumHub({ onSelect }: { onSelect: (jlpt: number) => void }) {
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                     <Box
                       sx={{
-                        bgcolor: "rgba(255,255,255,0.06)",
+                        bgcolor: "app.overlay.faint",
                         px: 1.5,
                         py: 0.5,
                         borderRadius: 2,
@@ -156,7 +156,7 @@ function CurriculumHub({ onSelect }: { onSelect: (jlpt: number) => void }) {
                     bgcolor: "grey.800",
                     "& .MuiLinearProgress-bar": {
                       borderRadius: 3,
-                      bgcolor: c.jlpt >= 4 ? "#818cf8" : "#10b981",
+                      bgcolor: c.jlpt >= 4 ? "secondary.light" : "primary.main",
                     },
                   }}
                 />
@@ -280,8 +280,8 @@ function CurriculumDetail({
       <Box sx={{ px: 3, mb: 2, display: "flex", justifyContent: "flex-end", gap: 2 }}>
         {[
           { label: "New", sx: { width: 10, height: 10, borderRadius: "50%", border: "2px dotted", borderColor: "grey.500" } },
-          { label: "Growing", sx: { width: 10, height: 10, borderRadius: "50%", bgcolor: "rgba(99,102,241,0.2)", border: "1px solid rgba(99,102,241,0.5)" } },
-          { label: "Mastered", sx: { width: 10, height: 10, borderRadius: "50%", bgcolor: "#34d399", border: "2px solid #10b981", boxShadow: "0 0 8px rgba(52,211,153,0.8)" } },
+          { label: "Growing", sx: { width: 10, height: 10, borderRadius: "50%", bgcolor: "app.tone.secondary.soft", border: "1px solid", borderColor: "app.tone.secondary.strongBorder" } },
+          { label: "Mastered", sx: { width: 10, height: 10, borderRadius: "50%", bgcolor: "primary.light", border: "2px solid", borderColor: "primary.main", boxShadow: (theme: import("@mui/material/styles").Theme) => theme.palette.app.shadow.familiarityGlow } },
         ].map(({ label, sx }) => (
           <Box key={label} sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
             <Box sx={sx} />
@@ -337,7 +337,7 @@ function CurriculumDetail({
           {/* Backdrop */}
           <Box
             onClick={() => setSelectedKanji(null)}
-            sx={{ position: "absolute", inset: 0, bgcolor: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+            sx={{ position: "absolute", inset: 0, bgcolor: "app.overlay.scrim", backdropFilter: "blur(4px)" }}
           />
 
           {/* Sheet content */}
@@ -347,13 +347,13 @@ function CurriculumDetail({
               zIndex: 1,
               width: "100%",
               maxWidth: 480,
-              bgcolor: "#0f0f16",
+              bgcolor: "background.paper",
               borderTop: "1px solid",
               borderColor: "grey.800",
               borderRadius: "24px 24px 0 0",
               p: 3,
               pb: 5,
-              boxShadow: "0 -20px 50px rgba(0,0,0,0.5)",
+              boxShadow: (theme) => theme.palette.app.shadow.sheet,
             }}
           >
             {/* Handle */}
@@ -396,10 +396,10 @@ function CurriculumDetail({
                   borderRadius: 3,
                   fontWeight: 700,
                   bgcolor: "grey.900",
-                  color: "#34d399",
+                  color: "primary.light",
                   border: "2px solid",
-                  borderColor: "rgba(16,185,129,0.25)",
-                  "&:hover": { bgcolor: "rgba(16,185,129,0.1)", borderColor: "rgba(16,185,129,0.5)" },
+                  borderColor: "app.tone.primary.border",
+                  "&:hover": { bgcolor: "app.tone.primary.subtle", borderColor: "app.tone.primary.strongBorder" },
                 }}
               >
                 Already Know
@@ -412,11 +412,12 @@ function CurriculumDetail({
                   py: 2,
                   borderRadius: 3,
                   fontWeight: 700,
-                  bgcolor: "#4338ca",
+                  bgcolor: "secondary.main",
                   color: "white",
-                  border: "2px solid #6366f1",
-                  boxShadow: "0 0 20px rgba(79,70,229,0.3)",
-                  "&:hover": { bgcolor: "#4f46e5" },
+                  border: "2px solid",
+                  borderColor: "app.accent.secondaryBorder",
+                  boxShadow: (theme) => theme.palette.app.shadow.secondarySoft,
+                  "&:hover": { bgcolor: "app.accent.secondaryHover" },
                 }}
               >
                 Want to Learn
@@ -435,7 +436,7 @@ function CurriculumDetail({
             px: 3,
             pb: 4,
             pt: 2,
-            background: "linear-gradient(transparent, #050508 40%)",
+            background: (theme) => `linear-gradient(transparent, ${theme.palette.background.default} 40%)`,
             zIndex: 10,
           }}
         >
@@ -446,13 +447,13 @@ function CurriculumDetail({
             disabled={!selectedIds.size || submitting}
             onClick={handleBatchSubmit}
             sx={{
-              bgcolor: "#10b981",
+              bgcolor: "primary.main",
               color: "black",
               fontWeight: 700,
               py: 1.5,
               borderRadius: 3,
-              boxShadow: selectedIds.size ? "0 0 30px rgba(16,185,129,0.3)" : "none",
-              "&:hover": { bgcolor: "#34d399" },
+              boxShadow: selectedIds.size ? (theme) => theme.palette.app.shadow.primaryGlow : "none",
+              "&:hover": { bgcolor: "primary.light" },
               "&.Mui-disabled": { bgcolor: "grey.800", color: "grey.600" },
             }}
           >
@@ -512,28 +513,31 @@ function KanjiCell({
           borderColor: atCap && batchMode ? "grey.800" : "grey.500",
           color: atCap && batchMode ? "grey.700" : "grey.500",
           ...(tappable && {
-            "&:hover": { bgcolor: "rgba(255,255,255,0.04)", color: "grey.300", borderColor: "grey.400" },
+            "&:hover": { bgcolor: "app.overlay.faint", color: "grey.300", borderColor: "grey.400" },
             "&:active": { transform: "scale(0.95)" },
           }),
         }),
         ...(isNew && batchMode && selected && {
-          bgcolor: "rgba(16,185,129,0.15)",
-          border: "2px solid #10b981",
-          color: "#34d399",
-          boxShadow: "0 0 15px rgba(16,185,129,0.2)",
+          bgcolor: "app.tone.primary.soft",
+          border: "2px solid",
+          borderColor: "primary.main",
+          color: "primary.light",
+          boxShadow: (theme) => theme.palette.app.shadow.primarySmall,
           "&:active": { transform: "scale(0.95)" },
         }),
         ...(isLearning && {
-          bgcolor: "rgba(99,102,241,0.1)",
-          border: "1px solid rgba(99,102,241,0.5)",
-          color: "#a5b4fc",
-          boxShadow: "inset 0 0 15px rgba(99,102,241,0.2)",
+          bgcolor: "app.tone.secondary.faint",
+          border: "1px solid",
+          borderColor: "app.tone.secondary.strongBorder",
+          color: "app.accent.secondaryPale",
+          boxShadow: (theme) => theme.palette.app.shadow.secondaryInset,
         }),
         ...(isMastered && {
-          bgcolor: "rgba(16,185,129,0.1)",
-          border: "2px solid rgba(16,185,129,0.8)",
-          color: "#34d399",
-          boxShadow: "0 0 15px rgba(16,185,129,0.15)",
+          bgcolor: "app.tone.primary.subtle",
+          border: "2px solid",
+          borderColor: "primary.main",
+          color: "primary.light",
+          boxShadow: (theme) => theme.palette.app.shadow.primarySmall,
         }),
       }}
     >
@@ -563,7 +567,7 @@ function KanjiCell({
             right: 4,
             width: 16,
             height: 16,
-            bgcolor: "#10b981",
+            bgcolor: "primary.main",
             borderRadius: "50%",
             display: "flex",
             alignItems: "center",

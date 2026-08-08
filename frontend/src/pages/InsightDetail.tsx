@@ -168,7 +168,7 @@ function BirthDateGate({
         fullWidth variant="contained" size="large"
         onClick={onSave}
         disabled={saving || !birthInput}
-        sx={{ bgcolor: "#10b981", color: "black", fontWeight: 700, py: 1.75, borderRadius: 3, "&:hover": { bgcolor: "#34d399" }, "&.Mui-disabled": { bgcolor: "grey.800", color: "grey.600" } }}
+        sx={{ bgcolor: "primary.main", color: "black", fontWeight: 700, py: 1.75, borderRadius: 3, "&:hover": { bgcolor: "primary.light" }, "&.Mui-disabled": { bgcolor: "grey.800", color: "grey.600" } }}
       >
         {saving ? "Saving..." : "Continue"}
       </Button>
@@ -215,7 +215,7 @@ function InteractiveLesson1({ onComplete, isCompleted }: { onComplete: () => voi
             sx={{
               width: "100%",
               aspectRatio: "4/3",
-              bgcolor: "#0f0f16",
+              bgcolor: "background.paper",
               border: "1px solid",
               borderColor: "grey.800",
               borderRadius: 5,
@@ -230,7 +230,7 @@ function InteractiveLesson1({ onComplete, isCompleted }: { onComplete: () => voi
               p: 0,
             }}
           >
-            <Box sx={{ position: "absolute", top: 16, right: 16, color: hasFlippedOnce ? "text.disabled" : "#10b981" }}>
+            <Box sx={{ position: "absolute", top: 16, right: 16, color: hasFlippedOnce ? "text.disabled" : "primary.main" }}>
               <ReplayIcon sx={{ fontSize: 22, ...(hasFlippedOnce ? {} : { "@keyframes pulse": { "0%,100%": { opacity: 1 }, "50%": { opacity: 0.4 } }, animation: "pulse 2s ease-in-out infinite" }) }} />
             </Box>
             <Typography
@@ -245,7 +245,7 @@ function InteractiveLesson1({ onComplete, isCompleted }: { onComplete: () => voi
             </Typography>
             <Typography
               sx={{
-                fontSize: "2rem", fontWeight: 700, color: "#10b981", letterSpacing: 2,
+                fontSize: "2rem", fontWeight: 700, color: "primary.main", letterSpacing: 2,
                 textTransform: "uppercase", position: "absolute",
                 transition: "opacity 0.25s, transform 0.25s",
                 opacity: isFlipped ? 1 : 0,
@@ -260,7 +260,7 @@ function InteractiveLesson1({ onComplete, isCompleted }: { onComplete: () => voi
             <Button
               fullWidth variant="contained" size="large"
               onClick={() => setStep(1)}
-              sx={{ bgcolor: "#4338ca", color: "white", fontWeight: 700, py: 1.75, borderRadius: 3, "&:hover": { bgcolor: "#4f46e5" } }}
+              sx={{ bgcolor: "secondary.main", color: "white", fontWeight: 700, py: 1.75, borderRadius: 3, "&:hover": { bgcolor: "app.accent.secondaryHover" } }}
             >
               I memorized it. Next.
             </Button>
@@ -275,7 +275,7 @@ function InteractiveLesson1({ onComplete, isCompleted }: { onComplete: () => voi
             Three days later, we see this in a quiz. Which one was it again?
           </Typography>
 
-          <Box sx={{ bgcolor: "#0f0f16", border: "1px solid", borderColor: "grey.800", borderRadius: 4, p: 3 }}>
+          <Box sx={{ bgcolor: "background.paper", border: "1px solid", borderColor: "grey.800", borderRadius: 4, p: 3 }}>
             <Typography variant="caption" sx={{ display: "block", textAlign: "center", color: "text.disabled", fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", mb: 1 }}>
               Select Translation
             </Typography>
@@ -290,11 +290,11 @@ function InteractiveLesson1({ onComplete, isCompleted }: { onComplete: () => voi
                 const answered = quizAnswer !== null;
                 const sx = answered
                   ? isCorrect
-                    ? { bgcolor: "rgba(16,185,129,0.15)", borderColor: "#10b981", color: "#34d399" }
+                    ? { bgcolor: "app.tone.primary.soft", borderColor: "primary.main", color: "primary.light" }
                     : isPicked
-                    ? { bgcolor: "rgba(239,68,68,0.15)", borderColor: "#ef4444", color: "#f87171" }
-                    : { bgcolor: "#0a0a0f", borderColor: "grey.900", color: "grey.700", opacity: 0.5 }
-                  : { bgcolor: "grey.900", borderColor: "grey.700", color: "text.primary", "&:hover": { bgcolor: "rgba(255,255,255,0.06)" } };
+                    ? { bgcolor: "app.tone.error.soft", borderColor: "error.main", color: "error.light" }
+                    : { bgcolor: "background.sunken", borderColor: "grey.900", color: "grey.700", opacity: 0.5 }
+                  : { bgcolor: "grey.900", borderColor: "grey.700", color: "text.primary", "&:hover": { bgcolor: "app.overlay.faint" } };
 
                 return (
                   <Box
@@ -321,7 +321,7 @@ function InteractiveLesson1({ onComplete, isCompleted }: { onComplete: () => voi
             <Button
               fullWidth variant="contained" size="large"
               onClick={() => setStep(2)}
-              sx={{ bgcolor: "#4338ca", color: "white", fontWeight: 700, py: 1.75, borderRadius: 3, "&:hover": { bgcolor: "#4f46e5" } }}
+              sx={{ bgcolor: "secondary.main", color: "white", fontWeight: 700, py: 1.75, borderRadius: 3, "&:hover": { bgcolor: "app.accent.secondaryHover" } }}
             >
               Why was that hard?
             </Button>
@@ -339,7 +339,7 @@ function InteractiveLesson1({ onComplete, isCompleted }: { onComplete: () => voi
           </Typography>
           <Typography variant="body1" sx={{ color: "text.secondary", lineHeight: 1.8 }}>
             To create a permanent memory, the brain needs a{" "}
-            <Box component="span" sx={{ color: "#10b981", fontWeight: 700 }}>Phonological Anchor</Box>
+            <Box component="span" sx={{ color: "primary.main", fontWeight: 700 }}>Phonological Anchor</Box>
             {" "}— it needs to know how a character sounds inside a real word.
           </Typography>
 
@@ -350,15 +350,15 @@ function InteractiveLesson1({ onComplete, isCompleted }: { onComplete: () => voi
             ].map(({ label, word, reading, meaning, highlight }) => (
               <Box
                 key={label}
-                sx={{ bgcolor: "rgba(67,56,202,0.1)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 3, p: 2.5, display: "flex", alignItems: "center", justifyContent: "space-between" }}
+                sx={{ bgcolor: "app.tone.secondary.faint", border: "1px solid", borderColor: "app.tone.secondary.border", borderRadius: 3, p: 2.5, display: "flex", alignItems: "center", justifyContent: "space-between" }}
               >
                 <Box>
-                  <Typography variant="caption" sx={{ color: "#818cf8", fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", display: "block", mb: 0.5 }}>
+                  <Typography variant="caption" sx={{ color: "secondary.light", fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", display: "block", mb: 0.5 }}>
                     {label}
                   </Typography>
                   <Typography sx={{ fontSize: "2rem", fontWeight: 700, lineHeight: 1 }}>
                     {word.map((char, i) => (
-                      <Box key={i} component="span" sx={{ color: i === highlight ? "#818cf8" : "text.primary" }}>{char}</Box>
+                      <Box key={i} component="span" sx={{ color: i === highlight ? "secondary.light" : "text.primary" }}>{char}</Box>
                     ))}
                   </Typography>
                 </Box>
@@ -385,7 +385,7 @@ function InteractiveLesson1({ onComplete, isCompleted }: { onComplete: () => voi
               py: 2, borderRadius: 3, fontWeight: 700, mt: 1,
               ...(isCompleted
                 ? { bgcolor: "grey.800", color: "grey.500", border: "1px solid", borderColor: "grey.700", "&:hover": { bgcolor: "grey.800" } }
-                : { bgcolor: "#10b981", color: "black", "&:hover": { bgcolor: "#34d399" }, boxShadow: "0 0 30px rgba(16,185,129,0.3)" }
+                : { bgcolor: "primary.main", color: "primary.contrastText", "&:hover": { bgcolor: "primary.light" }, boxShadow: (theme) => theme.palette.app.shadow.primaryGlow }
               ),
             }}
           >
@@ -450,7 +450,7 @@ function InteractiveLesson2({ onComplete, isCompleted, birthDate }: { onComplete
             component="button"
             onClick={() => setStep(1)}
             sx={{
-              width: "100%", bgcolor: "#0a0a0f", border: "1px solid", borderColor: "grey.800",
+              width: "100%", bgcolor: "background.sunken", border: "1px solid", borderColor: "grey.800",
               borderRadius: 4, p: 3, cursor: "pointer", position: "relative",
               "&:hover .kanji-grid": { opacity: 0.3 },
               "&:hover .escape-hint": { opacity: 1, transform: "translateY(0)" },
@@ -461,7 +461,7 @@ function InteractiveLesson2({ onComplete, isCompleted, birthDate }: { onComplete
           >
             <Box className="kanji-grid" sx={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 1.5, opacity: 0.6, transition: "opacity 0.3s" }}>
               {N5_KANJI.map((k, i) => (
-                <Box key={i} sx={{ aspectRatio: "1", bgcolor: "#1a1a24", border: "1px solid", borderColor: "grey.800", borderRadius: 2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.2rem", color: "grey.500" }}>
+                <Box key={i} sx={{ aspectRatio: "1", bgcolor: "background.elevated", border: "1px solid", borderColor: "grey.800", borderRadius: 2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.2rem", color: "grey.500" }}>
                   {k}
                 </Box>
               ))}
@@ -470,11 +470,11 @@ function InteractiveLesson2({ onComplete, isCompleted, birthDate }: { onComplete
               className="escape-hint"
               sx={{
                 position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                bgcolor: "rgba(0,0,0,0.2)", borderRadius: 4,
+                bgcolor: "app.overlay.darkSoft", borderRadius: 4,
                 opacity: 0, transition: "opacity 0.3s, transform 0.3s", transform: "translateY(8px)",
               }}
             >
-              <Box sx={{ bgcolor: "white", color: "black", fontWeight: 700, px: 2.5, py: 1.25, borderRadius: 99, display: "flex", alignItems: "center", gap: 1, boxShadow: "0 0 30px rgba(255,255,255,0.3)" }}>
+              <Box sx={{ bgcolor: "white", color: "black", fontWeight: 700, px: 2.5, py: 1.25, borderRadius: 99, display: "flex", alignItems: "center", gap: 1, boxShadow: (theme) => theme.palette.app.shadow.lightGlow }}>
                 Tap to escape <ChevronRightIcon sx={{ fontSize: 18 }} />
               </Box>
             </Box>
@@ -487,11 +487,11 @@ function InteractiveLesson2({ onComplete, isCompleted, birthDate }: { onComplete
         <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
           <Typography variant="body1" sx={{ color: "text.secondary", lineHeight: 1.8 }}>
             But encountering a word organically while trying to read a menu or navigate a train station is called{" "}
-            <Box component="span" sx={{ color: "#f97316", fontWeight: 700 }}>Incidental Learning</Box>.
+            <Box component="span" sx={{ color: "app.accent.warning", fontWeight: 700 }}>Incidental Learning</Box>.
           </Typography>
 
-          <Box sx={{ p: 2.5, borderRadius: 3, bgcolor: "rgba(249,115,22,0.1)", borderLeft: "4px solid #f97316" }}>
-            <Typography variant="body1" sx={{ color: "#fed7aa", lineHeight: 1.7 }}>
+          <Box sx={{ p: 2.5, borderRadius: 3, bgcolor: "app.tone.warning.subtle", borderLeft: "4px solid", borderColor: "app.accent.warning" }}>
+            <Typography variant="body1" sx={{ color: "app.accent.warningPale", lineHeight: 1.7 }}>
               Research shows that Incidental Learning creates much stronger, longer-lasting memories because the brain ties the vocabulary to a physical, emotional event.
             </Typography>
           </Box>
@@ -499,7 +499,7 @@ function InteractiveLesson2({ onComplete, isCompleted, birthDate }: { onComplete
           <Button
             fullWidth variant="contained" size="large"
             onClick={() => setStep(2)}
-            sx={{ bgcolor: "#f97316", color: "white", fontWeight: 700, py: 1.75, borderRadius: 3, "&:hover": { bgcolor: "#fb923c" } }}
+            sx={{ bgcolor: "app.accent.warning", color: "white", fontWeight: 700, py: 1.75, borderRadius: 3, "&:hover": { bgcolor: "app.accent.warningLight" } }}
           >
             See How
           </Button>
@@ -520,7 +520,7 @@ function InteractiveLesson2({ onComplete, isCompleted, birthDate }: { onComplete
                 fullWidth variant="outlined"
                 onClick={() => handleReveal(0)}
                 endIcon={<CameraAltIcon />}
-                sx={{ py: 1.75, borderRadius: 3, borderColor: "grey.700", color: "text.secondary", justifyContent: "space-between", fontWeight: 700, "&:hover": { borderColor: "grey.500", bgcolor: "rgba(255,255,255,0.04)" } }}
+                sx={{ py: 1.75, borderRadius: 3, borderColor: "grey.700", color: "text.secondary", justifyContent: "space-between", fontWeight: 700, "&:hover": { borderColor: "grey.500", bgcolor: "app.overlay.faint" } }}
               >
                 Nakano (Station)
               </Button>
@@ -539,15 +539,15 @@ function InteractiveLesson2({ onComplete, isCompleted, birthDate }: { onComplete
                 fullWidth variant="outlined"
                 onClick={() => handleReveal(1)}
                 endIcon={<CameraAltIcon />}
-                sx={{ py: 1.75, borderRadius: 3, borderColor: "grey.700", color: "text.secondary", justifyContent: "space-between", fontWeight: 700, "&:hover": { borderColor: "grey.500", bgcolor: "rgba(255,255,255,0.04)" } }}
+                sx={{ py: 1.75, borderRadius: 3, borderColor: "grey.700", color: "text.secondary", justifyContent: "space-between", fontWeight: 700, "&:hover": { borderColor: "grey.500", bgcolor: "app.overlay.faint" } }}
               >
                 Your Birth Month
               </Button>
             ) : (
               <Box
-                sx={{ bgcolor: "#0f0f16", borderRadius: 3, border: "1px solid", borderColor: "grey.800", height: 160, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", animation: "zoomIn 0.3s ease-out", "@keyframes zoomIn": { from: { opacity: 0, transform: "scale(0.95)" }, to: { opacity: 1, transform: "scale(1)" } } }}
+                sx={{ bgcolor: "background.paper", borderRadius: 3, border: "1px solid", borderColor: "grey.800", height: 160, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", animation: "zoomIn 0.3s ease-out", "@keyframes zoomIn": { from: { opacity: 0, transform: "scale(0.95)" }, to: { opacity: 1, transform: "scale(1)" } } }}
               >
-                <Typography sx={{ fontSize: "3rem", fontWeight: 900, color: "#ef4444", letterSpacing: 2 }}>
+                <Typography sx={{ fontSize: "3rem", fontWeight: 900, color: "error.main", letterSpacing: 2 }}>
                   {monthKanji}月
                 </Typography>
                 <Typography variant="caption" sx={{ color: "text.disabled", mt: 1 }}>
@@ -577,7 +577,7 @@ function InteractiveLesson2({ onComplete, isCompleted, birthDate }: { onComplete
               py: 2, borderRadius: 3, fontWeight: 700, mt: 1,
               ...(isCompleted
                 ? { bgcolor: "grey.800", color: "grey.500", border: "1px solid", borderColor: "grey.700", "&:hover": { bgcolor: "grey.800" } }
-                : { bgcolor: "#10b981", color: "black", "&:hover": { bgcolor: "#34d399" }, boxShadow: "0 0 30px rgba(16,185,129,0.3)" }
+                : { bgcolor: "primary.main", color: "primary.contrastText", "&:hover": { bgcolor: "primary.light" }, boxShadow: (theme) => theme.palette.app.shadow.primaryGlow }
               ),
             }}
           >

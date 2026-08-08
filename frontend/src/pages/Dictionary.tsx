@@ -2,6 +2,7 @@ import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Alert, Box, Chip, InputAdornment, Paper, Skeleton, TextField, Typography } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
 import SearchIcon from "@mui/icons-material/Search";
 import ClearIcon from "@mui/icons-material/Clear";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
@@ -79,13 +80,13 @@ export default function Dictionary() {
             startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: "grey.500" }} /></InputAdornment>,
             endAdornment: query ? <InputAdornment position="end"><ClearIcon role="button" aria-label="Clear search" onClick={() => setQuery("")} sx={{ color: "grey.500", fontSize: 19, cursor: "pointer" }} /></InputAdornment> : null,
           } }}
-          sx={{ "& .MuiOutlinedInput-root": { borderRadius: 3, bgcolor: "#0f0f16" } }}
+          sx={{ "& .MuiOutlinedInput-root": { borderRadius: 3, bgcolor: "background.paper" } }}
         />
       </Box>
       <Box sx={{ px: 3, mb: 2.5, display: "flex", gap: 1, overflowX: "auto", scrollbarWidth: "none", "&::-webkit-scrollbar": { display: "none" } }}>
         {filters.map((filter) => (
           <Chip key={filter.value} label={filter.label} clickable onClick={() => setState(filter.value)}
-            sx={{ flexShrink: 0, bgcolor: state === filter.value ? "#4338ca" : "#1a1a24", color: state === filter.value ? "white" : "grey.400", fontWeight: 700 }} />
+            sx={{ flexShrink: 0, bgcolor: state === filter.value ? "secondary.main" : "background.elevated", color: state === filter.value ? "white" : "grey.400", fontWeight: 700 }} />
         ))}
       </Box>
       <Box sx={{ flex: 1, px: 3, pb: 4, display: "flex", flexDirection: "column", gap: 1.5 }}>
@@ -102,9 +103,10 @@ export default function Dictionary() {
 }
 
 function WordCard({ word, onOpen }: { word: WordListItem; onOpen: () => void }) {
-  const accent = word.learningState === "MASTERED" ? "#10b981" : word.learningState === "WAITING_TO_REVISIT" ? "#a78bfa" : word.learningState === "WAITING_TO_LEARN" ? "#818cf8" : "#4338ca";
+  const theme = useTheme();
+  const accent = word.learningState === "MASTERED" ? theme.palette.primary.main : word.learningState === "WAITING_TO_REVISIT" ? theme.palette.app.accent.purple : word.learningState === "WAITING_TO_LEARN" ? theme.palette.secondary.light : theme.palette.secondary.main;
   return (
-    <Paper component="button" type="button" onClick={onOpen} variant="outlined" sx={{ width: "100%", borderRadius: 3, p: 2, display: "flex", alignItems: "center", textAlign: "left", color: "inherit", bgcolor: "#0f0f16", borderColor: `${accent}33`, cursor: "pointer", position: "relative", overflow: "hidden", "&:hover": { bgcolor: "#15151e", borderColor: `${accent}70` }, "&:focus-visible": { outline: `2px solid ${accent}`, outlineOffset: 2 } }}>
+    <Paper component="button" type="button" onClick={onOpen} variant="outlined" sx={{ width: "100%", borderRadius: 3, p: 2, display: "flex", alignItems: "center", textAlign: "left", color: "inherit", bgcolor: "background.paper", borderColor: alpha(accent, 0.2), cursor: "pointer", position: "relative", overflow: "hidden", "&:hover": { bgcolor: "background.hover", borderColor: alpha(accent, 0.44) }, "&:focus-visible": { outline: `2px solid ${accent}`, outlineOffset: 2 } }}>
       <Box sx={{ position: "absolute", inset: "0 auto 0 0", width: 3, bgcolor: accent }} />
       <Box sx={{ minWidth: 0, flex: 1, pl: 0.5 }}>
         <Box sx={{ display: "flex", alignItems: "baseline", gap: 1.25 }}><Typography fontWeight={800} sx={{ fontSize: "1.12rem" }}>{word.word}</Typography><Typography variant="body2" color="text.secondary">{word.reading}</Typography></Box>

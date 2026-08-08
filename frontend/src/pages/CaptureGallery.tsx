@@ -56,7 +56,7 @@ export default function CaptureGallery() {
         variant="scrollable"
         scrollButtons={false}
         aria-label="Sort captures"
-        sx={{ px: 2, minHeight: 48, borderBottom: "1px solid #1a1a24", "& .MuiTab-root": { minHeight: 48, minWidth: "auto", px: 1.5, textTransform: "none", fontWeight: 700 } }}
+        sx={{ px: 2, minHeight: 48, borderBottom: "1px solid", borderColor: "app.border.default", "& .MuiTab-root": { minHeight: 48, minWidth: "auto", px: 1.5, textTransform: "none", fontWeight: 700 } }}
       >
         {(Object.keys(tabLabels) as CaptureSort[]).map((key) => {
           const active = key === sort;
@@ -87,7 +87,7 @@ export default function CaptureGallery() {
           </Box>
         ) : query.data?.captures.length === 0 ? (
           <Box sx={{ py: 8, px: 3, textAlign: "center" }}>
-            <Box sx={{ width: 72, height: 72, borderRadius: "50%", display: "grid", placeItems: "center", mx: "auto", mb: 2, bgcolor: "rgba(129,140,248,.10)", color: "#818cf8" }}>
+            <Box sx={{ width: 72, height: 72, borderRadius: "50%", display: "grid", placeItems: "center", mx: "auto", mb: 2, bgcolor: "app.tone.secondary.faint", color: "secondary.light" }}>
               <CollectionsOutlinedIcon sx={{ fontSize: 34 }} />
             </Box>
             <Typography variant="h6" fontWeight={800}>Your captures will live here</Typography>
@@ -116,18 +116,18 @@ function CaptureCard({ capture, onOpen }: { capture: CaptureSummary; onOpen: () 
       type="button"
       onClick={onOpen}
       variant="outlined"
-      sx={{ width: "100%", p: 1.5, borderRadius: 3.5, bgcolor: "#0f0f16", borderColor: "#1a1a24", color: "inherit", display: "flex", gap: 1.5, alignItems: "center", textAlign: "left", cursor: "pointer", minHeight: 104, "&:hover": { bgcolor: "#14141d", borderColor: "#2a2a38" }, "&:focus-visible": { outline: "2px solid #818cf8", outlineOffset: 2 } }}
+      sx={{ width: "100%", p: 1.5, borderRadius: 3.5, bgcolor: "background.paper", borderColor: "app.border.default", color: "inherit", display: "flex", gap: 1.5, alignItems: "center", textAlign: "left", cursor: "pointer", minHeight: 104, "&:hover": { bgcolor: "app.surface.hoverSubtle", borderColor: "app.border.strong" }, "&:focus-visible": { outline: (theme) => `2px solid ${theme.palette.secondary.light}`, outlineOffset: 2 } }}
     >
-      <Box component="img" src={photo} alt="" loading="lazy" sx={{ width: 76, height: 76, objectFit: "cover", borderRadius: 2.5, bgcolor: "#0a0a0f", flexShrink: 0 }} />
+      <Box component="img" src={photo} alt="" loading="lazy" sx={{ width: 76, height: 76, objectFit: "cover", borderRadius: 2.5, bgcolor: "background.sunken", flexShrink: 0 }} />
       <Box sx={{ minWidth: 0, flex: 1 }}>
         <Typography fontWeight={800} sx={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: 1.35 }}>{capture.label}</Typography>
         <Typography variant="caption" color="text.disabled">{date}</Typography>
         <Box sx={{ mt: 1 }}>
           <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1, mb: 0.5 }}>
-            <Typography variant="caption" sx={{ color: capture.coveragePercent === 100 ? "#34d399" : "#a5b4fc", fontWeight: 700 }}>{coverageLabel}</Typography>
+            <Typography variant="caption" sx={{ color: capture.coveragePercent === 100 ? "primary.light" : "app.accent.secondaryPale", fontWeight: 700 }}>{coverageLabel}</Typography>
             {capture.coveragePercent != null && <Typography variant="caption" color="text.disabled">{capture.coveragePercent}%</Typography>}
           </Box>
-          {capture.coveragePercent != null && <LinearProgress variant="determinate" value={capture.coveragePercent} sx={{ height: 4, borderRadius: 2, bgcolor: "#1a1a24", "& .MuiLinearProgress-bar": { bgcolor: capture.coveragePercent === 100 ? "#10b981" : "#4338ca" } }} />}
+          {capture.coveragePercent != null && <LinearProgress variant="determinate" value={capture.coveragePercent} sx={{ height: 4, borderRadius: 2, bgcolor: "background.elevated", "& .MuiLinearProgress-bar": { bgcolor: capture.coveragePercent === 100 ? "primary.main" : "secondary.main" } }} />}
         </Box>
       </Box>
       <ChevronRightIcon sx={{ color: "grey.700", flexShrink: 0 }} />
@@ -139,4 +139,4 @@ function CaptureSkeleton() {
   return <Box sx={{ p: 1.5, display: "flex", gap: 1.5 }}><Skeleton variant="rounded" width={76} height={76} sx={{ borderRadius: 2.5 }} /><Box sx={{ flex: 1 }}><Skeleton width="85%" /><Skeleton width="45%" /><Skeleton width="70%" /></Box></Box>;
 }
 
-const primaryButtonSx = { minHeight: 48, bgcolor: "#10b981", color: "#050508", fontWeight: 800, "&:hover": { bgcolor: "#34d399" } };
+const primaryButtonSx = { minHeight: 48, bgcolor: "primary.main", color: "background.default", fontWeight: 800, "&:hover": { bgcolor: "primary.light" } };

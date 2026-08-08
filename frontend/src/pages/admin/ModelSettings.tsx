@@ -36,11 +36,11 @@ function WorkloadField({
   const model = draft[definition.modelKey];
   const reasoning = draft[definition.reasoningKey];
   return (
-    <Box sx={{ border: "1px solid #292938", borderRadius: 2.5, overflow: "hidden", bgcolor: "#0d0d14" }}>
+    <Box sx={{ border: "1px solid", borderColor: "app.surface.selected", borderRadius: 2.5, overflow: "hidden", bgcolor: "background.sunken" }}>
       <Box sx={{ px: 1.5, pt: 1.25, pb: .5, display: "flex", alignItems: "center", gap: 1 }}>
         <Typography sx={{ color: "grey.100", fontSize: 13, fontWeight: 850 }}>{definition.label}</Typography>
         {definition.requiresImage && (
-          <Typography sx={{ ml: "auto", px: 1, py: .25, borderRadius: 5, border: "1px solid rgba(52,211,153,.28)", color: "#6ee7b7", bgcolor: "rgba(52,211,153,.08)", fontSize: 9, fontWeight: 850, letterSpacing: .7 }}>
+          <Typography sx={{ ml: "auto", px: 1, py: .25, borderRadius: 5, border: "1px solid", borderColor: "app.tone.primary.border", color: "app.accent.primaryPale", bgcolor: "app.tone.primary.faint", fontSize: 9, fontWeight: 850, letterSpacing: .7 }}>
             IMAGE INPUT
           </Typography>
         )}
@@ -55,9 +55,9 @@ function WorkloadField({
           <Typography sx={{ color: "grey.600", fontSize: 9, fontWeight: 800, letterSpacing: .8 }}>MODEL</Typography>
           <Typography noWrap sx={{ fontSize: 12, fontWeight: 700, maxWidth: 285 }}>{model || "Choose model"}</Typography>
         </Box>
-        <Typography sx={{ color: "#818cf8", fontSize: 11 }}>Change</Typography>
+        <Typography sx={{ color: "secondary.light", fontSize: 11 }}>Change</Typography>
       </Button>
-      <Box sx={{ mx: 1.5, borderTop: "1px solid #242431" }} />
+      <Box sx={{ mx: 1.5, borderTop: "1px solid", borderColor: "background.hover" }} />
       <Button
         fullWidth
         disabled={!model}
@@ -67,11 +67,11 @@ function WorkloadField({
       >
         <Box sx={{ textAlign: "left" }}>
           <Typography sx={{ color: "grey.600", fontSize: 9, fontWeight: 800, letterSpacing: .8 }}>REASONING</Typography>
-          <Typography sx={{ color: reasoning ? "#a5b4fc" : "grey.500", fontSize: 12, fontWeight: 800, textTransform: "capitalize" }}>
+          <Typography sx={{ color: reasoning ? "app.accent.secondaryPale" : "grey.500", fontSize: 12, fontWeight: 800, textTransform: "capitalize" }}>
             {reasoning || (model ? "Choose level" : "Choose a model first")}
           </Typography>
         </Box>
-        {model && <Typography sx={{ color: "#818cf8", fontSize: 11 }}>Change</Typography>}
+        {model && <Typography sx={{ color: "secondary.light", fontSize: 11 }}>Change</Typography>}
       </Button>
     </Box>
   );
@@ -162,13 +162,13 @@ export default function ModelSettings() {
   };
 
   return (
-    <Box sx={{ bgcolor: "#0f0f16", border: "1px solid #242431", borderRadius: 3, p: 2, display: "grid", gap: 1.25 }}>
+    <Box sx={{ bgcolor: "background.paper", border: "1px solid", borderColor: "background.hover", borderRadius: 3, p: 2, display: "grid", gap: 1.25 }}>
       <Box>
         <Typography sx={{ color: "white", fontWeight: 850 }}>Model settings</Typography>
         <Typography sx={{ color: "grey.500", fontSize: 12 }}>Model and reasoning are versioned together for new attempts.</Typography>
       </Box>
       {configs.isLoading ? [...Array(4)].map((_, index) => (
-        <Skeleton key={index} variant="rounded" height={118} sx={{ borderRadius: 2, bgcolor: "#1a1a24" }} />
+        <Skeleton key={index} variant="rounded" height={118} sx={{ borderRadius: 2, bgcolor: "background.elevated" }} />
       )) : WORKLOAD_ORDER.map((workload) => (
         <WorkloadField
           key={workload}
@@ -186,15 +186,15 @@ export default function ModelSettings() {
         aria-label="Submit"
         disabled={!isCompleteDraft(draft) || !isChangedDraft(draft, source) || save.isPending}
         onClick={() => save.mutate()}
-        sx={{ minHeight: 48, bgcolor: "#10b981", color: "#050508", textTransform: "none", fontWeight: 900, "&:hover": { bgcolor: "#34d399" }, "&:active": { transform: "translateY(1px)" }, "&.Mui-disabled": { bgcolor: "#1a1a24", color: "grey.600" } }}
+        sx={{ minHeight: 48, bgcolor: "primary.main", color: "background.default", textTransform: "none", fontWeight: 900, "&:hover": { bgcolor: "primary.light" }, "&:active": { transform: "translateY(1px)" }, "&.Mui-disabled": { bgcolor: "background.elevated", color: "grey.600" } }}
       >
         {save.isPending ? <CircularProgress size={20} color="inherit" aria-label="Saving model configuration" /> : "Submit new configuration"}
       </Button>
 
       <AdminBottomDrawer open={drawer?.kind === "model"} title={modelWorkload ? `Choose ${WORKLOADS[modelWorkload].label.toLowerCase()} model` : "Choose model"} onClose={() => setDrawer(null)}>
         {modelWorkload && WORKLOADS[modelWorkload].requiresImage && (
-          <Box sx={{ display: "inline-flex", alignItems: "center", mb: 1.5, px: 1.25, py: .65, borderRadius: 5, border: "1px solid rgba(52,211,153,.28)", bgcolor: "rgba(52,211,153,.08)" }}>
-            <Typography sx={{ color: "#6ee7b7", fontSize: 11, fontWeight: 850 }}>Image input · required</Typography>
+          <Box sx={{ display: "inline-flex", alignItems: "center", mb: 1.5, px: 1.25, py: .65, borderRadius: 5, border: "1px solid", borderColor: "app.tone.primary.border", bgcolor: "app.tone.primary.faint" }}>
+            <Typography sx={{ color: "app.accent.primaryPale", fontSize: 11, fontWeight: 850 }}>Image input · required</Typography>
           </Box>
         )}
         <TextField
@@ -206,16 +206,16 @@ export default function ModelSettings() {
           helperText={query.trim().length === 1 ? "Type at least 2 characters" : modelWorkload ? `Compatible with ${WORKLOADS[modelWorkload].label.toLowerCase()}` : ""}
           sx={{ mb: 2 }}
         />
-        {models.isFetching && <Box sx={{ display: "grid", gap: 1 }}>{[...Array(3)].map((_, index) => <Skeleton key={index} variant="rounded" height={74} sx={{ bgcolor: "#0f0f16" }} />)}</Box>}
+        {models.isFetching && <Box sx={{ display: "grid", gap: 1 }}>{[...Array(3)].map((_, index) => <Skeleton key={index} variant="rounded" height={74} sx={{ bgcolor: "background.paper" }} />)}</Box>}
         {models.isError && <Alert severity="error" action={<Button onClick={() => models.refetch()}>Retry</Button>}>Model catalog unavailable.</Alert>}
         {!models.isFetching && !models.isError && models.data?.models.length === 0 && <Typography sx={{ py: 4, color: "grey.500", textAlign: "center" }}>No compatible models found.</Typography>}
         <Box sx={{ display: "grid", gap: 1 }}>
           {models.data?.models.map((model) => (
-            <Button key={model.id} onClick={() => chooseModel(model)} sx={{ minHeight: 70, border: "1px solid #292938", borderRadius: 2, px: 1.5, justifyContent: "flex-start", textAlign: "left", textTransform: "none", "&:active": { transform: "translateY(1px)" } }}>
+            <Button key={model.id} onClick={() => chooseModel(model)} sx={{ minHeight: 70, border: "1px solid", borderColor: "app.surface.selected", borderRadius: 2, px: 1.5, justifyContent: "flex-start", textAlign: "left", textTransform: "none", "&:active": { transform: "translateY(1px)" } }}>
               <Box sx={{ minWidth: 0 }}>
                 <Typography sx={{ color: "grey.100", fontWeight: 800 }}>{model.name}</Typography>
                 <Typography noWrap sx={{ color: "grey.500", fontSize: 12 }}>{model.id}</Typography>
-                <Typography sx={{ color: "#a5b4fc", fontSize: 10, mt: .5 }}>Reasoning · {supportedReasoningEfforts(model).join(", ")}</Typography>
+                <Typography sx={{ color: "app.accent.secondaryPale", fontSize: 10, mt: .5 }}>Reasoning · {supportedReasoningEfforts(model).join(", ")}</Typography>
               </Box>
             </Button>
           ))}
@@ -226,7 +226,7 @@ export default function ModelSettings() {
       <AdminBottomDrawer open={drawer?.kind === "reasoning"} title="Choose reasoning level" onClose={() => setDrawer(null)}>
         <Typography sx={{ color: "grey.300", fontSize: 13, mb: .5 }}>{activeReasoningModel?.name ?? reasoningModelId}</Typography>
         <Typography sx={{ color: "grey.500", fontSize: 11, mb: 2 }}>Only levels advertised by this model are available.</Typography>
-        {reasoningModel.isFetching && !activeReasoningModel && <Box sx={{ display: "grid", gap: 1 }}>{[...Array(3)].map((_, index) => <Skeleton key={index} variant="rounded" height={58} sx={{ bgcolor: "#0f0f16" }} />)}</Box>}
+        {reasoningModel.isFetching && !activeReasoningModel && <Box sx={{ display: "grid", gap: 1 }}>{[...Array(3)].map((_, index) => <Skeleton key={index} variant="rounded" height={58} sx={{ bgcolor: "background.paper" }} />)}</Box>}
         {reasoningModel.isError && <Alert severity="error" action={<Button onClick={() => reasoningModel.refetch()}>Retry</Button>}>Supported reasoning levels are unavailable.</Alert>}
         {!reasoningModel.isFetching && !reasoningModel.isError && reasoningOptions.length === 0 && <Alert severity="warning">This model no longer advertises selectable reasoning levels. Choose another model.</Alert>}
         <Box sx={{ display: "grid", gap: 1 }}>
@@ -238,10 +238,10 @@ export default function ModelSettings() {
                 key={effort}
                 aria-pressed={selected}
                 onClick={() => chooseReasoning(effort)}
-                sx={{ minHeight: 58, border: selected ? "1px solid rgba(129,140,248,.55)" : "1px solid #292938", bgcolor: selected ? "rgba(129,140,248,.10)" : "#0f0f16", borderRadius: 2, px: 1.5, justifyContent: "space-between", textTransform: "none", "&:active": { transform: "translateY(1px)" } }}
+                sx={{ minHeight: 58, border: "1px solid", borderColor: selected ? "app.tone.secondary.strongBorder" : "app.surface.selected", bgcolor: selected ? "app.tone.secondary.faint" : "background.paper", borderRadius: 2, px: 1.5, justifyContent: "space-between", textTransform: "none", "&:active": { transform: "translateY(1px)" } }}
               >
                 <Typography sx={{ color: "grey.100", fontWeight: 850, textTransform: "capitalize" }}>{effort}</Typography>
-                {isDefault && <Typography sx={{ px: 1, py: .25, borderRadius: 5, color: "#6ee7b7", bgcolor: "rgba(52,211,153,.08)", fontSize: 9, fontWeight: 850 }}>MODEL DEFAULT</Typography>}
+                {isDefault && <Typography sx={{ px: 1, py: .25, borderRadius: 5, color: "app.accent.primaryPale", bgcolor: "app.tone.primary.faint", fontSize: 9, fontWeight: 850 }}>MODEL DEFAULT</Typography>}
               </Button>
             );
           })}

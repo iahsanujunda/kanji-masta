@@ -30,16 +30,16 @@ export default function WordDetail() {
         {query.isError && <Alert severity="warning">This saved word could not be loaded.</Alert>}
         {word && (
           <>
-            <Paper variant="outlined" sx={{ p: 3, borderRadius: 4, textAlign: "center", bgcolor: "#0f0f16", borderColor: "rgba(129,140,248,0.2)" }}>
+            <Paper variant="outlined" sx={{ p: 3, borderRadius: 4, textAlign: "center", bgcolor: "background.paper", borderColor: "app.tone.secondary.border" }}>
               <Typography sx={{ fontSize: "clamp(3.5rem, 17vw, 5rem)", fontWeight: 650, lineHeight: 1.1 }}>{word.word}</Typography>
-              <Typography sx={{ color: "#818cf8", letterSpacing: 2, mt: 1 }}>{word.reading}</Typography>
-              <Typography variant="h6" fontWeight={800} sx={{ color: "#34d399", mt: 1.5 }}>{word.meaning}</Typography>
-              <Typography variant="caption" fontWeight={800} sx={{ display: "block", color: "#a5b4fc", mt: 2 }}>{word.learningState === "REVIEWING" ? `Tier ${word.familiarity}` : labels[word.learningState]}</Typography>
+              <Typography sx={{ color: "secondary.light", letterSpacing: 2, mt: 1 }}>{word.reading}</Typography>
+              <Typography variant="h6" fontWeight={800} sx={{ color: "primary.light", mt: 1.5 }}>{word.meaning}</Typography>
+              <Typography variant="caption" fontWeight={800} sx={{ display: "block", color: "app.accent.secondaryPale", mt: 2 }}>{word.learningState === "REVIEWING" ? `Tier ${word.familiarity}` : labels[word.learningState]}</Typography>
               {word.familiarity > 0 && <Box sx={{ display: "flex", justifyContent: "center", mt: 0.75 }}><FamiliarityDots value={word.familiarity} /></Box>}
             </Paper>
             <Box sx={{ mt: 3 }}><Typography variant="caption" color="text.secondary" fontWeight={800} sx={{ letterSpacing: 1 }}>KANJI BREAKDOWN</Typography><Box sx={{ mt: 1.5 }}><KanjiBreakdown items={word.kanjiBreakdown} /></Box></Box>
             {word.exampleSentence && (
-              <Paper variant="outlined" sx={{ mt: 3, p: 2.5, borderRadius: 4, bgcolor: "#0f0f16", borderColor: "rgba(16,185,129,0.16)" }}>
+              <Paper variant="outlined" sx={{ mt: 3, p: 2.5, borderRadius: 4, bgcolor: "background.paper", borderColor: "app.tone.primary.border" }}>
                 <Typography variant="caption" color="text.secondary" fontWeight={800} sx={{ letterSpacing: 1 }}>IN CONTEXT</Typography>
                 <Typography sx={{ mt: 1.5, fontSize: "1.08rem", lineHeight: 1.9 }}>{word.exampleSentence}</Typography>
                 {word.exampleContext && <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{word.exampleContext}</Typography>}

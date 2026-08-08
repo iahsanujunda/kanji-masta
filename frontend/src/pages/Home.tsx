@@ -10,6 +10,7 @@ import {
   Skeleton,
   Typography,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import WhatshotIcon from "@mui/icons-material/Whatshot";
 import SettingsIcon from "@mui/icons-material/Settings";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
@@ -43,6 +44,7 @@ interface UserSummary {
 }
 
 export default function Home() {
+  const theme = useTheme();
   const navigate = useNavigate();
   const { user } = useAuth();
   const location = useLocation();
@@ -116,7 +118,7 @@ export default function Home() {
     >
       <PageHeader
         title={greeting}
-        subtitle={!loading && streak > 0 ? <span style={{ color: "#ff9800", fontWeight: 600 }}>You are on {streak} day streak</span> : undefined}
+        subtitle={!loading && streak > 0 ? <span style={{ color: theme.palette.warning.main, fontWeight: 600 }}>You are on {streak} day streak</span> : undefined}
         right={
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
             <Chip
@@ -124,7 +126,7 @@ export default function Home() {
               label={loading ? "–" : streak}
               size="small"
               sx={{
-                bgcolor: "rgba(255, 152, 0, 0.15)",
+                bgcolor: "app.tone.warning.soft",
                 color: "warning.main",
                 fontWeight: "bold",
               }}
@@ -148,10 +150,10 @@ export default function Home() {
           <Box
             sx={{
               borderRadius: 3, p: 2, display: "flex", alignItems: "center", gap: 1.5,
-              bgcolor: "rgba(211, 47, 47, 0.12)", border: "1px solid", borderColor: "rgba(211, 47, 47, 0.3)",
+              bgcolor: "app.tone.error.subtle", border: "1px solid", borderColor: "app.tone.error.border",
             }}
           >
-            <Box sx={{ width: 32, height: 32, borderRadius: "50%", bgcolor: "rgba(211, 47, 47, 0.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Box sx={{ width: 32, height: 32, borderRadius: "50%", bgcolor: "app.tone.error.soft", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <ErrorOutlineIcon sx={{ fontSize: 18, color: "error.main" }} />
             </Box>
             <Typography variant="body2" sx={{ color: "error.light" }}>{errorBanner}</Typography>
@@ -163,15 +165,15 @@ export default function Home() {
           <Box
             sx={{
               borderRadius: 3, p: 2, display: "flex", alignItems: "center", gap: 1.5,
-              bgcolor: "rgba(67, 56, 202, 0.12)", border: "1px solid", borderColor: "rgba(67, 56, 202, 0.3)",
+              bgcolor: "app.tone.secondary.subtle", border: "1px solid", borderColor: "app.tone.secondary.border",
             }}
           >
-            <Box sx={{ width: 32, height: 32, borderRadius: "50%", bgcolor: "rgba(67, 56, 202, 0.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <CheckCircleIcon sx={{ fontSize: 18, color: "#818cf8" }} />
+            <Box sx={{ width: 32, height: 32, borderRadius: "50%", bgcolor: "app.tone.secondary.soft", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <CheckCircleIcon sx={{ fontSize: 18, color: "secondary.light" }} />
             </Box>
             <Box>
-              <Typography variant="body2" fontWeight="bold" sx={{ color: "#c7d2fe" }}>Kanji saved</Typography>
-              <Typography variant="caption" sx={{ color: "#a5b4fc" }}>Quizzes are being prepared in the background</Typography>
+              <Typography variant="body2" fontWeight="bold" sx={{ color: "app.accent.secondaryPale" }}>Kanji saved</Typography>
+              <Typography variant="caption" sx={{ color: "app.accent.secondaryPale" }}>Quizzes are being prepared in the background</Typography>
             </Box>
           </Box>
         )}
@@ -184,8 +186,9 @@ export default function Home() {
             role="alert"
             elevation={4}
             sx={{
-              bgcolor: "#0f0f16",
-              border: "1px solid rgba(211, 47, 47, 0.35)",
+              bgcolor: "background.paper",
+              border: "1px solid",
+              borderColor: "app.tone.error.strongBorder",
               borderRadius: 4,
               p: 3,
               textAlign: "center",
@@ -200,79 +203,79 @@ export default function Home() {
               variant="contained"
               onClick={() => void refetchSummary()}
               disabled={isSummaryFetching}
-              sx={{ bgcolor: "#10b981", color: "black", fontWeight: "bold", px: 4, "&:hover": { bgcolor: "#34d399" } }}
+              sx={{ bgcolor: "primary.main", color: "black", fontWeight: "bold", px: 4, "&:hover": { bgcolor: "primary.light" } }}
             >
               Retry
             </Button>
           </Paper>
         ) : needsOnboarding ? (
           /* Onboarding not complete — prompt to start */
-          <Paper elevation={4} sx={{ background: "linear-gradient(135deg, #065f46, #312e81)", color: "white", borderRadius: 4, p: 3, textAlign: "center" }}>
-            <SpaIcon sx={{ fontSize: 40, color: "#6ee7b7", mb: 1.5 }} />
+          <Paper elevation={4} sx={{ background: (theme) => theme.palette.app.gradient.feature, color: "white", borderRadius: 4, p: 3, textAlign: "center" }}>
+            <SpaIcon sx={{ fontSize: 40, color: "app.accent.primaryPale", mb: 1.5 }} />
             <Typography fontWeight="bold" sx={{ mb: 0.5 }}>Plant Your First Seeds</Typography>
-            <Typography variant="body2" sx={{ color: "#6ee7b7", opacity: 0.8, mb: 2 }}>
+            <Typography variant="body2" sx={{ color: "app.accent.primaryPale", opacity: 0.8, mb: 2 }}>
               Choose kanji you already know and ones you want to learn
             </Typography>
             <Button
               fullWidth
               variant="contained"
               onClick={() => navigate("/onboarding")}
-              sx={{ bgcolor: "#10b981", color: "black", fontWeight: "bold", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "#34d399" } }}
+              sx={{ bgcolor: "primary.main", color: "black", fontWeight: "bold", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "primary.light" } }}
             >
               Start Learning
             </Button>
           </Paper>
         ) : wordCount === 0 ? (
           /* Kanji selected but quizzes still generating */
-          <Paper elevation={4} sx={{ background: "linear-gradient(135deg, #065f46, #312e81)", color: "white", borderRadius: 4, p: 3, textAlign: "center" }}>
-            <SpaIcon sx={{ fontSize: 40, color: "#6ee7b7", mb: 1.5 }} />
+          <Paper elevation={4} sx={{ background: (theme) => theme.palette.app.gradient.feature, color: "white", borderRadius: 4, p: 3, textAlign: "center" }}>
+            <SpaIcon sx={{ fontSize: 40, color: "app.accent.primaryPale", mb: 1.5 }} />
             <Typography fontWeight="bold" sx={{ mb: 0.5 }}>Preparing Your Quizzes</Typography>
-            <Typography variant="body2" sx={{ color: "#6ee7b7", opacity: 0.8, mb: 2 }}>
+            <Typography variant="body2" sx={{ color: "app.accent.primaryPale", opacity: 0.8, mb: 2 }}>
               We're setting up quizzes for your {kanjiLearning + kanjiFamiliar} kanji. This usually takes a moment.
             </Typography>
             <Button
               fullWidth
               variant="contained"
               onClick={() => navigate("/onboarding")}
-              sx={{ bgcolor: "rgba(255,255,255,0.12)", color: "white", fontWeight: "bold", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "rgba(255,255,255,0.2)" } }}
+              sx={{ bgcolor: "app.overlay.medium", color: "white", fontWeight: "bold", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "app.overlay.strong" } }}
             >
               Add More Kanji
             </Button>
           </Paper>
         ) : sessionState === "ACTIVE" ? (
           /* Active slot with quizzes remaining */
-          <Paper elevation={4} sx={{ background: "linear-gradient(135deg, #065f46, #312e81)", color: "white", borderRadius: 4, p: 3 }}>
+          <Paper elevation={4} sx={{ background: (theme) => theme.palette.app.gradient.feature, color: "white", borderRadius: 4, p: 3 }}>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 3 }}>
               <Box>
-                <Typography variant="body2" sx={{ color: "#6ee7b7", mb: 0.5 }}>Session Active</Typography>
+                <Typography variant="body2" sx={{ color: "app.accent.primaryPale", mb: 0.5 }}>Session Active</Typography>
                 <Typography variant="h3" fontWeight="bold" component="div">
                   {slotRemaining}{" "}
                   <Typography component="span" variant="h6" sx={{ opacity: 0.7, fontWeight: "normal" }}>remaining</Typography>
                 </Typography>
               </Box>
-              <Chip label={slotTimeLeft} size="small" sx={{ bgcolor: "rgba(0,0,0,0.25)", color: "inherit", fontSize: "0.75rem" }} />
+              <Chip label={slotTimeLeft} size="small" sx={{ bgcolor: "app.overlay.darkSoft", color: "inherit", fontSize: "0.75rem" }} />
             </Box>
             <Button
               fullWidth size="large" variant="contained" endIcon={<ChevronRightIcon />}
               onClick={() => navigate("/quiz")}
-              sx={{ bgcolor: "#10b981", color: "black", fontWeight: "bold", fontSize: "1.1rem", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "#34d399" } }}
+              sx={{ bgcolor: "primary.main", color: "black", fontWeight: "bold", fontSize: "1.1rem", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "primary.light" } }}
             >
               Continue Session
             </Button>
           </Paper>
         ) : sessionState === "COOLDOWN" ? (
           /* Slot complete — show countdown to next session */
-          <Paper elevation={4} sx={{ background: "linear-gradient(135deg, #065f46, #312e81)", color: "white", borderRadius: 4, p: 3 }}>
+          <Paper elevation={4} sx={{ background: (theme) => theme.palette.app.gradient.feature, color: "white", borderRadius: 4, p: 3 }}>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 2 }}>
               <Box>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
-                  <CheckCircleIcon sx={{ fontSize: 20, color: "#34d399" }} />
-                  <Typography variant="body2" sx={{ color: "#34d399", fontWeight: 600 }}>Session Complete</Typography>
+                  <CheckCircleIcon sx={{ fontSize: 20, color: "primary.light" }} />
+                  <Typography variant="body2" sx={{ color: "primary.light", fontWeight: 600 }}>Session Complete</Typography>
                 </Box>
                 <Typography variant="h4" fontWeight="bold" component="div">
                   {slotTimeLeft}
                 </Typography>
-                <Typography variant="body2" sx={{ color: "#6ee7b7", opacity: 0.7 }}>
+                <Typography variant="body2" sx={{ color: "app.accent.primaryPale", opacity: 0.7 }}>
                   until next session
                 </Typography>
               </Box>
@@ -281,17 +284,17 @@ export default function Home() {
               fullWidth variant="contained"
               onClick={() => navigate("/capture")}
               startIcon={<CameraAltIcon />}
-              sx={{ bgcolor: "rgba(255,255,255,0.12)", color: "white", fontWeight: "bold", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "rgba(255,255,255,0.2)" } }}
+              sx={{ bgcolor: "app.overlay.medium", color: "white", fontWeight: "bold", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "app.overlay.strong" } }}
             >
               Capture More Kanji
             </Button>
           </Paper>
         ) : (
           /* No active slot — ready to start */
-          <Paper elevation={4} sx={{ background: "linear-gradient(135deg, #065f46, #312e81)", color: "white", borderRadius: 4, p: 3 }}>
+          <Paper elevation={4} sx={{ background: (theme) => theme.palette.app.gradient.feature, color: "white", borderRadius: 4, p: 3 }}>
             <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 3 }}>
               <Box>
-                <Typography variant="body2" sx={{ color: "#6ee7b7", mb: 0.5 }}>Ready to quiz</Typography>
+                <Typography variant="body2" sx={{ color: "app.accent.primaryPale", mb: 0.5 }}>Ready to quiz</Typography>
                 <Typography variant="h3" fontWeight="bold" component="div">
                   {slotTotal}{" "}
                   <Typography component="span" variant="h6" sx={{ opacity: 0.7, fontWeight: "normal" }}>quizzes</Typography>
@@ -301,7 +304,7 @@ export default function Home() {
             <Button
               fullWidth size="large" variant="contained" endIcon={<ChevronRightIcon />}
               onClick={() => navigate("/quiz")}
-              sx={{ bgcolor: "#10b981", color: "black", fontWeight: "bold", fontSize: "1.1rem", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "#34d399" } }}
+              sx={{ bgcolor: "primary.main", color: "black", fontWeight: "bold", fontSize: "1.1rem", py: 1.5, borderRadius: 3, "&:hover": { bgcolor: "primary.light" } }}
             >
               Start Session
             </Button>
@@ -322,7 +325,7 @@ export default function Home() {
               </Typography>
             </Box>
             {lessonCompleted ? (
-              <CheckCircleIcon sx={{ fontSize: 20, color: "#10b981" }} />
+              <CheckCircleIcon sx={{ fontSize: 20, color: "primary.main" }} />
             ) : lessonLocked ? (
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
                 <LockOutlinedIcon sx={{ fontSize: 14, color: "text.disabled" }} />
@@ -355,8 +358,8 @@ export default function Home() {
           sx={{ borderRadius: 4, p: 2.5, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", "&:hover": { bgcolor: "action.hover" } }}
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <Box sx={{ bgcolor: "rgba(67,56,202,0.15)", p: 1.5, borderRadius: 3, display: "flex" }}>
-              <MenuBookIcon sx={{ color: "#818cf8" }} />
+            <Box sx={{ bgcolor: "app.tone.secondary.soft", p: 1.5, borderRadius: 3, display: "flex" }}>
+              <MenuBookIcon sx={{ color: "secondary.light" }} />
             </Box>
             <Box>
               <Typography fontWeight="bold">Your Kanji</Typography>
@@ -381,8 +384,8 @@ export default function Home() {
           sx={{ borderRadius: 4, p: 2.5, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", "&:hover": { bgcolor: "action.hover" } }}
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <Box sx={{ bgcolor: "rgba(67,56,202,0.15)", p: 1.5, borderRadius: 3, display: "flex" }}>
-              <TranslateIcon sx={{ color: "#818cf8" }} />
+            <Box sx={{ bgcolor: "app.tone.secondary.soft", p: 1.5, borderRadius: 3, display: "flex" }}>
+              <TranslateIcon sx={{ color: "secondary.light" }} />
             </Box>
             <Box>
               <Typography fontWeight="bold">Dictionary</Typography>
@@ -401,8 +404,8 @@ export default function Home() {
           sx={{ borderRadius: 4, p: 2.5, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", "&:hover": { bgcolor: "action.hover" } }}
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-            <Box sx={{ bgcolor: "rgba(67,56,202,0.15)", p: 1.5, borderRadius: 3, display: "flex" }}>
-              <CollectionsOutlinedIcon sx={{ color: "#818cf8" }} />
+            <Box sx={{ bgcolor: "app.tone.secondary.soft", p: 1.5, borderRadius: 3, display: "flex" }}>
+              <CollectionsOutlinedIcon sx={{ color: "secondary.light" }} />
             </Box>
             <Box>
               <Typography fontWeight="bold">Captures</Typography>
@@ -423,7 +426,7 @@ export default function Home() {
         <Button
           variant="contained" size="large" onClick={() => navigate("/capture")}
           startIcon={
-            <Box sx={{ bgcolor: "rgba(0,0,0,0.1)", p: 1, borderRadius: "50%", display: "flex" }}>
+            <Box sx={{ bgcolor: "app.overlay.darkFaint", p: 1, borderRadius: "50%", display: "flex" }}>
               <CameraAltIcon sx={{ fontSize: 28 }} />
             </Box>
           }

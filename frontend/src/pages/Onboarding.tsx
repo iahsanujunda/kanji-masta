@@ -153,7 +153,7 @@ export default function Onboarding() {
   if (view === "welcome") {
     return (
       <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", p: 3, textAlign: "center" }}>
-        <Box sx={{ width: 80, height: 80, borderRadius: 3, background: "linear-gradient(135deg, #34d399, #4338ca)", display: "flex", alignItems: "center", justifyContent: "center", mb: 4 }}>
+        <Box sx={{ width: 80, height: 80, borderRadius: 3, background: (theme) => theme.palette.app.gradient.brand, display: "flex", alignItems: "center", justifyContent: "center", mb: 4 }}>
           <SpaIcon sx={{ fontSize: 40, color: "white" }} />
         </Box>
         <Typography variant="h4" fontWeight="bold" sx={{ mb: 1 }}>
@@ -167,10 +167,10 @@ export default function Onboarding() {
           variant="contained"
           onClick={startDeck}
           sx={{
-            bgcolor: "#10b981", color: "black", fontWeight: 700, py: 2, borderRadius: "9999px",
+            bgcolor: "primary.main", color: "black", fontWeight: 700, py: 2, borderRadius: "9999px",
             fontSize: "1.1rem", textTransform: "none", maxWidth: 320,
-            boxShadow: "0 0 20px rgba(16,185,129,0.2)",
-            "&:hover": { bgcolor: "#34d399" },
+            boxShadow: (theme) => theme.palette.app.shadow.primarySoft,
+            "&:hover": { bgcolor: "primary.light" },
           }}
         >
           Get Started
@@ -192,8 +192,8 @@ export default function Onboarding() {
   if (view === "photo-prompt") {
     return (
       <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", p: 3, textAlign: "center" }}>
-        <Box sx={{ width: 80, height: 80, bgcolor: "rgba(99,102,241,0.15)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", mb: 3 }}>
-          <CameraAltIcon sx={{ fontSize: 40, color: "#818cf8" }} />
+        <Box sx={{ width: 80, height: 80, bgcolor: "app.tone.secondary.soft", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", mb: 3 }}>
+          <CameraAltIcon sx={{ fontSize: 40, color: "secondary.light" }} />
         </Box>
         <Typography variant="h5" fontWeight="bold" sx={{ mb: 1 }}>
           Take your first photo
@@ -210,10 +210,10 @@ export default function Onboarding() {
             navigate("/capture");
           }}
           sx={{
-            bgcolor: "#10b981", color: "black", fontWeight: 700, py: 2, borderRadius: "9999px",
+            bgcolor: "primary.main", color: "black", fontWeight: 700, py: 2, borderRadius: "9999px",
             fontSize: "1.1rem", textTransform: "none", maxWidth: 320,
-            boxShadow: "0 0 20px rgba(16,185,129,0.2)",
-            "&:hover": { bgcolor: "#34d399" },
+            boxShadow: (theme) => theme.palette.app.shadow.primarySoft,
+            "&:hover": { bgcolor: "primary.light" },
           }}
         >
           Open Camera
@@ -246,8 +246,8 @@ export default function Onboarding() {
   if (view === "batch-done") {
     return (
       <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", p: 3, textAlign: "center" }}>
-        <Box sx={{ width: 64, height: 64, bgcolor: "rgba(67, 56, 202, 0.15)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", mb: 3 }}>
-          <CheckIcon sx={{ fontSize: 32, color: "#818cf8" }} />
+        <Box sx={{ width: 64, height: 64, bgcolor: "app.tone.secondary.soft", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", mb: 3 }}>
+          <CheckIcon sx={{ fontSize: 32, color: "secondary.light" }} />
         </Box>
         <Typography variant="h5" fontWeight="bold" sx={{ mb: 0.5 }}>
           {allTotal} kanji reviewed
@@ -268,7 +268,7 @@ export default function Onboarding() {
               fullWidth
               variant="contained"
               onClick={handleAddMore}
-              sx={{ bgcolor: "#4338ca", py: 1.5, borderRadius: 3, fontWeight: "bold", "&:hover": { bgcolor: "#3730a3" } }}
+              sx={{ bgcolor: "secondary.main", py: 1.5, borderRadius: 3, fontWeight: "bold", "&:hover": { bgcolor: "secondary.dark" } }}
             >
               Add another 10
             </Button>
@@ -283,7 +283,7 @@ export default function Onboarding() {
               fontWeight: "bold",
               ...(hasMore
                 ? { borderColor: "grey.700", color: "grey.300" }
-                : { bgcolor: "#4338ca", "&:hover": { bgcolor: "#3730a3" } }),
+                : { bgcolor: "secondary.main", "&:hover": { bgcolor: "secondary.dark" } }),
             }}
           >
             {allLearning > 0 ? "Start learning" : "Done"}
@@ -297,8 +297,8 @@ export default function Onboarding() {
   if (view === "finished") {
     return (
       <Box sx={{ minHeight: "var(--app-height)", maxWidth: 480, mx: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", p: 3, textAlign: "center" }}>
-        <Box sx={{ width: 80, height: 80, bgcolor: "rgba(16, 185, 129, 0.15)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", mb: 3 }}>
-          <CheckIcon sx={{ fontSize: 40, color: "#34d399" }} />
+        <Box sx={{ width: 80, height: 80, bgcolor: "app.tone.primary.soft", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", mb: 3 }}>
+          <CheckIcon sx={{ fontSize: 40, color: "primary.light" }} />
         </Box>
         <Typography variant="h5" fontWeight="bold" sx={{ mb: 1 }}>
           You're all set!
@@ -334,7 +334,7 @@ export default function Onboarding() {
             {currentIndex + 1} of {kanji.length}
           </Typography>
           {current.jlpt && (
-            <Typography variant="caption" sx={{ color: "#818cf8", fontWeight: 700 }}>
+            <Typography variant="caption" sx={{ color: "secondary.light", fontWeight: 700 }}>
               JLPT N{current.jlpt}
             </Typography>
           )}
@@ -342,7 +342,7 @@ export default function Onboarding() {
         <LinearProgress
           variant="determinate"
           value={progress}
-          sx={{ height: 6, borderRadius: 3, bgcolor: "grey.800", "& .MuiLinearProgress-bar": { bgcolor: "#4338ca", borderRadius: 3 } }}
+          sx={{ height: 6, borderRadius: 3, bgcolor: "grey.800", "& .MuiLinearProgress-bar": { bgcolor: "secondary.main", borderRadius: 3 } }}
         />
       </Box>
 
@@ -389,7 +389,7 @@ export default function Onboarding() {
           {current.onyomi.length > 0 && (
             <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
               <Typography variant="caption" sx={{ color: "grey.500", width: 28, flexShrink: 0, mt: 0.25 }}>ON</Typography>
-              <Typography variant="body2" sx={{ color: "#818cf8", fontFamily: "monospace", fontWeight: 500 }}>
+              <Typography variant="body2" sx={{ color: "secondary.light", fontFamily: "monospace", fontWeight: 500 }}>
                 {current.onyomi.join("、")}
               </Typography>
             </Box>
@@ -397,7 +397,7 @@ export default function Onboarding() {
           {current.kunyomi.length > 0 && (
             <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1 }}>
               <Typography variant="caption" sx={{ color: "grey.500", width: 28, flexShrink: 0, mt: 0.25 }}>KUN</Typography>
-              <Typography variant="body2" sx={{ color: "#34d399", fontFamily: "monospace", fontWeight: 500 }}>
+              <Typography variant="body2" sx={{ color: "primary.light", fontFamily: "monospace", fontWeight: 500 }}>
                 {current.kunyomi.join("、")}
               </Typography>
             </Box>
@@ -449,9 +449,10 @@ export default function Onboarding() {
               alignItems: "center",
               gap: 0.5,
               bgcolor: "grey.900",
-              color: "#34d399",
-              border: "2px solid rgba(16, 185, 129, 0.3)",
-              "&:hover": { bgcolor: "rgba(16, 185, 129, 0.1)", borderColor: "rgba(16, 185, 129, 0.5)" },
+              color: "primary.light",
+              border: "2px solid",
+              borderColor: "app.tone.primary.border",
+              "&:hover": { bgcolor: "app.tone.primary.subtle", borderColor: "app.tone.primary.strongBorder" },
               textTransform: "none",
             }}
           >
@@ -472,17 +473,18 @@ export default function Onboarding() {
               flexDirection: "column",
               alignItems: "center",
               gap: 0.5,
-              bgcolor: "#4338ca",
+              bgcolor: "secondary.main",
               color: "white",
-              border: "2px solid #6366f1",
-              boxShadow: "0 0 20px rgba(79,70,229,0.3)",
-              "&:hover": { bgcolor: "#3730a3" },
+              border: "2px solid",
+              borderColor: "app.accent.secondaryBorder",
+              boxShadow: (theme) => theme.palette.app.shadow.secondarySoft,
+              "&:hover": { bgcolor: "secondary.dark" },
               textTransform: "none",
             }}
           >
             <SpaIcon sx={{ fontSize: 22, mb: 0.25 }} />
             <Typography variant="body2" fontWeight="bold">Want to Learn</Typography>
-            <Typography variant="caption" sx={{ color: "rgba(199,210,254,0.7)", fontSize: "0.6rem" }}>
+            <Typography variant="caption" sx={{ color: "app.accent.secondaryPale", opacity: 0.7, fontSize: "0.6rem" }}>
               Start from Level 0
             </Typography>
           </Button>

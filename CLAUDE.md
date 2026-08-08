@@ -35,7 +35,7 @@ Never amend an existing commit. Every correction or follow-up must be recorded a
 - Mobile-first `maxWidth: 480`. No AppBar — pages manage own headers via `PageHeader`
 - Brand icon: light-teal→muted-pink gradient square with leaf SVG (favicon, navbar, footer)
 - **Color theme** — use consistently across all pages:
-  - Background family: `#747C8F` (outer backdrop), `#343A48` (app canvas), `#3B4251` (sections), `#454D5E` (cards), `#555E72` (elevated)
+  - Background family: `#626A7C` (outer backdrop), `#343A48` (app canvas), `#3B4251` (sections), `#454D5E` (cards), `#555E72` (elevated)
   - Light teal `#D6E2DF` — primary CTA buttons (`#30343F` text), success states, active streaks
   - Light teal hover `#E4EBE9` and pale `#EEF2F1` — hover states, positive labels, subtle primary accents
   - Muted pink `#C6B0B8` — secondary accents, "Recommended" badges, and selected states

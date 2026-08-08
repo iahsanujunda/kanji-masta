@@ -7,7 +7,7 @@
   "scope": "/capture-sync-probe/",
   "display": "standalone",
   "background_color": "#343A48",
-  "theme_color": "#747C8F",
+  "theme_color": "#626A7C",
   "icons": [
     {
       "src": "/icon-192.png",

@@ -936,7 +936,7 @@ The capture read model returns the backend-derived state instead of asking the c
 }
 ```
 
-`selectable` is true only for `NOT_STARTED` and non-excluded rows. `recommendedNext` is true only when the previous learning batch selected from this capture has reached familiarity 5, then only for the first three selectable rows ordered by stored recommendation rank and its deterministic fallback. Familiar and learning kanji remain visible because they explain coverage, but neither can be selected again.
+`selectable` is true only for `NOT_STARTED` and non-excluded rows. Selectable rows remain available for recommendation browsing regardless of whether a previous learning batch is complete. They are ordered by stored recommendation rank and its deterministic fallback; the first three are visible immediately and the client can repeatedly append the next three without replacing earlier results. `recommendedNext` identifies the initial three for backwards compatibility, but `batchGateSatisfied` controls enrollment only, never visibility. Familiar and learning kanji remain visible because they explain coverage, but neither can be selected again.
 
 Every non-excluded row also offers a secondary **Not in this photo** action. This handles false positives without adding support for kanji the AI missed. Excluded rows move to a collapsed correction section with an **Undo** action.
 
@@ -958,10 +958,11 @@ This is different from an AI omission: the learner can remove an incorrectly rep
 │                                    │
 │  Kanji coverage       4 / 18       │
 │                                    │
-│  Recommended next                  │
+│  Kanji to explore                  │
 │  電   運   転                       │
 │                                    │
-│  [ Learn these 3 ]                 │
+│  [ Load 3 more ]                   │
+│  [ Learn selected (0 / 3) ]        │
 │  [ Show all detected kanji ]       │
 │                                    │
 │  [ Reveal translation ]            │
@@ -978,12 +979,16 @@ Kanji coverage: 9 / 18 familiar
 
 9 familiar · 3 learning · 6 not started
 
-[ Add next 3 ]
+電   運   転
+見   合   休     ← next three appended
+
+[ Load 3 more ]
+[ Learn selected · finish current batch first ]
 ```
 
-`Add next 3` remains disabled while any kanji in the previous learning batch selected from this capture is below familiarity 5. Kanji that were already being learned from another source do not block the capture's next batch. Declaring a not-started kanji **Already know** sets it familiar but does not consume one of the three learning slots.
+`Load 3 more` is a browsing action, not a learning command. It remains available whenever undisplayed selectable kanji remain, including while kanji in the previous capture batch are below familiarity 5. Each activation appends the next three in stable order, can be repeated until exhausted, and never enrolls kanji or discards candidates already on screen. Background refetches preserve how many candidates the learner has revealed during the visit.
 
-When the batch gate opens, `Add next 3` uses the stored recommendation rank among not-started kanji. The client submits exact kanji IDs; the server does not recalculate a different batch during the mutation.
+The learner may choose up to three from any currently visible candidates. `Learn selected` remains disabled while the previous learning batch selected from this capture is incomplete. Kanji that were already being learned from another source do not block the capture's next batch. Declaring a not-started kanji **Already know** sets it familiar but does not consume one of the three learning slots. When the gate opens, the client submits the exact selected kanji IDs; the server does not recalculate a different batch during the mutation.
 
 The selection command rechecks everything transactionally because the response may be stale by the time the learner taps the button:
 
@@ -1239,7 +1244,8 @@ Automated integration tests must cover these boundaries:
 - [ ] Unresolved characters are retained as diagnostic evidence but are not selectable or counted in coverage
 - [ ] Every resolved detected kanji is normalized into `photo_session_kanji` in the fenced completion transaction
 - [ ] Visual analysis receives no mutable learner-known-kanji list
-- [ ] Recommendation order supports repeatable batches of three
+- [ ] Recommendation browsing shows three immediately and can repeatedly append three more without a completion gate
+- [ ] Learning selection accepts up to three from any currently visible recommendation candidates
 - [ ] Initial and revisit selections are retained separately
 - [ ] Capture detail shows familiar, learning, and not-started kanji using live state
 - [ ] False-positive exclusion is reversible, capture-specific, and excluded from coverage

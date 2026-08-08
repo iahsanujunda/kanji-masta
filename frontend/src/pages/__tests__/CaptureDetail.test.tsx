@@ -39,7 +39,7 @@ describe("CaptureDetail", () => {
     });
   });
 
-  it("makes translation available immediately and offers only the recommended next batch", async () => {
+  it("makes translation available immediately and enrolls only selected recommendations", async () => {
     const user = userEvent.setup();
     renderWithProviders(
       <Routes><Route path="/captures/:sessionId" element={<CaptureDetailPage />} /></Routes>,
@@ -49,12 +49,76 @@ describe("CaptureDetail", () => {
     expect(await screen.findByText("1 / 4 familiar")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reveal translation" })).toBeInTheDocument();
     expect(screen.queryByText("Train service is suspended today.")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Learn these 3" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Learn selected (0 / 3)" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Select 日 to learn" }));
+    await user.click(screen.getByRole("button", { name: "Learn selected (1 / 3)" }));
+    expect(mockApiFetch).toHaveBeenCalledWith("/api/kanji/session", {
+      method: "POST",
+      body: JSON.stringify({ sessionId: "capture-1", selections: [{ kanjiMasterId: "kanji-2", status: "learning" }] }),
+    });
 
     await user.click(screen.getByRole("button", { name: "Reveal translation" }));
     expect(screen.getByText("Train service is suspended today.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Hide translation" })).toBeInTheDocument();
     await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith("/api/captures/capture-1/revisited", { method: "POST" }));
+  });
+
+  it("loads recommendations repeatedly while an unfinished learning batch blocks enrollment", async () => {
+    const user = userEvent.setup();
+    const characters = ["日", "運", "転", "見", "合", "休", "駅"];
+    const gatedCapture = {
+      ...capture,
+      familiarKanji: 1,
+      totalKanji: 8,
+      coveragePercent: 13,
+      batchGateSatisfied: false,
+      kanji: [
+        capture.kanji[0],
+        ...characters.map((character, index) => ({
+          kanjiMasterId: `browse-${index + 1}`,
+          character,
+          onyomi: [],
+          kunyomi: [],
+          meanings: [`meaning-${index + 1}`],
+          whyUseful: "Useful here",
+          familiarity: null,
+          learningState: "NOT_STARTED" as const,
+          selectable: true,
+          recommendedNext: index < 3,
+          excluded: false,
+        })),
+      ],
+    };
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === "/api/captures/capture-1") return Promise.resolve(gatedCapture);
+      return Promise.resolve({});
+    });
+
+    renderWithProviders(
+      <Routes><Route path="/captures/:sessionId" element={<CaptureDetailPage />} /></Routes>,
+      { route: "/captures/capture-1" },
+    );
+
+    expect(await screen.findByText("3 of 7 shown")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Select 見 to learn" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Load 3 more" }));
+    expect(screen.getByText("6 of 7 shown")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Select 見 to learn" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Load 1 more" }));
+    expect(screen.getByText("7 of 7 shown")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Select 駅 to learn" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Select 日 to learn" }));
+    await user.click(screen.getByRole("button", { name: "Select 運 to learn" }));
+    await user.click(screen.getByRole("button", { name: "Select 転 to learn" }));
+    await user.click(screen.getByRole("button", { name: "Select 見 to learn" }));
+
+    expect(screen.getByRole("button", { name: "Select 見 to learn" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Learn selected (3 / 3)" })).toBeDisabled();
+    expect(screen.getByText("Finish your current batch to learn these")).toBeInTheDocument();
   });
 
   it("retries translation independently after visual analysis is saved", async () => {

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1960" viewBox="0 0 1800 1960" role="img" aria-labelledby="title desc">
   <title id="title">Kanji Masta Phase 3 capture product flow</title>
-  <desc id="desc">Six dark mobile mockups showing the Home entry point, Activity-owned processing and revisit updates, the reusable capture detail page, false-positive correction, one-hundred-percent kanji coverage, and explicit word enrollment.</desc>
+  <desc id="desc">Six dark mobile mockups showing the Home entry point, Activity-owned processing and revisit updates, repeatable kanji recommendation browsing on the reusable capture detail page, false-positive correction, one-hundred-percent kanji coverage, and explicit word enrollment.</desc>
   <defs>
     <linearGradient id="brand-gradient" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E4EBE9"/><stop offset="1" stop-color="#C6B0B8"/></linearGradient>
     <linearGradient id="photo-gradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#263747"/><stop offset="1" stop-color="#3B4251"/></linearGradient>
@@ -91,17 +91,26 @@
   <!-- ARROW 2 -->
   <path d="M1137 525h120" fill="none" stroke="#C6B0B8" stroke-width="2" stroke-dasharray="5 7"/><path d="m1247 516 12 9-12 9" fill="none" stroke="#D8C8CE" stroke-width="2"/>
 
-  <!-- 03 SIXTY PERCENT REVISIT -->
-  <text x="1350" y="128" class="secondaryPale label">03 · CAPTURE DETAIL · EVERY VISIT</text>
+  <!-- 03 REPEATABLE RECOMMENDATION BROWSING -->
+  <text x="1350" y="128" class="secondaryPale label">03 · CAPTURE DETAIL · REPEATED LOAD MORE</text>
   <g transform="translate(1350 150)">
     <use href="#phone-shell"/><use href="#back-control"/>
     <text x="72" y="43" class="text h2">Capture</text><text x="72" y="63" class="muted tiny">Jun 12, 08:35 · visited today</text>
-    <use href="#station-photo"/><use href="#coverage-61"/>
-    <rect x="26" y="346" width="338" height="56" rx="14" fill="rgba(228,235,233,.08)" stroke="rgba(228,235,233,.22)"/><use href="#check" x="44" y="364"/><text x="78" y="371" class="primary body" font-weight="750">Previous batch is familiar</text><text x="78" y="390" class="muted tiny">Your next three are ready</text>
-    <text x="26" y="439" class="text h2">Continue this capture</text>
-    <use href="#kanji-chip-electric" x="26" y="456"/><use href="#kanji-chip-operate" x="145" y="456"/><use href="#kanji-chip-turn" x="263" y="456"/>
-    <rect x="26" y="596" width="338" height="52" rx="14" fill="#D6E2DF"/><text x="195" y="628" text-anchor="middle" class="darkText button">Add next 3</text>
-    <rect x="26" y="660" width="338" height="46" rx="13" class="raised"/><path d="M48 683h18m-9-9v18" stroke="#D8C8CE" stroke-width="1.8"/><text x="78" y="688" class="text body" font-weight="750">Reveal translation</text><text x="342" y="688" text-anchor="end" class="quiet tiny">Available when ready</text>
+    <rect x="26" y="88" width="338" height="118" rx="17" fill="url(#photo-gradient)" stroke="rgba(245,245,245,.10)"/>
+    <path d="M26 170h338M62 206v-36m266 36v-36" stroke="#778196" stroke-width="4"/><rect x="68" y="111" width="254" height="48" rx="5" fill="#F5F5F5"/><rect x="68" y="111" width="9" height="48" fill="#D6E2DF"/><text x="94" y="140" fill="#3B4251" font-family="Noto Sans JP,system-ui" font-size="16" font-weight="800">本日は運転を見合わせます</text>
+    <text x="26" y="235" class="muted small">Kanji coverage</text><text x="364" y="236" text-anchor="end" class="text h2">11 / 21</text><rect x="26" y="248" width="338" height="7" rx="3.5" class="raised"/><rect x="26" y="248" width="177" height="7" rx="3.5" fill="#D6E2DF"/><text x="26" y="275" class="primary small" font-weight="750">52% familiar</text><text x="364" y="275" text-anchor="end" class="quiet small">1 learning · 9 not started</text>
+    <rect x="26" y="296" width="338" height="50" rx="14" fill="rgba(198,176,184,.08)" stroke="rgba(198,176,184,.24)"/><circle cx="50" cy="321" r="8" fill="none" stroke="#D8C8CE" stroke-width="1.6"/><path d="M50 317v5l3 2" fill="none" stroke="#D8C8CE" stroke-width="1.5" stroke-linecap="round"/><text x="70" y="318" class="secondaryPale small" font-weight="800">Current batch still learning</text><text x="70" y="335" class="muted tiny">Browsing more kanji stays available</text>
+    <text x="26" y="379" class="text h2">Kanji to explore</text><text x="364" y="379" text-anchor="end" class="secondary small" font-weight="750">6 shown</text>
+    <rect x="26" y="396" width="101" height="78" rx="14" class="card" stroke="rgba(216,200,206,.25)"/><text x="42" y="428" class="text kanji">電</text><text x="42" y="451" class="secondary tiny" font-weight="750">electricity</text><text x="111" y="460" text-anchor="end" class="quiet tiny">#1</text>
+    <rect x="145" y="396" width="101" height="78" rx="14" class="card" stroke="rgba(216,200,206,.25)"/><text x="161" y="428" class="text kanji">運</text><text x="161" y="451" class="secondary tiny" font-weight="750">carry</text><text x="230" y="460" text-anchor="end" class="quiet tiny">#2</text>
+    <rect x="263" y="396" width="101" height="78" rx="14" class="card" stroke="rgba(216,200,206,.25)"/><text x="279" y="428" class="text kanji">転</text><text x="279" y="451" class="secondary tiny" font-weight="750">turn</text><text x="348" y="460" text-anchor="end" class="quiet tiny">#3</text>
+    <text x="26" y="496" class="secondaryPale tiny" font-weight="850" letter-spacing="1">NEXT 3 LOADED</text>
+    <rect x="26" y="508" width="101" height="78" rx="14" fill="rgba(198,176,184,.11)" stroke="rgba(216,200,206,.44)"/><text x="42" y="540" class="text kanji">見</text><text x="42" y="563" class="secondary tiny" font-weight="750">see</text><text x="111" y="572" text-anchor="end" class="secondary tiny">#4</text>
+    <rect x="145" y="508" width="101" height="78" rx="14" fill="rgba(198,176,184,.11)" stroke="rgba(216,200,206,.44)"/><text x="161" y="540" class="text kanji">合</text><text x="161" y="563" class="secondary tiny" font-weight="750">fit</text><text x="230" y="572" text-anchor="end" class="secondary tiny">#5</text>
+    <rect x="263" y="508" width="101" height="78" rx="14" fill="rgba(198,176,184,.11)" stroke="rgba(216,200,206,.44)"/><text x="279" y="540" class="text kanji">休</text><text x="279" y="563" class="secondary tiny" font-weight="750">rest</text><text x="348" y="572" text-anchor="end" class="secondary tiny">#6</text>
+    <rect x="26" y="603" width="338" height="48" rx="13" class="raised" stroke="rgba(216,200,206,.34)"/><path d="M50 618v18m-9-9h18" stroke="#D8C8CE" stroke-width="1.8" stroke-linecap="round"/><text x="195" y="633" text-anchor="middle" class="text body" font-weight="800">Load 3 more</text><text x="344" y="633" text-anchor="end" class="quiet tiny">3 remain</text>
+    <rect x="26" y="663" width="338" height="48" rx="13" fill="#555E72" opacity=".72"/><text x="195" y="693" text-anchor="middle" class="quiet button">Learn selected · finish current batch first</text>
+    <text x="195" y="735" text-anchor="middle" class="muted tiny">Loading more never enrolls kanji or replaces earlier results</text>
   </g>
 
   <!-- ROW TRANSITION -->
@@ -155,4 +164,6 @@
     <rect x="26" y="606" width="338" height="52" rx="14" fill="#D6E2DF"/><text x="195" y="638" text-anchor="middle" class="darkText button">Learn these 2 words</text>
     <text x="195" y="704" text-anchor="middle" class="muted small">Nothing is added before confirmation</text>
   </g>
+  <text x="60" y="1920" class="muted body">Recommendation contract: show 3 immediately, append 3 on every load, and keep browsing available while a prior learning batch is incomplete.</text>
+  <text x="60" y="1944" class="secondaryPale small">Visibility is independent from enrollment; the three-kanji learning limit and completion gate remain unchanged.</text>
 </svg>

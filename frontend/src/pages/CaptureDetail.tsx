@@ -24,6 +24,14 @@ import FamiliarityDots from "@/components/FamiliarityDots";
 import { useAuth } from "@/hooks/useAuth";
 import { useSignedPhotoUrl } from "@/hooks/useSignedPhotoUrl";
 import { apiFetch } from "@/lib/api";
+import {
+  eligibleRecommendationSelection,
+  MAX_RECOMMENDATION_SELECTIONS,
+  nextVisibleRecommendationCount,
+  RECOMMENDATION_PAGE_SIZE,
+  recommendationCandidates,
+  toggleRecommendationSelection,
+} from "@/lib/captureKanjiRecommendations";
 import { queryKeys } from "@/lib/queryKeys";
 import type { CaptureDetail, CaptureKanjiItem } from "@/lib/photo";
 import type { CaptureWordCandidate } from "@/lib/photo";
@@ -36,6 +44,10 @@ export default function CaptureDetailPage() {
   const [translationOpen, setTranslationOpen] = useState(false);
   const [allKanjiOpen, setAllKanjiOpen] = useState(false);
   const [deselectedWordIds, setDeselectedWordIds] = useState<Set<string>>(new Set());
+  const [storedRecommendationView, setRecommendationView] = useState(() => createRecommendationView(sessionId));
+  const recommendationView = storedRecommendationView.sessionId === sessionId
+    ? storedRecommendationView
+    : createRecommendationView(sessionId);
   const query = useQuery({
     queryKey: queryKeys.capture(user?.id ?? "", sessionId),
     queryFn: () => apiFetch<CaptureDetail>(`/api/captures/${sessionId}`),
@@ -64,7 +76,18 @@ export default function CaptureDetailPage() {
       method: "POST",
       body: JSON.stringify({ sessionId, selections }),
     }),
-    onSuccess: async () => {
+    onSuccess: async (_, selections) => {
+      const learnedIds = selections
+        .filter((selection) => selection.status === "learning")
+        .map((selection) => selection.kanjiMasterId);
+      if (learnedIds.length > 0) {
+        setRecommendationView((current) => {
+          if (current.sessionId !== sessionId) return current;
+          const next = new Set(current.selectedIds);
+          learnedIds.forEach((id) => next.delete(id));
+          return { ...current, selectedIds: next };
+        });
+      }
       await Promise.all([
         query.refetch(),
         queryClient.invalidateQueries({ queryKey: queryKeys.userSummary(user?.id ?? "") }),
@@ -174,7 +197,11 @@ export default function CaptureDetailPage() {
     );
   }
 
-  const recommended = capture.kanji.filter((item) => item.recommendedNext);
+  const recommendationPool = recommendationCandidates(capture.kanji);
+  const visibleRecommendations = recommendationPool.slice(0, recommendationView.visibleCount);
+  const eligibleSelectedKanjiIds = eligibleRecommendationSelection(recommendationView.selectedIds, recommendationPool);
+  const selectedRecommendations = recommendationPool.filter((item) => eligibleSelectedKanjiIds.has(item.kanjiMasterId));
+  const remainingRecommendationCount = recommendationPool.length - visibleRecommendations.length;
   const active = capture.kanji.filter((item) => !item.excluded);
   const excluded = capture.kanji.filter((item) => item.excluded);
   const date = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(capture.createdAt));
@@ -206,29 +233,74 @@ export default function CaptureDetailPage() {
           </Typography>
         </Paper>
 
-        {recommended.length > 0 && (
+        {recommendationPool.length > 0 && (
           <Paper sx={{ p: 2.5, borderRadius: 4, background: (theme) => `linear-gradient(135deg, ${alpha(theme.palette.primary.dark, 0.72)}, ${alpha(theme.palette.secondary.dark, 0.72)})`, border: "1px solid", borderColor: "app.tone.secondary.border" }}>
-            <Typography variant="caption" sx={{ ...eyebrowSx, color: "app.accent.secondaryPale" }}>Recommended next</Typography>
-            <Box sx={{ display: "flex", gap: 1.25, my: 2 }}>
-              {recommended.map((item) => <KanjiTile key={item.kanjiMasterId} item={item} />)}
+            <Box sx={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 1.5 }}>
+              <Typography variant="caption" sx={{ ...eyebrowSx, color: "app.accent.secondaryPale" }}>Kanji to explore</Typography>
+              <Typography variant="caption" color="text.secondary">{visibleRecommendations.length} of {recommendationPool.length} shown</Typography>
             </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Select up to three kanji. You can keep browsing even while learning your current batch.
+            </Typography>
+            <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 1.25, my: 2 }}>
+              {visibleRecommendations.map((item) => (
+                <RecommendationTile
+                  key={item.kanjiMasterId}
+                  item={item}
+                  selected={eligibleSelectedKanjiIds.has(item.kanjiMasterId)}
+                  selectionLimitReached={eligibleSelectedKanjiIds.size >= MAX_RECOMMENDATION_SELECTIONS}
+                  onToggle={() => setRecommendationView((current) => {
+                    const activeView = current.sessionId === sessionId ? current : createRecommendationView(sessionId);
+                    return {
+                      ...activeView,
+                      selectedIds: toggleRecommendationSelection(
+                        eligibleRecommendationSelection(activeView.selectedIds, recommendationPool),
+                        item.kanjiMasterId,
+                      ),
+                    };
+                  })}
+                />
+              ))}
+            </Box>
+            {remainingRecommendationCount > 0 && (
+              <Button
+                fullWidth
+                variant="outlined"
+                onClick={() => setRecommendationView((current) => {
+                  const activeView = current.sessionId === sessionId ? current : createRecommendationView(sessionId);
+                  return {
+                    ...activeView,
+                    visibleCount: nextVisibleRecommendationCount(activeView.visibleCount, recommendationPool.length),
+                  };
+                })}
+                sx={{ minHeight: 48, mb: 1.25, borderColor: "app.tone.secondary.strongBorder", color: "app.accent.secondaryPale" }}
+              >
+                Load {Math.min(RECOMMENDATION_PAGE_SIZE, remainingRecommendationCount)} more
+              </Button>
+            )}
             <Button
               fullWidth
               variant="contained"
-              disabled={learningMutation.isPending}
-              onClick={() => learningMutation.mutate(recommended.map((item) => ({ kanjiMasterId: item.kanjiMasterId, status: "learning" })))}
+              disabled={learningMutation.isPending || selectedRecommendations.length === 0 || !capture.batchGateSatisfied}
+              onClick={() => learningMutation.mutate(selectedRecommendations.map((item) => ({ kanjiMasterId: item.kanjiMasterId, status: "learning" })))}
               sx={primaryButtonSx}
             >
-              {learningMutation.isPending ? "Adding…" : `Learn these ${recommended.length}`}
+              {learningMutation.isPending ? "Adding…" : `Learn selected (${selectedRecommendations.length} / ${MAX_RECOMMENDATION_SELECTIONS})`}
             </Button>
+            {!capture.batchGateSatisfied && (
+              <Box sx={{ mt: 1.5, p: 1.5, borderRadius: 2.5, bgcolor: "app.tone.secondary.faint", border: "1px solid", borderColor: "app.tone.secondary.border" }}>
+                <Typography variant="body2" fontWeight={800}>Finish your current batch to learn these</Typography>
+                <Typography variant="caption" color="text.secondary">Browsing and selecting remain available in the meantime.</Typography>
+              </Box>
+            )}
             {learningMutation.isError && <Typography role="alert" variant="body2" color="error.light" sx={{ mt: 1.5 }}>These kanji could not be added. Try again.</Typography>}
           </Paper>
         )}
 
-        {!capture.batchGateSatisfied && (
+        {!capture.batchGateSatisfied && recommendationPool.length === 0 && (
           <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, bgcolor: "app.tone.secondary.faint", borderColor: "app.tone.secondary.border" }}>
             <Typography fontWeight={800}>Keep learning your current batch</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>The next three unlock when every kanji selected from this capture reaches full familiarity.</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>You can add another batch when every kanji already selected from this capture reaches full familiarity.</Typography>
           </Paper>
         )}
 
@@ -380,8 +452,48 @@ function CaptureDetailSkeleton() {
   return <PageShell title="Capture"><Box sx={{ px: 3 }}><Skeleton variant="rounded" sx={{ aspectRatio: "4 / 3", borderRadius: 4 }} /><Skeleton height={120} sx={{ mt: 2 }} /><Skeleton height={160} /></Box></PageShell>;
 }
 
-function KanjiTile({ item }: { item: CaptureKanjiItem }) {
-  return <Box sx={{ width: 64, height: 72, borderRadius: 3, bgcolor: (theme) => alpha(theme.palette.background.default, 0.55), border: "1px solid", borderColor: (theme) => alpha(theme.palette.app.accent.secondaryPale, 0.2), display: "grid", placeItems: "center" }}><Typography lang="ja" sx={{ fontSize: 34 }}>{item.character}</Typography></Box>;
+function RecommendationTile({
+  item,
+  selected,
+  selectionLimitReached,
+  onToggle,
+}: {
+  item: CaptureKanjiItem;
+  selected: boolean;
+  selectionLimitReached: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <Box
+      component="button"
+      type="button"
+      aria-label={selected ? `Remove ${item.character} from selection` : `Select ${item.character} to learn`}
+      aria-pressed={selected}
+      aria-disabled={selectionLimitReached && !selected}
+      onClick={onToggle}
+      sx={{
+        minWidth: 0,
+        minHeight: 104,
+        p: 1.25,
+        borderRadius: 3,
+        border: "1px solid",
+        borderColor: selected ? "secondary.light" : "app.tone.secondary.border",
+        bgcolor: selected ? "app.tone.secondary.soft" : (theme) => alpha(theme.palette.background.default, 0.55),
+        color: "text.primary",
+        cursor: selectionLimitReached && !selected ? "not-allowed" : "pointer",
+        opacity: selectionLimitReached && !selected ? 0.62 : 1,
+        transition: "transform 160ms ease, background-color 160ms ease, border-color 160ms ease",
+        "&:hover": { bgcolor: selected ? "app.tone.secondary.subtle" : "app.surface.hoverSubtle" },
+        "&:focus-visible": { outline: "2px solid", outlineColor: "primary.light", outlineOffset: 2 },
+        "&:active": { transform: "scale(0.98)" },
+      }}
+    >
+      <Typography lang="ja" sx={{ fontSize: 34, lineHeight: 1.15 }}>{item.character}</Typography>
+      <Typography variant="caption" noWrap sx={{ display: "block", mt: 0.75, color: selected ? "app.accent.secondaryPale" : "text.secondary" }}>
+        {item.meanings[0] ?? "New kanji"}
+      </Typography>
+    </Box>
+  );
 }
 
 function KanjiRow({ item, onExclude, onRestore, onKnow }: { item: CaptureKanjiItem; onExclude?: () => void; onRestore?: () => void; onKnow?: () => void }) {
@@ -407,3 +519,11 @@ function KanjiRow({ item, onExclude, onRestore, onKnow }: { item: CaptureKanjiIt
 
 const eyebrowSx = { color: "text.disabled", fontWeight: 800, letterSpacing: 1.2, textTransform: "uppercase" } as const;
 const primaryButtonSx = { minHeight: 48, bgcolor: "primary.main", color: "background.default", fontWeight: 800, "&:hover": { bgcolor: "primary.light" } };
+
+function createRecommendationView(sessionId: string | undefined) {
+  return {
+    sessionId,
+    visibleCount: RECOMMENDATION_PAGE_SIZE,
+    selectedIds: new Set<string>(),
+  };
+}

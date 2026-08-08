@@ -435,6 +435,70 @@ class PhotoIntegrationTest : com.kanjimasta.support.PersistenceTest() {
     }
 
     @Test
+    fun `GET capture recommends new kanji while a previous capture batch is incomplete`() = testApplication {
+        val sessionId = UUID.randomUUID()
+        TestDatabase.db.insert(PhotoSessionTable) {
+            set(it.id, sessionId)
+            set(it.userId, TEST_USER_ID)
+            set(it.imageUrl, "https://storage.example.com/photos/browse-while-learning.jpg")
+            set(it.status, "DONE")
+            set(it.processingStatus, "READY")
+            set(it.pipelineVersion, 2)
+            set(it.fullText, "日運転見")
+        }
+        val learningId = UUID.randomUUID()
+        val newKanji = listOf("日", "運", "転", "見").map { UUID.randomUUID() to it }
+        (listOf(learningId to "学") + newKanji).forEachIndexed { index, (id, character) ->
+            TestDatabase.db.insert(com.kanjimasta.kanji.KanjiMasterTable) {
+                set(it.id, id)
+                set(it.character, character)
+                set(it.onyomi, emptyList())
+                set(it.kunyomi, emptyList())
+                set(it.meanings, listOf("meaning-$index"))
+            }
+            TestDatabase.db.insert(PhotoSessionKanjiTable) {
+                set(it.photoSessionId, sessionId)
+                set(it.kanjiMasterId, id)
+                set(it.firstSeenOrder, index)
+                set(it.recommendationRank, index)
+            }
+        }
+        TestDatabase.db.insert(com.kanjimasta.kanji.UserKanjiTable) {
+            set(it.userId, TEST_USER_ID)
+            set(it.kanjiId, learningId)
+            set(it.status, com.kanjimasta.kanji.UserKanjiStatus.LEARNING)
+            set(it.familiarity, 1)
+            set(it.currentTier, com.kanjimasta.quiz.QuizType.MEANING_RECALL)
+            set(it.sourcePhotoId, sessionId)
+        }
+        TestDatabase.db.insert(PhotoSessionKanjiDecisionTable) {
+            set(it.photoSessionId, sessionId)
+            set(it.kanjiMasterId, learningId)
+            set(it.batchId, UUID.randomUUID())
+            set(it.decision, "LEARNING")
+            set(it.decisionSource, "INITIAL")
+        }
+
+        application { testModule(TestDatabase.db) }
+        val response = jsonClient().get("/api/captures/$sessionId") {
+            header(HttpHeaders.Authorization, "Bearer test-token")
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        val capture = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+        assertEquals(false, capture["batchGateSatisfied"]!!.jsonPrimitive.boolean)
+        val candidates = capture["kanji"]!!.jsonArray
+            .map { it.jsonObject }
+            .filter { it["selectable"]!!.jsonPrimitive.boolean }
+        assertEquals(listOf("日", "運", "転", "見"), candidates.map { it["character"]!!.jsonPrimitive.content })
+        assertEquals(
+            listOf("日", "運", "転"),
+            candidates.filter { it["recommendedNext"]!!.jsonPrimitive.boolean }
+                .map { it["character"]!!.jsonPrimitive.content },
+        )
+    }
+
+    @Test
     fun `GET activity paginates the owners complete scan history newest first`() = testApplication {
         val now = Instant.parse("2026-08-05T05:00:00Z")
         val expectedIds = listOf(

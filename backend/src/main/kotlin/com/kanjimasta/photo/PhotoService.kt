@@ -272,9 +272,7 @@ class PhotoService(
         val active = rows.filter { it.excludedAt == null }
         val familiar = active.count { (it.familiarity ?: 0) >= 5 }
         val gateSatisfied = !photoRepository.hasIncompleteCaptureLearningBatch(sessionId, userId)
-        val recommended = if (gateSatisfied) {
-            active.filter { it.familiarity == null }.take(3).map { it.kanjiMasterId }.toSet()
-        } else emptySet()
+        val recommended = active.filter { it.familiarity == null }.take(3).map { it.kanjiMasterId }.toSet()
         return CaptureDetail(
             sessionId = session.id,
             label = captureLabel(session),

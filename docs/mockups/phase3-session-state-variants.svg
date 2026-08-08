@@ -33,7 +33,7 @@
   <!-- 01 ACTIVE RESUME -->
   <text x="40" y="128" class="secondaryPale label">01 · HOME · ACTIVE SESSION</text>
   <use href="#phone-shell" x="40" y="150"/>
-  <text x="66" y="211" class="text h1">Good evening</text><text x="66" y="234" fill="#CA7288" font-family="system-ui" font-size="14" font-weight="700">You are on a 12 day streak</text>
+  <text x="66" y="211" class="text h1">Good evening</text><text x="66" y="234" fill="#B0A103" font-family="system-ui" font-size="14" font-weight="700">You are on a 12 day streak</text>
   <rect x="66" y="270" width="338" height="254" rx="22" fill="url(#slot-gradient)" stroke="rgba(245,245,245,.11)"/>
   <text x="92" y="313" class="primaryPale body" font-weight="750">Session active</text><rect x="323" y="293" width="61" height="28" rx="14" fill="rgba(43,48,60,.24)"/><text x="353" y="312" text-anchor="middle" class="text tiny">3h 42m</text>
   <text x="92" y="369" class="text" font-family="system-ui" font-size="46" font-weight="850">3</text><text x="128" y="369" class="text h2" opacity=".72">reviews left</text>
@@ -43,7 +43,7 @@
   <!-- 02 COOLDOWN -->
   <text x="620" y="128" class="secondaryPale label">02 · HOME · COOLDOWN</text>
   <use href="#phone-shell" x="620" y="150"/>
-  <text x="646" y="211" class="text h1">Good evening</text><text x="646" y="234" fill="#CA7288" font-family="system-ui" font-size="14" font-weight="700">You are on a 12 day streak</text>
+  <text x="646" y="211" class="text h1">Good evening</text><text x="646" y="234" fill="#B0A103" font-family="system-ui" font-size="14" font-weight="700">You are on a 12 day streak</text>
   <rect x="646" y="270" width="338" height="254" rx="22" fill="url(#slot-gradient)" stroke="rgba(245,245,245,.11)"/>
   <text x="672" y="313" class="primaryPale body" font-weight="750">Session complete</text><circle cx="948" cy="306" r="17" fill="rgba(228,235,233,.12)"/><path d="m940 306 6 6 11-14" fill="none" stroke="#E4EBE9" stroke-width="2"/>
   <text x="672" y="369" class="text" font-family="system-ui" font-size="36" font-weight="850">2h 14m</text><text x="672" y="398" class="primaryPale small" opacity=".82">until the next session</text>

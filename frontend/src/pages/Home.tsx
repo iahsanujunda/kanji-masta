@@ -118,7 +118,7 @@ export default function Home() {
     >
       <PageHeader
         title={greeting}
-        subtitle={!loading && streak > 0 ? <span style={{ color: theme.palette.warning.main, fontWeight: 600 }}>You are on {streak} day streak</span> : undefined}
+        subtitle={!loading && streak > 0 ? <span style={{ color: theme.palette.app.accent.streak, fontWeight: 600 }}>You are on {streak} day streak</span> : undefined}
         right={
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
             <Chip
@@ -129,6 +129,7 @@ export default function Home() {
                 bgcolor: "app.tone.warning.soft",
                 color: "warning.main",
                 fontWeight: "bold",
+                "& .MuiChip-icon": { color: "app.accent.streak" },
               }}
             />
             <PhotoActivityControl userId={user?.id} />

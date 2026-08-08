@@ -24,6 +24,7 @@ interface AppPalette {
     warning: string;
     warningLight: string;
     warningPale: string;
+    streak: string;
   };
   tone: {
     primary: {
@@ -142,6 +143,7 @@ const base = {
   warningLight: "#D58D9F",
   warningDark: "#8C4C5C",
   warningPale: "#E8C2CB",
+  streak: "#B0A103",
   ink: "#30343F",
   white: "#F5F5F5",
 } as const;
@@ -227,6 +229,7 @@ export const appTheme = createTheme({
         warning: base.warning,
         warningLight: base.warningLight,
         warningPale: base.warningPale,
+        streak: base.streak,
       },
       tone: {
         primary: {

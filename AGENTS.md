@@ -36,11 +36,12 @@ Never amend an existing commit. Every correction or follow-up must be recorded a
 - Brand icon: light-teal→muted-pink gradient square with leaf SVG (favicon, navbar, footer)
 - **Color theme** — use consistently across all pages:
   - Background family: `#626A7C` (outer backdrop), `#343A48` (app canvas), `#3B4251` (sections), `#454D5E` (cards), `#555E72` (elevated)
-  - Light teal `#D6E2DF` — primary CTA buttons (`#30343F` text), success states, active streaks
+  - Light teal `#D6E2DF` — primary CTA buttons (`#30343F` text) and success states
   - Light teal hover `#E4EBE9` and pale `#EEF2F1` — hover states, positive labels, subtle primary accents
   - Muted pink `#C6B0B8` — secondary accents, "Recommended" badges, and selected states
   - Muted pink light `#D8C8CE` and pale `#E7DCE0` — icon tints, readings, tier labels, and subtle secondary accents
-  - Reddish warning `#CA7288`, light `#D58D9F`, and pale `#E8C2CB` — warnings, errors, destructive actions, and streak fire
+  - Reddish warning `#CA7288`, light `#D58D9F`, and pale `#E8C2CB` — warnings, errors, and destructive actions
+  - Day-streak `#B0A103` — day-streak subtitle and fire icon only
   - White `#F5F5F5` — primary text and icons on dark surfaces
   - Gradient `linear-gradient(135deg, #849B96, #846F77)` — slot cards (quiz ready/active/complete)
   - Gradient `linear-gradient(135deg, #E4EBE9, #C6B0B8)` — brand logo background

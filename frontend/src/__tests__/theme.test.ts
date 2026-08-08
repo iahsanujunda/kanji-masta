@@ -24,6 +24,7 @@ describe("application theme", () => {
     expect(appTheme.palette.primary.main).toBe("#D6E2DF");
     expect(appTheme.palette.secondary.main).toBe("#C6B0B8");
     expect(appTheme.palette.error.main).toBe("#CA7288");
+    expect(appTheme.palette.app.accent.streak).toBe("#B0A103");
   });
 
   it("keeps raw color literals out of application UI source", () => {

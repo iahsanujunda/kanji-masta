@@ -45,9 +45,9 @@
     </g>
     <g id="home-header">
       <text x="26" y="61" class="text h1">Good evening</text>
-      <text x="26" y="84" fill="#CA7288" font-family="system-ui" font-size="13" font-weight="700">You are on a 12 day streak</text>
+      <text x="26" y="84" fill="#B0A103" font-family="system-ui" font-size="13" font-weight="700">You are on a 12 day streak</text>
       <rect x="302" y="34" width="62" height="30" rx="15" fill="rgba(202,114,136,.13)"/>
-      <path d="M318 55c-7-7 2-12 0-19 8 5 11 11 7 18-2 4-5 5-7 1Z" fill="none" stroke="#D58D9F" stroke-width="1.8"/>
+      <path d="M318 55c-7-7 2-12 0-19 8 5 11 11 7 18-2 4-5 5-7 1Z" fill="none" stroke="#B0A103" stroke-width="1.8"/>
       <text x="341" y="55" text-anchor="middle" fill="#D58D9F" font-family="system-ui" font-size="13" font-weight="800">12</text>
     </g>
     <g id="capture-button">

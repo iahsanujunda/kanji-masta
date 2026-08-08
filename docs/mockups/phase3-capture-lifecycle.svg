@@ -13,7 +13,7 @@
     </style>
     <g id="phone-shell"><rect width="390" height="760" rx="30" class="app" filter="url(#shadow)"/><rect x="1" y="1" width="388" height="758" rx="29" fill="none" stroke="rgba(245,245,245,.09)"/></g>
     <g id="home-header">
-      <text x="26" y="54" class="text h1">Good evening</text><text x="26" y="77" fill="#CA7288" font-family="system-ui" font-size="13" font-weight="700">You are on a 12 day streak</text>
+      <text x="26" y="54" class="text h1">Good evening</text><text x="26" y="77" fill="#B0A103" font-family="system-ui" font-size="13" font-weight="700">You are on a 12 day streak</text>
       <circle cx="309" cy="44" r="21" fill="rgba(245,245,245,.035)"/><path d="M302 52h14c-2-2-3-4-3-8a4 4 0 0 0-8 0c0 4-1 6-3 8Zm6 3h2" fill="none" stroke="#DFE2E8" stroke-width="1.8" stroke-linecap="round"/><circle cx="321" cy="32" r="5" fill="#D6E2DF" stroke="#343A48" stroke-width="2"/>
       <circle cx="355" cy="44" r="21" fill="rgba(245,245,245,.035)"/><circle cx="355" cy="44" r="4" fill="none" stroke="#DFE2E8" stroke-width="1.7"/><path d="M355 34v4m0 12v4m10-10h-4m-12 0h-4" stroke="#DFE2E8" stroke-width="1.7" stroke-linecap="round"/>
     </g>
